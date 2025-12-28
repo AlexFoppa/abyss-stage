@@ -1,4 +1,4 @@
 .env
 caddy_data/
 caddy_config/
-livekit.yaml/
+livekit.yaml
