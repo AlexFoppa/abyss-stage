@@ -3,11 +3,15 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { useAuth } from "./auth/AuthProvider";
 import { joinRoom } from "./rtc/livekit";
+import { StageLayout } from "./ui/StageLayout";
+
 
 type View = "LOGIN" | "RESET" | "LOBBY";
 
 export function Routes() {
   const { user, loading } = useAuth();
+  const logged = !!user && !user.must_reset_password;
+
 
   const view: View = useMemo(() => {
     if (loading) return "LOGIN"; // placeholder; tela de loading abaixo
@@ -16,11 +20,20 @@ export function Routes() {
     return "LOBBY";
   }, [user, loading]);
 
-  if (loading) return <Screen title="Carregando…" />;
+return (
+  <StageLayout logged={logged}>
+    {loading ? (
+      <Screen title="Carregando…" />
+    ) : view === "LOGIN" ? (
+      <LoginScreen />
+    ) : view === "RESET" ? (
+      <ForceResetScreen />
+    ) : (
+      <LobbyScreen />
+    )}
+  </StageLayout>
+);
 
-  if (view === "LOGIN") return <LoginScreen />;
-  if (view === "RESET") return <ForceResetScreen />;
-  return <LobbyScreen />;
 }
 
 function Screen({ title, children }: { title: string; children?: any }) {

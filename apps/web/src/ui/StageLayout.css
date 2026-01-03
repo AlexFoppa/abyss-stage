@@ -1,0 +1,54 @@
+:root{ --overlap: 60px; }
+
+
+.stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.valance {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 3;
+}
+
+.curtain {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 50%;
+  transition: width 1s ease, transform 1s ease;
+  z-index: 1;
+}
+
+.curtain.left {
+  left: 0;
+}
+
+.curtain.right {
+  right: 0;
+}
+
+.stage.logged .curtain.left {
+  width: 20%;
+}
+
+.stage.logged .curtain.right {
+  width: 20%;
+}
+
+.center {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.curtain{width:calc(50% + var(--overlap));} 
+.stage.logged{--overlap:0px;} 
+.stage.logged .curtain{width:20%;}
