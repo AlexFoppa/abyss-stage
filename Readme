@@ -1,0 +1,130 @@
+```md
+# abyss-stage
+
+Monorepo com dois apps:
+- API (FastAPI / Python): apps/api
+- Web (React + Vite): apps/web
+
+================================================================================
+RODAR A API (FASTAPI)
+================================================================================
+
+1) Ativar o ambiente virtual
+source apps/api/.venv/bin/activate
+
+2) Definir variáveis de ambiente (OBRIGATÓRIAS)
+Nenhum segredo fica no código. A API depende dessas variáveis.
+
+export LIVEKIT_API_KEY="lk_dev_..."
+export LIVEKIT_API_SECRET="segredo_do_livekit"
+export AUTH_JWT_SECRET="segredo_longo_e_aleatorio"
+
+Variáveis opcionais (com defaults):
+export AUTH_JWT_ISSUER="abyss-stage"
+export AUTH_JWT_TTL_SECONDS="3600"
+export AUTH_COOKIE_NAME="abyss_session"
+export AUTH_COOKIE_SECURE="0"
+
+3) Subir a API
+uvicorn apps.api.main:app --reload --port 8000
+
+API disponível em:
+http://127.0.0.1:8000
+
+================================================================================
+RODAR O WEB (REACT + VITE)
+================================================================================
+
+cd apps/web
+npm install
+npm run dev
+
+Web disponível em:
+http://localhost:5173
+
+================================================================================
+AUTENTICAÇÃO – VISÃO GERAL
+================================================================================
+
+- Autenticação via JWT armazenado em cookie HttpOnly
+- Cookie padrão: abyss_session
+- Papéis:
+  - GM: acesso total
+  - PLAYER: acesso apenas aos próprios dados
+- Campo must_reset_password:
+  - quando true, o usuário NÃO pode acessar recursos protegidos
+  - é obrigatório trocar a senha antes de continuar
+
+================================================================================
+FLUXOS DE AUTENTICAÇÃO
+================================================================================
+
+REGISTRAR PLAYER
+curl -i -X POST http://127.0.0.1:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Alice","email":"alice@example.com","password":"SenhaForte123"}'
+
+LOGIN (gera cookie HttpOnly)
+curl -i -c /tmp/cookies.txt -X POST http://127.0.0.1:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@example.com","password":"SenhaForte123"}'
+
+USUÁRIO LOGADO (/me)
+curl -i -b /tmp/cookies.txt http://127.0.0.1:8000/auth/me
+
+TROCAR SENHA (usuário comum)
+curl -i -b /tmp/cookies.txt -X POST http://127.0.0.1:8000/auth/change-password \
+  -H "Content-Type: application/json" \
+  -d '{"current_password":"SenhaForte123","new_password":"NovaSenhaForte123"}'
+
+LOGOUT
+curl -i -b /tmp/cookies.txt -X POST http://127.0.0.1:8000/auth/logout
+
+================================================================================
+RESET DE SENHA (GM)
+================================================================================
+
+LOGIN COMO GM
+curl -i -c /tmp/gm_cookies.txt -X POST http://127.0.0.1:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"gm@example.com","password":"SenhaForte123"}'
+
+GM RESETA SENHA DO PLAYER
+curl -i -b /tmp/gm_cookies.txt -X POST http://127.0.0.1:8000/auth/gm/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":1}'
+
+Resposta inclui:
+- temp_password
+- must_reset_password=true
+
+PLAYER FAZ LOGIN COM SENHA TEMPORÁRIA
+curl -i -c /tmp/player_cookies.txt -X POST http://127.0.0.1:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@example.com","password":"<TEMP_PASSWORD>"}'
+
+PLAYER TROCA SENHA (OBRIGATÓRIO)
+curl -i -b /tmp/player_cookies.txt -X POST http://127.0.0.1:8000/auth/change-password \
+  -H "Content-Type: application/json" \
+  -d '{"current_password":"<TEMP_PASSWORD>","new_password":"SenhaFinal123"}'
+
+================================================================================
+TOKEN DO LIVEKIT (ROTA PROTEGIDA)
+================================================================================
+
+- Requer usuário autenticado
+- Se must_reset_password=true → retorna 403
+- Usa o ID do usuário autenticado como sub
+
+curl -i -b /tmp/player_cookies.txt "http://127.0.0.1:8000/token?room=test"
+
+================================================================================
+OBSERVAÇÕES DE SEGURANÇA
+================================================================================
+
+- Nenhum segredo versionado
+- Todos os secrets vêm de variáveis de ambiente
+- Cookies são HttpOnly
+- Em produção, usar:
+export AUTH_COOKIE_SECURE="1"
+```
