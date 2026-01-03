@@ -6,12 +6,11 @@ function App() {
     fetch("http://127.0.0.1:8000/token?room=test&user=alex")
       .then(r => r.json())
       .then(({ token }) =>
-        joinRoom(token, "wss://sapphire-wiki-testing-guestbook.trycloudflare.com")
-      )
-      .catch(console.error);
+        joinRoom(token, "ws://127.0.0.1:7880")
+      );
   }, []);
 
-  return <h1>Connecting audio…</h1>;
+  return <h1>Audio connecting…</h1>;
 }
 
 export default App;

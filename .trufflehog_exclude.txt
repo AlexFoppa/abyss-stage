@@ -1,0 +1,2 @@
+apps/web/public/vite.svg
+apps/web/package-lock.json

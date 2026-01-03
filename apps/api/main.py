@@ -1,27 +1,30 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from jose import jwt
-import time
 
-API_KEY = "lk_dev_1234567890"
-API_SECRET = "PASTE_64_HEX_SECRET_HERE"
+from apps.api.backend.config import settings
+from apps.api.backend.db import init_db
+from apps.api.backend.routers.livekit import router as livekit_router
+from apps.api.backend.routers.auth import router as auth_router
+from apps.api.backend.config import validate_settings
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    validate_settings()
+    init_db()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=list(settings.cors_allow_origins),
+    allow_credentials=True,  # necessário p/ cookie httpOnly no browser
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.get("/token")
-def token(room: str, user: str):
-    payload = {
-        "iss": API_KEY,
-        "sub": user,
-        "nbf": int(time.time()),
-        "exp": int(time.time()) + 3600,
-        "video": {"roomJoin": True, "room": room},
-    }
-    return {"token": jwt.encode(payload, API_SECRET, algorithm="HS256")}
+app.include_router(livekit_router)
+app.include_router(auth_router)
