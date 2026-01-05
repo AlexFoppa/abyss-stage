@@ -138,3 +138,19 @@
 
 .panel button:hover{ filter:brightness(1.08); }
 .panel button:disabled{ opacity:.6; }
+
+.panel .link{
+  width:auto !important;
+  height:auto !important;
+  margin:14px auto 0;
+  display:block;
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  color:#c9a24d;
+  text-decoration:underline;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+.panel .link:hover{filter:brightness(1.15);}
