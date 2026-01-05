@@ -10,6 +10,8 @@ type View = "LOGIN" | "RESET" | "LOBBY";
 export function Routes() {
   const { user, loading } = useAuth();
   const logged = !!user && !user.must_reset_password;
+  const isGM = user?.role === "GM";
+  const showBackstage = !!user && user.role === "PLAYER" && !user.must_reset_password;
 
   const view: View = useMemo(() => {
     if (loading) return "LOGIN";
@@ -19,7 +21,7 @@ export function Routes() {
   }, [user, loading]);
 
   return (
-    <StageLayout logged={logged}>
+    <StageLayout logged={logged} isGM={isGM} showBackstage={showBackstage}>
       {loading ? (
         <Screen title="Carregando…" />
       ) : view === "LOGIN" ? (
@@ -32,6 +34,7 @@ export function Routes() {
     </StageLayout>
   );
 }
+
 
 function Screen({ title, children }: { title: string; children?: React.ReactNode }) {
   return (

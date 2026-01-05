@@ -154,3 +154,21 @@
   text-transform:uppercase;
 }
 .panel .link:hover{filter:brightness(1.15);}
+
+/* src/ui/StageLayout.css (adicione no final; backstage.png deve estar em apps/web/public/) */
+.backstage{
+  position:absolute;
+  right:0;
+  bottom:0;
+  width:auto;
+  z-index:2;              /* abaixo do .center (z=2/3 dependendo do seu arquivo), acima das cortinas */
+  pointer-events:none;
+  animation: backstageRise 900ms ease-out both;
+  max-height: 80vh;
+  max-width: 100%;
+  object-fit: contain;
+}
+@keyframes backstageRise{
+  from{ transform:translateY(100%); opacity:0; }
+  to{ transform:translateY(0); opacity:1; }
+}
