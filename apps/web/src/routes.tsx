@@ -38,8 +38,11 @@ return (
 
 function Screen({ title, children }: { title: string; children?: any }) {
   return (
-    <div style={{ maxWidth: 420, margin: "48px auto", padding: 16 }}>
-      <h1 style={{ marginBottom: 16 }}>{title}</h1>
+    <div className="panel">
+      <h1>Abyss Stage</h1>
+      <div style={{ textAlign:"center", letterSpacing:".14em", textTransform:"uppercase", opacity:.85, marginBottom:10 }}>
+        {title}
+      </div>
       {children}
     </div>
   );
