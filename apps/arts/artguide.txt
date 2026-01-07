@@ -1,0 +1,30 @@
+Estou criando um personagem com o seguinte conceito e detalhes:
+[conceito narrativo, personalidade, arquétipo, papel no jogo]
+
+Crie o personagem seguindo as regras abaixo e gere EXATAMENTE QUATRO (4) ILUSTRAÇÕES DIFERENTES do MESMO CONCEITO.
+
+Formato obrigatório:
+– Responda apenas com imagens (nenhum texto explicativo).
+– Gere 4 variações lado a lado ou em sequência.
+– Todas devem seguir o mesmo estilo visual, mas variar interpretação.
+
+Regras de estilo (fixas):
+Personagem isolado, corpo inteiro, sem fundo (branco/off-white ou transparente). Ilustração colorida em estilo quadrinhos/mangá adulto de horror vitoriano. Lineart preto expressivo e orgânico, com imperfeições visíveis e linhas levemente quebradas. Uso de grandes massas de preto como elemento gráfico. Sombreamento por áreas chapadas e hachuras sutis. Anatomia realista estilizada, silhueta levemente exagerada. Rostos graficamente simplificados, não fotorrealistas.
+
+Pose base fixa em todas: personagem em pé, postura contida, braços relaxados, expressão neutra.
+
+Iluminação suave e quente, contraste moderado. Paleta predominantemente neutra (preto, cinza, marrom/couro), com pequenos detalhes em uma única cor escura vitoriana por variação (verde profundo OU dourado envelhecido OU vinho escuro OU cinza carvão).
+
+Vestuário estritamente vitoriano (1830–1900), tecidos pesados e elegantes.
+
+Regra de diversidade OBRIGATÓRIA entre as 4 variações:
+– Variar idade aparente
+– Variar traços faciais
+– Variar silhueta corporal
+– Variar leitura social do vestuário (formal, gasto, austero, excêntrico)
+– Variar discretamente a cor da pele dentro de tons realistas
+– Manter o conceito narrativo, mas evitar repetição visual
+
+Detalhamento seletivo: em cada variação, escolha focar no rosto OU no vestuário, nunca ambos.
+
+Se qualquer regra for quebrada, regenere.
