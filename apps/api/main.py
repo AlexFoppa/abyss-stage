@@ -1,13 +1,13 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from apps.api.backend.config import settings
 from apps.api.backend.db import init_db
 from apps.api.backend.routers.livekit import router as livekit_router
 from apps.api.backend.routers.auth import router as auth_router
 from apps.api.backend.config import validate_settings
-
+from apps.api.backend.routers.characters import router as characters_router
+from apps.api.backend.routers.catalog import router as catalog_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -28,3 +28,5 @@ app.add_middleware(
 
 app.include_router(livekit_router)
 app.include_router(auth_router)
+app.include_router(catalog_router)
+app.include_router(characters_router)

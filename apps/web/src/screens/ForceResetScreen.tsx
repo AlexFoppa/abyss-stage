@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth/AuthProvider";
-import { Screen } from "../routes";
+import { Screen } from "../ui/Screen";
 
 export function ForceResetScreen() {
   const { user, refreshMe, logout } = useAuth();

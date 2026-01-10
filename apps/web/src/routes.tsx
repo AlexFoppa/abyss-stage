@@ -1,12 +1,13 @@
-// src/routes.tsx
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useAuth } from "./auth/AuthProvider";
 import { StageLayout } from "./ui/StageLayout";
+import { Screen } from "./ui/Screen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { ForceResetScreen } from "./screens/ForceResetScreen";
 import { LobbyScreen } from "./screens/LobbyScreen";
+import { CreateCharacterScreen } from "./screens/CreateCharacterScreen";
 
-type View = "LOGIN" | "RESET" | "LOBBY";
+type View = "LOGIN" | "RESET" | "LOBBY" | "CREATE_CHARACTER";
 
 export function Routes() {
   const { user, loading } = useAuth();
@@ -14,12 +15,14 @@ export function Routes() {
   const isGM = user?.role === "GM";
   const showBackstage = !!user && user.role === "PLAYER" && !user.must_reset_password;
 
+  const [subView, setSubView] = useState<"LOBBY" | "CREATE_CHARACTER">("LOBBY");
+
   const view: View = useMemo(() => {
     if (loading) return "LOGIN";
     if (!user) return "LOGIN";
     if (user.must_reset_password) return "RESET";
-    return "LOBBY";
-  }, [user, loading]);
+    return subView;
+  }, [user, loading, subView]);
 
   return (
     <StageLayout logged={logged} isGM={isGM} showBackstage={showBackstage}>
@@ -29,29 +32,11 @@ export function Routes() {
         <LoginScreen />
       ) : view === "RESET" ? (
         <ForceResetScreen />
+      ) : view === "CREATE_CHARACTER" ? (
+        <CreateCharacterScreen onBack={() => setSubView("LOBBY")} />
       ) : (
-        <LobbyScreen />
+        <LobbyScreen onCreateCharacter={() => setSubView("CREATE_CHARACTER")} />
       )}
     </StageLayout>
-  );
-}
-
-export function Screen({ title, children }: { title: string; children?: React.ReactNode }) {
-  return (
-    <div className="panel">
-      <h1>Abyss Stage</h1>
-      <div
-        style={{
-          textAlign: "center",
-          letterSpacing: ".14em",
-          textTransform: "uppercase",
-          opacity: 0.85,
-          marginBottom: 10,
-        }}
-      >
-        {title}
-      </div>
-      {children}
-    </div>
   );
 }

@@ -1,15 +1,17 @@
-// src/screens/LobbyScreen.tsx
+// apps/web/src/screens/LobbyScreen.tsx
 import { useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth/AuthProvider";
 import { joinRoom } from "../rtc/livekit";
-import { Screen } from "../routes";
+import { Screen } from "../ui/Screen";
 
-export function LobbyScreen() {
+export function LobbyScreen({ onCreateCharacter }: { onCreateCharacter: () => void }) {
   const { user, logout } = useAuth();
 
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [err, setErr] = useState<string | null>(null);
+
+  const canCreate = user?.role === "PLAYER" && !user?.must_reset_password;
 
   async function connectAudio() {
     setErr(null);
@@ -30,15 +32,17 @@ export function LobbyScreen() {
         {user?.name} — {user?.role}
       </div>
 
-      <button disabled={status === "connecting" || status === "connected"} onClick={connectAudio}>
-        {status === "connected" ? "Áudio conectado" : status === "connecting" ? "Conectando…" : "Conectar áudio"}
-      </button>
+      <div style={{ display: "grid", gap: 10 }}>
+        <button disabled={status === "connecting" || status === "connected"} onClick={connectAudio}>
+          {status === "connected" ? "Áudio conectado" : status === "connecting" ? "Conectando…" : "Conectar áudio"}
+        </button>
 
-      {err && <div style={{ color: "crimson", marginTop: 12 }}>{err}</div>}
+        {canCreate && <button onClick={onCreateCharacter}>Criar personagem</button>}
 
-      <div style={{ marginTop: 16 }}>
         <button onClick={logout}>Sair</button>
       </div>
+
+      {err && <div style={{ color: "crimson", marginTop: 12 }}>{err}</div>}
     </Screen>
   );
 }
