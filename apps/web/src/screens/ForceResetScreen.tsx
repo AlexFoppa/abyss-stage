@@ -44,25 +44,25 @@ export function ForceResetScreen() {
         Logado como <b>{user?.email}</b>
       </div>
 
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
-        <label>
+     <form onSubmit={onSubmit} className="ui-stack">
+        <label className="ui-label">
           Senha atual
           <input
+            className="ui-field"
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             type="password"
-            style={{ width: "100%" }}
             autoComplete="current-password"
           />
         </label>
 
-        <label>
+        <label className="ui-label">
           Nova senha
           <input
+            className="ui-field"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             type="password"
-            style={{ width: "100%" }}
             autoComplete="new-password"
           />
         </label>
@@ -70,14 +70,15 @@ export function ForceResetScreen() {
         {err && <div style={{ color: "crimson" }}>{err}</div>}
         {ok && <div style={{ color: "green" }}>{ok}</div>}
 
-        <button disabled={busy} type="submit">
+        <button className="ui-btn" disabled={busy} type="submit">
           {busy ? "Salvando…" : "Salvar nova senha"}
         </button>
 
-        <button type="button" onClick={logout}>
+        <button className="ui-btn ui-btn--ghost" type="button" onClick={logout}>
           Sair
         </button>
       </form>
+
     </Screen>
   );
 }

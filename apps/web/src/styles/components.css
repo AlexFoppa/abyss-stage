@@ -9,7 +9,7 @@
   border:1px solid var(--gold-border);
   border-radius:var(--radius-md);
   box-shadow:0 18px 60px rgba(0,0,0,.55);
-  font-family:"Cinzel",serif;
+  font-family: var(--font-display);
 }
 
 .ui-label{
@@ -20,6 +20,22 @@
   letter-spacing:.12em;
   text-transform:uppercase;
   color:var(--text-label);
+}
+
+.ui-field{
+  display:block;
+  width:100%;
+  box-sizing:border-box;
+  min-height:var(--field-h);
+  padding:0 var(--field-pad-x);
+  background:rgba(0,0,0,.45);
+  border:1px solid var(--gold-border);
+  border-radius:var(--radius-sm);
+  color:var(--text-input);
+  outline:none;
+  font-family: var(--font-ui);
+  text-transform:none;
+  letter-spacing:normal;
 }
 
 .ui-btn{
@@ -33,7 +49,7 @@
   color:var(--text-button);
   letter-spacing:.14em;
   text-transform:uppercase;
-  font-family:"Cinzel",serif;
+  font-family: var(--font-display);
 }
 
 
@@ -48,18 +64,6 @@ textarea.ui-field{
   box-shadow:0 0 0 2px var(--gold-glow);
 }
 
-.ui-btn{
-  height:44px;
-  padding:0 18px;
-  background:linear-gradient(#3b2e1b,#241a0e);
-  border:1px solid var(--gold);
-  border-radius:10px;
-  color:var(--text-button);
-  letter-spacing:.14em;
-  text-transform:uppercase;
-  font-family:"Cinzel",serif;
-}
-
 .ui-btn:hover{ filter:brightness(1.08); }
 .ui-btn:disabled{ opacity:.6; }
 
@@ -69,4 +73,60 @@ textarea.ui-field{
   color:var(--text-main);
 }
 
+
+.ui-modal{
+  width:min(520px,92vw);
+  padding:44px 46px 38px;
+  background:
+    radial-gradient(120% 140% at 50% 0%, rgba(255,255,255,.02), transparent 60%),
+    linear-gradient(var(--bg-ink-2), var(--bg-ink));
+  color:var(--text-main);
+  border:1px solid var(--gold);
+  outline:1px solid rgba(0,0,0,.6);
+  border-radius:14px;
+  box-shadow:0 28px 90px var(--shadow-strong);
+  font-family: var(--font-display);
+  position:relative;
+}
+
+.ui-modal:before{
+  content:"";
+  position:absolute;
+  inset:14px;
+  border:1px solid var(--gold-soft);
+  border-radius:10px;
+  pointer-events:none;
+}
+
+.ui-title{
+  margin:0 0 18px;
+  font-size:54px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  text-align:center;
+  color:var(--text-main);
+}
+
+.ui-subtitle{
+  text-align:center;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  opacity:.85;
+  margin-bottom:10px;
+}
+
+.link{
+  width:auto; height:auto;
+  margin:14px auto 0;
+  display:block;
+  background:transparent;
+  border:0;
+  padding:0;
+  color:var(--gold);
+  text-decoration:underline;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  font-family: var(--font-display);
+}
+.link:hover{ filter:brightness(1.15); }
 

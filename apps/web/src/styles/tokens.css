@@ -20,4 +20,32 @@
   --field-pad-x: 12px;
   --radius-sm: 8px;
   --radius-md: 14px;
+
+  --font-display: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --font-ui: "Crimson Pro", Georgia, "Times New Roman", serif;
+
+  /* layout / containers */
+  --container-max: 1200px;
+  --modal-w: 520px;
+  --vw-safe: 92vw;
+
+  /* panel */
+  --panel-pad-x: 46px;
+  --panel-pad-y-top: 44px;
+  --panel-pad-y-bottom: 38px;
+  --panel-inner-inset: 14px;
+
+  /* typography */
+  --fs-title: 54px;
+  --fs-label: 12px;
+  --fs-label-lg: 14px;
+  --ls-label: .12em;
+  --ls-ui: .14em;
+
+  /* buttons */
+  --btn-h: 44px;
+
+  /* shadows */
+  --shadow-mid: rgba(0,0,0,.6);
+
 }

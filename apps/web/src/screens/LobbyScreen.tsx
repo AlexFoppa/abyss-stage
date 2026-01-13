@@ -32,14 +32,24 @@ export function LobbyScreen({ onCreateCharacter }: { onCreateCharacter: () => vo
         {user?.name} — {user?.role}
       </div>
 
-      <div style={{ display: "grid", gap: 10 }}>
-        <button disabled={status === "connecting" || status === "connected"} onClick={connectAudio}>
+      <div className="ui-stack" style={{ gap: 10 }}>
+        <button
+          className="ui-btn"
+          disabled={status === "connecting" || status === "connected"}
+          onClick={connectAudio}
+        >
           {status === "connected" ? "Áudio conectado" : status === "connecting" ? "Conectando…" : "Conectar áudio"}
         </button>
 
-        {canCreate && <button onClick={onCreateCharacter}>Criar personagem</button>}
+        {canCreate && (
+          <button className="ui-btn" onClick={onCreateCharacter}>
+            Criar personagem
+          </button>
+        )}
 
-        <button onClick={logout}>Sair</button>
+        <button className="ui-btn ui-btn--ghost" onClick={logout}>
+          Sair
+        </button>
       </div>
 
       {err && <div style={{ color: "crimson", marginTop: 12 }}>{err}</div>}
