@@ -20,7 +20,7 @@ export function StageLayout({
 
       {showBackstage && <img src="/backstage.png" className="backstage" alt="" />}
 
-      <div className="center">{children}</div>
+      <div className={`center ${showBackstage ? "center--app" : "center--modal"}`}>{children}</div>
     </div>
   );
 }

@@ -3,7 +3,6 @@ import { useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth/AuthProvider";
 import { joinRoom } from "../rtc/livekit";
-import { Screen } from "../ui/Screen";
 
 export function LobbyScreen({ onCreateCharacter }: { onCreateCharacter: () => void }) {
   const { user, logout } = useAuth();
@@ -27,32 +26,32 @@ export function LobbyScreen({ onCreateCharacter }: { onCreateCharacter: () => vo
   }
 
   return (
-    <Screen title="Lobby">
-      <div style={{ marginBottom: 12, opacity: 0.8 }}>
-        {user?.name} — {user?.role}
-      </div>
-
-      <div className="ui-stack" style={{ gap: 10 }}>
-        <button
-          className="ui-btn"
-          disabled={status === "connecting" || status === "connected"}
-          onClick={connectAudio}
-        >
-          {status === "connected" ? "Áudio conectado" : status === "connecting" ? "Conectando…" : "Conectar áudio"}
+    <div className="lobby-cabinet">
+      <div className="lobby-actions ui-stack" style={{ gap: 10 }}>
+        <button className="ui-btn" disabled /* sem personagem ainda */>
+          Selecionar<br />personagem
         </button>
 
-        {canCreate && (
-          <button className="ui-btn" onClick={onCreateCharacter}>
-            Criar personagem
-          </button>
-        )}
+        <button className="ui-btn" onClick={onCreateCharacter}>
+          Criar personagem
+        </button>
+
+        <button className="ui-btn" disabled={status === "connecting" || status === "connected"} onClick={connectAudio}>
+          Compartilhar<br />áudio
+        </button>
+
+        <button className="ui-btn" disabled>
+          Informações do<br />jogador
+        </button>
 
         <button className="ui-btn ui-btn--ghost" onClick={logout}>
-          Sair
+          Se retirar
         </button>
       </div>
 
-      {err && <div style={{ color: "crimson", marginTop: 12 }}>{err}</div>}
-    </Screen>
-  );
+      {err && <div className="lobby-error">{err}</div>}
+    </div>
+);
+
+
 }

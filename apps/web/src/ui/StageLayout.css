@@ -57,7 +57,6 @@
   z-index:2;
   height:100%;
   display:grid;
-  place-items:center;
   animation:menuRise 700ms ease-out both;
 }
 
@@ -71,14 +70,28 @@
   right:0;
   bottom:0;
   width:auto;
-  z-index:2;              /* abaixo do .center (z=2/3 dependendo do seu arquivo), acima das cortinas */
+  z-index:2;
   pointer-events:none;
-  animation: backstageRise 900ms ease-out both;
-  max-height: 80vh;
-  max-width: 100%;
-  object-fit: contain;
+  max-height:80vh;
+  max-width:100%;
+  object-fit:contain;
+
+  animation: backstageRise 2000ms cubic-bezier(.2,.9,.2,1) both;
 }
 @keyframes backstageRise{
   from{ transform:translateY(100%); opacity:0; }
   to{ transform:translateY(0); opacity:1; }
 }
+
+
+.center--modal{ display:grid; place-items:center; }
+.center--app{
+  position:relative;
+  height:100%;
+  padding-top:220px;
+  padding-left:28px;
+  box-sizing:border-box;
+}
+
+
+
