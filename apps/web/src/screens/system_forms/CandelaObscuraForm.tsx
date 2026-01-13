@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 export type Role = { id: number; name: string; description?: string };
 export type Specialty = { id: number; name: string; role_id?: number | null; description?: string; image_storage_key?: string };
 

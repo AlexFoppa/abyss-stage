@@ -67,14 +67,14 @@ export function LoginScreen() {
 
   return (
     <Screen title={mode === "login" ? "Entrar" : "Criar conta"}>
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
+      <form onSubmit={onSubmit} className="ui-stack">
         {mode === "register" && (
-          <label>
+          <label className="ui-label">
             Nome
             <input
+              className="ui-field"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              style={{ width: "100%" }}
               autoComplete="name"
               minLength={2}
               required
@@ -82,25 +82,25 @@ export function LoginScreen() {
           </label>
         )}
 
-        <label>
+        <label className="ui-label">
           Email
           <input
+            className="ui-field"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             type="email"
             required
-            style={{ width: "100%" }}
             autoComplete="email"
           />
         </label>
 
-        <label>
+        <label className="ui-label">
           Senha
           <input
+            className="ui-field"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             type="password"
-            style={{ width: "100%" }}
             autoComplete={mode === "login" ? "current-password" : "new-password"}
             minLength={8}
             required
@@ -109,7 +109,7 @@ export function LoginScreen() {
 
         {err && <div style={{ color: "crimson" }}>{err}</div>}
 
-        <button disabled={busy} type="submit">
+        <button className="ui-btn" disabled={busy} type="submit">
           {busy ? "Processando…" : mode === "login" ? "Entrar" : "Criar conta"}
         </button>
 
@@ -126,4 +126,5 @@ export function LoginScreen() {
       </form>
     </Screen>
   );
+
 }

@@ -1,3 +1,7 @@
+@import "./styles/tokens.css";
+@import "./styles/layouts.css";
+@import "./styles/components.css";
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
