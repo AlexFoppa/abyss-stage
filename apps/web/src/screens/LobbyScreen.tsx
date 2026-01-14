@@ -5,12 +5,12 @@ import { useAuth } from "../auth/AuthProvider";
 import { joinRoom } from "../rtc/livekit";
 
 export function LobbyScreen({ onCreateCharacter }: { onCreateCharacter: () => void }) {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
 
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [err, setErr] = useState<string | null>(null);
 
-  const canCreate = user?.role === "PLAYER" && !user?.must_reset_password;
+  //const canCreate = user?.role === "PLAYER" && !user?.must_reset_password;
 
   async function connectAudio() {
     setErr(null);
