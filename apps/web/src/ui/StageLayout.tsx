@@ -1,4 +1,4 @@
-import "./StageLayout.css";
+import "../styles/stage.css";
 
 export function StageLayout({
   logged,

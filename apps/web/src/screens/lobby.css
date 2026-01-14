@@ -1,0 +1,107 @@
+/* Lobby cabinet (theater “armário”) */
+
+.lobby-cabinet{
+  position:absolute;
+  left:0;
+  bottom:0;
+  width:min(360px, 34vw);
+  height:auto;
+  top:140px;              /* teto do armário */
+  right:auto;
+  padding-bottom:56px;    /* reserva p/ erro fixo */
+  display:flex;
+  flex-direction:column;
+
+  padding:22px 18px 44px;
+  box-sizing:border-box;
+
+  background:
+    radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,.05), rgba(0,0,0,0) 55%),
+    radial-gradient(140% 120% at 0% 30%, rgba(0,0,0,.35), transparent 55%),
+    linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%),
+    linear-gradient(var(--bg-ink-2), var(--bg-ink));
+
+  /* “tampa” do vão à direita + sombra */
+  box-shadow:
+  24px 0 0 0 var(--bg-ink),      /* “tampa” do vão à direita */
+  0 28px 90px var(--shadow-strong);
+
+
+  font-family:var(--font-display);
+
+  opacity:0;
+  transform:translateY(160px);
+  animation:lobbyCabinetUp 1200ms ease-out 300ms both;
+}
+
+.lobby-cabinet .ui-btn{
+  height:56px;
+  border-radius:6px;
+  border:1px solid rgba(0,0,0,.75);
+  background:linear-gradient(#1b140d,#0f0b07);
+  box-shadow:0 18px 28px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.05);
+  letter-spacing:.22em;
+  position:relative;
+  overflow:hidden;
+}
+
+
+.lobby-cabinet .ui-btn::before{
+  content:"";
+  position:absolute;
+  left:12px; right:12px; top:10px;
+  height:1px;
+  background:rgba(0,0,0,.55);
+}
+
+.lobby-cabinet .ui-btn::after{
+  content:"";
+  position:absolute;
+  right:16px; top:50%;
+  width:34px; height:8px;
+  transform:translateY(-50%);
+  border-radius:999px;
+  background:rgba(0,0,0,.35);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10);
+}
+
+
+.lobby-cabinet .ui-btn + .ui-btn{ margin-top:12px; }
+
+.lobby-cabinet .ui-btn:active{
+  transform:translateY(2px);
+  filter:brightness(.97);
+}
+
+.lobby-cabinet .ui-btn.ui-btn--ghost::after{
+  background:linear-gradient(#7a6a4c,#3f3524);
+  opacity:.7;
+}
+
+@keyframes lobbyCabinetUp{
+  from{ opacity:0; transform:translateY(160px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+
+.lobby-actions{ margin-top:auto; padding-bottom:0; }
+
+.lobby-error{
+  position:absolute;
+  left:18px;
+  right:18px;
+  bottom:10px;
+  margin:0;
+  padding:0;
+  color:crimson;
+  font-size:12px;
+  line-height:1.2;
+}
+
+.lobby-cabinet .ui-btn{
+  white-space:normal;
+  line-height:1.15;
+  padding-right:64px;  /* reserva pro puxador */
+  text-align:center;
+}
+
+.lobby-cabinet .ui-btn::after{ right:16px; } /* mantém o puxador afastado */

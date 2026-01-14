@@ -1,23 +1,5 @@
-:root{
-  /* layout */
-  --curtain-overlap: 60px;
-
-  /* palette */
-  --bg-ink: #090705;
-  --bg-ink-2: #14110e;
-  --gold: #c9a24d;
-  --gold-soft: rgba(201,162,77,.45);
-  --gold-border: rgba(201,162,77,.55);
-  --gold-glow: rgba(201,162,77,.15);
-
-  --text-main: #c9c0a3;
-  --text-label: #a79f86;
-  --text-input: #d2c7aa;
-  --text-button: #f2e6c9;
-
-  --shadow-strong: rgba(0,0,0,.75);
-  --shadow-mid: rgba(0,0,0,.6);
-}
+.stage { --curtain-overlap: 60px; }
+.stage.logged { --curtain-overlap: 0px; }
 
 .stage{
   position:relative;
