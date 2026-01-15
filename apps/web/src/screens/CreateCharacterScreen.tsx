@@ -3,6 +3,7 @@ import { api } from "../api";
 import { Screen } from "../ui/Screen";
 import { CandelaObscuraForm, type Role, type Specialty } from "./system_forms/CandelaObscuraForm";
 import { EmptySystemForm } from "./system_forms/EmptySystemForm"
+import "./createCharacter.css";
 
 type Character = { id: number; name: string; concept: string; system: string; backstory: string; notes: string };
 type SystemOpt = { key: string; label: string };
@@ -19,7 +20,7 @@ export function CreateCharacterScreen({ onBack, onCreated }: { onBack: () => voi
   const [concept, setConcept] = useState("");
   const [backstory, setBackstory] = useState("");
   const [notes, setNotes] = useState("");
-
+  
   // Sistema (Candela)
   const [roles, setRoles] = useState<Role[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
@@ -144,95 +145,97 @@ useEffect(() => {
   }
 
   return (
-    <Screen title="Criar personagem">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <div style={{ opacity: 0.85 }}>Criação</div>
-        <button onClick={onBack}>Voltar</button>
-      </div>
+    <div className="create-scene">
+      <div className={`create-grid ${system ? "" : "create-grid--single"}`}>
+        {/* COL 1 */}
+        <section className="ui-card create-col create-col--base create-panel">
+          <h2 className="create-title">Criação de personagem</h2>
 
-      <div style={{
-            width: "100%",
-            maxWidth: 1200,
-            margin: "0 auto",
-            display: "grid",
-            gridTemplateColumns: "minmax(360px,1fr) minmax(360px,1fr) 280px",
-            gap: 12,
-        }}
-        >
+          <label className="ui-label">
+            <span>Nome</span>
+            <input className="ui-field" value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
 
-        {/* Simplificado */}
-        <div className="panel">
-          <div style={{ fontWeight: 700, marginBottom: 10, opacity: 0.9 }}>Simplificado</div>
-          <div style={{ display: "grid", gap: 8 }}>
-            <label>
-              Sistema
-              <select value={system} onChange={(e) => setSystem(e.target.value)} disabled={loadingSystems}>
-                <option value="">{loadingSystems ? "Carregando…" : "Selecione…"}</option>
-                {systems.map((s) => (
-                  <option key={s.key} value={s.key}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <label className="ui-label">
+            <span>Conceito</span>
+            <input className="ui-field" value={concept} onChange={(e) => setConcept(e.target.value)} />
+          </label>
 
-            <label>
-              Nome
-              <input value={name} onChange={(e) => setName(e.target.value)} />
-            </label>
+          <label className="ui-label">
+            <span>Sistema</span>
+            <select
+              className="ui-field"
+              value={system}
+              onChange={(e) => setSystem(e.target.value)}
+              disabled={loadingSystems}
+            >
+              <option value="">{loadingSystems ? "Carregando…" : "Selecione…"}</option>
+              {systems.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
 
-            <label>
-              Conceito
-              <input value={concept} onChange={(e) => setConcept(e.target.value)} />
-            </label>
+          <label className="ui-label">
+            <span>Backstory</span>
+            <textarea className="ui-field" value={backstory} onChange={(e) => setBackstory(e.target.value)} />
+          </label>
 
-            <label>
-              Backstory
-              <textarea value={backstory} onChange={(e) => setBackstory(e.target.value)} />
-            </label>
+          <label className="ui-label">
+            <span>Notes</span>
+            <textarea className="ui-field" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </label>
 
-            <label>
-              Notes
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </label>
-
-            <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-              <button onClick={createCharacter} disabled={loadingSystems || (isCandela && loadingSystemCatalog)}>
-                Criar
-              </button>
-              <button onClick={onBack}>Voltar</button>
-            </div>
+          <div className="ui-actions create-actions">
+            <button
+              className="ui-btn"
+              onClick={createCharacter}
+              disabled={loadingSystems || (isCandela && loadingSystemCatalog)}
+            >
+              Salvar
+            </button>
+            <button className="ui-btn ui-btn--ghost" onClick={onBack}>
+              Voltar
+            </button>
           </div>
-        </div>
 
-        {/* Ficha do Sistema (arquivo por sistema) */}
-        {isCandela ? (
-          <CandelaObscuraForm
-            loading={loadingSystemCatalog}
-            roles={roles}
-            specialties={specialties}
-            roleId={roleId}
-            setRoleId={setRoleId}
-            specialtyId={specialtyId}
-            setSpecialtyId={setSpecialtyId}
-          />
-        ) : (
-          <EmptySystemForm />
-        )}
+          {err && <div className="create-error">{err}</div>}
+        </section>
 
-        {/* Imagem */}
-        <div className="panel" style={{ display: "grid", placeItems: "center", minHeight: 240 }}>
-          {specialtyImgSrc ? (
-            <img src={specialtyImgSrc} alt="Especialidade" style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 8 }} />
-          ) : (
-            <div style={{ opacity: 0.7, textAlign: "center" }}>
-              {isCandela ? "Selecione uma especialidade para ver a imagem" : "Selecione um sistema"}
+        {/* COL 2 (só aparece após escolher sistema) */}
+        {system ? (
+          <section className="create-col create-col--system">
+            {isCandela ? (
+              <CandelaObscuraForm
+                loading={loadingSystemCatalog}
+                roles={roles}
+                specialties={specialties}
+                roleId={roleId}
+                setRoleId={setRoleId}
+                specialtyId={specialtyId}
+                setSpecialtyId={setSpecialtyId}
+              />
+            ) : (
+              <EmptySystemForm />
+            )}
+          </section>
+        ) : null}
+
+        {/* COL 3 (só aparece após escolher sistema) */}
+        {system ? (
+          <section className="create-col create-col--preview">
+            <div className="mirror">
+              {specialtyImgSrc ? (
+                <img className="portrait" src={specialtyImgSrc} alt="Especialidade" />
+              ) : (
+                <div className="mirror-empty" />
+              )}
             </div>
-          )}
-        </div>
+          </section>
+        ) : null}
       </div>
-
-      {err && <div style={{ color: "crimson", marginTop: 12 }}>{err}</div>}
-    </Screen>
+    </div>
   );
 }

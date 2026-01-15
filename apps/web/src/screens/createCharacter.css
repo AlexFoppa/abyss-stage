@@ -1,0 +1,119 @@
+.create-grid{
+  width:100%;
+  max-width: none;
+  margin: 0;
+  display:grid;
+  grid-template-columns: minmax(420px, 520px) minmax(360px,1fr) 280px;
+  gap: 24px;
+  align-items:start;
+  padding-top: 0;
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: auto;
+}
+
+.create-grid--single{
+  grid-template-columns: minmax(420px, 520px);
+}
+
+.create-col{ min-height: 0; }
+
+.create-col--base{
+  height: fit-content;
+  padding-bottom: 32px;
+}
+
+.create-title{
+  margin: 0 0 18px;
+  font-size: 22px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--text-main);
+}
+
+.create-actions{
+  margin-top: 14px;
+  display:flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.create-actions .ui-btn{
+  width:auto;
+}
+
+.create-error{
+  margin-top: 12px;
+  color: crimson;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.create-col--system{ min-height: 240px; }
+
+.create-col--preview{
+  display:grid;
+  align-content:start;
+}
+
+.mirror{
+  width: 100%;
+  min-height: 240px;
+  display:grid;
+  place-items:center;
+  background: transparent;
+}
+
+.portrait{
+  width: 70%;
+  height:auto;
+  background: transparent;
+}
+
+.mirror-empty{
+  height: 1px;
+  width: 1px;
+}
+
+@media (max-width: 980px){
+  .create-grid{ grid-template-columns: 1fr; }
+  .create-grid--single{ grid-template-columns: 1fr; }
+  .create-actions .ui-btn{ width:100%; }
+}
+
+.center--app{
+  padding-top: 0;
+}
+
+.stage--zoom-in .create-panel{
+  animation: formFloatUp 3s ease-out both;
+}
+
+@keyframes formFloatUp{
+  from{ transform: translateY(80px); opacity:0.9; }
+  to{ transform: translateY(0); opacity:1; }
+}
+
+.create-scene{
+  height:100%;
+  width:100%;
+  display:grid;
+  align-items:start;
+}
+
+.stage--zoom-in .center{
+  animation:none;
+}
+
+@keyframes createRiseFull{
+  from{ transform: translateY(80vh); opacity:0; }
+  to{ transform: translateY(0); opacity:1; }
+}
+
+.stage--zoom-in .create-scene{
+  animation: createRiseFull 3s cubic-bezier(.2,.9,.2,1) both;
+}
+
+.character-creation-panel{ position:absolute; top:16px; left:16px; }
