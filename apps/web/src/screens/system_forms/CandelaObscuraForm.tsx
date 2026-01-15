@@ -18,49 +18,26 @@ export function CandelaObscuraForm({
   specialtyId: number | "";
   setSpecialtyId: (v: number | "") => void;
 }) {
+  // CandelaObscuraForm.tsx (estrutura esperada p/ ficar com a mesma estética)
   return (
-    <div className="panel">
-      <div style={{ fontWeight: 700, marginBottom: 10, opacity: 0.9 }}>Ficha do Sistema — Candela Obscura</div>
+    <>
+      <h2 className="create-title">Ficha do Sistema — Candela Obscura</h2>
 
-      <div style={{ display: "grid", gap: 8 }}>
-        <label>
-          Papel
-          <select
-            value={roleId}
-            onChange={(e) => {
-              const v = e.target.value ? Number(e.target.value) : "";
-              setRoleId(v);
-              setSpecialtyId("");
-            }}
-            disabled={loading}
-          >
-            <option value="">{loading ? "Carregando…" : "Selecione…"}</option>
-            {Array.isArray(roles) ? roles.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            )) : null}
-          </select>
-        </label>
+      <label className="ui-label">
+        <span>Papel</span>
+        <select className="ui-field" value={roleId} onChange={(e) => setRoleId(Number(e.target.value) || "")} disabled={loading}>
+          <option value="">{loading ? "Carregando…" : "Selecione…"}</option>
+          {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+      </label>
 
-        <label>
-          Especialidade
-          <select
-            value={specialtyId}
-            onChange={(e) => setSpecialtyId(e.target.value ? Number(e.target.value) : "")}
-            disabled={loading || roleId === ""}
-          >
-            <option value="">
-              {roleId === "" ? "Escolha um papel primeiro…" : loading ? "Carregando…" : "Selecione…"}
-            </option>
-            {specialties.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-    </div>
+      <label className="ui-label">
+        <span>Especialidade</span>
+        <select className="ui-field" value={specialtyId} onChange={(e) => setSpecialtyId(Number(e.target.value) || "")} disabled={loading || roleId === ""}>
+          <option value="">{loading ? "Carregando…" : "Selecione…"}</option>
+          {specialties.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      </label>
+    </>
   );
 }

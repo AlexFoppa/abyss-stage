@@ -1,27 +1,35 @@
 .create-grid{
-  width:100%;
-  max-width: none;
+  position: fixed;
+  inset: 16px;                 /* top/right/bottom/left */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
   margin: 0;
-  display:grid;
-  grid-template-columns: minmax(420px, 520px) minmax(360px,1fr) 280px;
-  gap: 24px;
-  align-items:start;
-  padding-top: 0;
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  right: auto;
+  width: auto;
+  max-width: none;
+  box-sizing: border-box;
 }
+
 
 .create-grid--single{
   grid-template-columns: minmax(420px, 520px);
 }
 
-.create-col{ min-height: 0; }
+.create-col{
+  min-height: 0;
+  min-width: 0;
+  width: auto;
+  box-sizing: border-box;
+}
+
 
 .create-col--base{
   height: fit-content;
   padding-bottom: 32px;
+  justify-self: start;
+  width: 100%;
+  min-width: 0;
 }
 
 .create-title{
@@ -51,25 +59,43 @@
   line-height: 1.2;
 }
 
-.create-col--system{ min-height: 240px; }
+.create-col--system{ 
+  min-height: 240px;
+  justify-self: start;
+  width: 100%;
+  overflow: hidden;
+}
 
 .create-col--preview{
   display:grid;
   align-content:start;
+  width: 100%;
+  height: 520px; 
+  justify-self: stretch;
 }
 
 .mirror{
-  width: 100%;
-  min-height: 240px;
+  position: relative;
+  width: min(520px, 32vw);
+  height: min(520px, 32vw);
   display:grid;
   place-items:center;
   background: transparent;
 }
 
 .portrait{
-  width: 70%;
-  height:auto;
+  position: absolute;
+  left: 50%;
+  top: 85%;
+  transform: translate(-0%, -50%) scale(1.25);
+  transform-origin: center;
+  max-width: 95%;
+  max-height: 95%;
+  height: auto;
+  width: auto;
+  object-fit: contain;
   background: transparent;
+  filter: drop-shadow(0 12px 28px rgba(0,0,0,.55));
 }
 
 .mirror-empty{
@@ -117,3 +143,13 @@
 }
 
 .character-creation-panel{ position:absolute; top:16px; left:16px; }
+
+.create-col--base .ui-label,
+.create-col--base .ui-field{
+  width: 100%;
+  min-width: 0;
+}
+
+.create-col--base select.ui-field{
+  max-width: 100%;
+}

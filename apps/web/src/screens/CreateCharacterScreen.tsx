@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import { Screen } from "../ui/Screen";
 import { CandelaObscuraForm, type Role, type Specialty } from "./system_forms/CandelaObscuraForm";
 import { EmptySystemForm } from "./system_forms/EmptySystemForm"
 import "./createCharacter.css";
@@ -206,7 +205,7 @@ useEffect(() => {
 
         {/* COL 2 (só aparece após escolher sistema) */}
         {system ? (
-          <section className="create-col create-col--system">
+          <section className="ui-card create-col create-col--system">
             {isCandela ? (
               <CandelaObscuraForm
                 loading={loadingSystemCatalog}
