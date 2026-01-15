@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "./auth/AuthProvider";
 import { StageLayout } from "./ui/StageLayout";
 import { Screen } from "./ui/Screen";
@@ -16,7 +16,8 @@ export function Routes() {
   const showBackstage = !!user && user.role === "PLAYER" && !user.must_reset_password;
 
   const [subView, setSubView] = useState<"LOBBY" | "CREATE_CHARACTER">("LOBBY");
-
+  const [stageMode, setStageMode] = useState<"IDLE" | "ZOOM_IN">("IDLE");
+  
   const view: View = useMemo(() => {
     if (loading) return "LOGIN";
     if (!user) return "LOGIN";
@@ -24,8 +25,12 @@ export function Routes() {
     return subView;
   }, [user, loading, subView]);
 
+  useEffect(() => {
+    setStageMode(view === "CREATE_CHARACTER" ? "ZOOM_IN" : "IDLE");
+  }, [view]);
+
   return (
-    <StageLayout logged={logged} isGM={isGM} showBackstage={showBackstage}>
+    <StageLayout logged={logged} isGM={isGM} showBackstage={showBackstage} stageMode={stageMode}>
       {loading ? (
         <Screen title="Carregando…" />
       ) : view === "LOGIN" ? (
@@ -35,7 +40,12 @@ export function Routes() {
       ) : view === "CREATE_CHARACTER" ? (
         <CreateCharacterScreen onBack={() => setSubView("LOBBY")} />
       ) : (
-        <LobbyScreen onCreateCharacter={() => setSubView("CREATE_CHARACTER")} />
+        <LobbyScreen
+          onCreateCharacter={() => {
+            setStageMode("ZOOM_IN");
+            setSubView("CREATE_CHARACTER");
+          }}
+        />
       )}
     </StageLayout>
   );

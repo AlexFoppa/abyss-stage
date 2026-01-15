@@ -75,5 +75,36 @@
   box-sizing:border-box;
 }
 
+.stage--zoom-in .backstage{
+  animation: none;
+  transform-origin: 72% 70%;
+  transform: translate(200px, 600px) scale(2.5);
+  filter: contrast(1.06) brightness(1.04);
+}
 
+.backstage{
+  transition: transform 1400ms cubic-bezier(.2,.9,.2,1), filter 1400ms cubic-bezier(.2,.9,.2,1);
+}
 
+@keyframes seatAtTable {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(100px, 100px) scale(1.5); }
+  66%  { transform: translate(200px, 300px) scale(2); }
+  100% { transform: translate(300px, 600px) scale(2.5); }
+}
+
+@keyframes valanceOut {
+  0%   { opacity: 1; }
+  66%  { opacity: 1; } /* até ~2s (66% de 3s) */
+  100% { opacity: 0; }
+}
+
+.stage--zoom-in .backstage{
+  animation: seatAtTable 3s cubic-bezier(.2,.9,.2,1) forwards;
+  transform-origin: 72% 70%;
+}
+
+/* stage.css — APLICAR quando o zoom estiver ativo */
+.stage--zoom-in .valance{
+  animation: valanceOut 1s ease forwards;
+}
