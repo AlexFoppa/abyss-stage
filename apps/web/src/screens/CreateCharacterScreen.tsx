@@ -120,15 +120,23 @@ useEffect(() => {
 
   async function createCharacter() {
     setErr(null);
-    if (!system) return setErr("Selecione um sistema");
     if (!name.trim()) return setErr("Nome é obrigatório");
     if (isCandela && (roleId === "" || specialtyId === "")) return setErr("Selecione papel e especialidade");
 
     try {
-      const payload: any = { name, concept, system, backstory, notes };
+      const payload = {
+        name: name || "",
+        concept: concept || "",
+        system: system || null,
+        backstory: backstory || "",
+        notes: notes || "",
+        role_id: isCandela && roleId !== "" ? roleId : null,
+        specialty_id: isCandela && specialtyId !== "" ? specialtyId : null,
+};
+
       if (isCandela) {
-        payload.role_id = roleId;
-        payload.specialty_id = specialtyId;
+        payload.role_id = roleId === "" ? null : roleId;
+        payload.specialty_id = specialtyId === "" ? null : specialtyId;
       }
 
       const res = await api<{ character: Character }>("/api/me/characters", {
@@ -139,7 +147,17 @@ useEffect(() => {
       onCreated?.(res.character);
       onBack();
     } catch (e: any) {
-      setErr(e?.message || "Falha ao criar personagem");
+      const msg =
+        typeof e?.message === "string"
+          ? e.message
+          : typeof e === "string"
+            ? e
+            : typeof e?.body?.detail === "string"
+              ? e.body.detail
+              : Array.isArray(e?.body?.detail)
+                ? e.body.detail.map((d: any) => d?.msg).filter(Boolean).join(" | ")
+                : "Falha ao criar personagem";
+      setErr(msg);
     }
   }
 
