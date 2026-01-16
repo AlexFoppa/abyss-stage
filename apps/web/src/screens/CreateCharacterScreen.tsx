@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { CandelaObscuraForm, type Role, type Specialty } from "./system_forms/CandelaObscuraForm";
 import { EmptySystemForm } from "./system_forms/EmptySystemForm"
+import { ConfirmDialog } from "../ui/ConfirmDialog";
+
 
 type Character = { id: number; name: string; concept: string; system: string; backstory: string; notes: string };
 type SystemOpt = { key: string; label: string };
@@ -25,6 +27,40 @@ export function CreateCharacterScreen({ onBack, onCreated }: { onBack: () => voi
   const [loadingSystemCatalog, setLoadingSystemCatalog] = useState(false);
   const [roleId, setRoleId] = useState<number | "">("");
   const [specialtyId, setSpecialtyId] = useState<number | "">("");
+
+    const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const snapshot = useMemo(
+    () =>
+      JSON.stringify({
+        system: system || "",
+        name: name || "",
+        concept: concept || "",
+        backstory: backstory || "",
+        notes: notes || "",
+        roleId: roleId === "" ? null : roleId,
+        specialtyId: specialtyId === "" ? null : specialtyId,
+      }),
+    [system, name, concept, backstory, notes, roleId, specialtyId]
+  );
+
+  const [savedSnapshot, setSavedSnapshot] = useState(snapshot);
+  const isDirty = snapshot !== savedSnapshot;
+
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (!isDirty) return;
+      e.preventDefault();
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isDirty]);
+
+
+  function requestBack() {
+    if (!isDirty) return onBack();
+    setConfirmOpen(true);
+  }
 
   const isCandela = system === "candela_obscura";
 
@@ -143,6 +179,7 @@ useEffect(() => {
         body: JSON.stringify(payload),
       });
 
+      setSavedSnapshot(snapshot);
       onCreated?.(res.character);
       onBack();
     } catch (e: any) {
@@ -212,7 +249,7 @@ useEffect(() => {
             >
               Salvar
             </button>
-            <button className="ui-btn ui-btn--ghost" onClick={onBack}>
+            <button className="ui-btn ui-btn--ghost" onClick={requestBack}>
               Voltar
             </button>
           </div>
@@ -252,6 +289,18 @@ useEffect(() => {
           </section>
         ) : null}
       </div>
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Sair sem salvar?"
+        message="Há alterações não salvas. Se sair agora, elas serão perdidas."
+        confirmText="Sair"
+        cancelText="Continuar editando"
+        onConfirm={() => {
+          setConfirmOpen(false);
+          onBack();
+        }}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
 }
