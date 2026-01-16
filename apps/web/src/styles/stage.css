@@ -76,6 +76,8 @@
   box-sizing:border-box;
 }
 
+.stage--zoom-in .center--app{ padding-top:0; }
+
 .stage--zoom-in .backstage{
   animation: none;
   transform-origin: 72% 70%;

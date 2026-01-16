@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { CandelaObscuraForm, type Role, type Specialty } from "./system_forms/CandelaObscuraForm";
 import { EmptySystemForm } from "./system_forms/EmptySystemForm"
-import "./createCharacter.css";
 
 type Character = { id: number; name: string; concept: string; system: string; backstory: string; notes: string };
 type SystemOpt = { key: string; label: string };
@@ -125,13 +124,13 @@ useEffect(() => {
 
     try {
       const payload = {
-        name: name || "",
-        concept: concept || "",
-        system: system || null,
-        backstory: backstory || "",
-        notes: notes || "",
-        role_id: isCandela && roleId !== "" ? roleId : null,
-        specialty_id: isCandela && specialtyId !== "" ? specialtyId : null,
+      name: name || "",
+      concept: concept || "",
+      system: system || null,
+      backstory: backstory || "",
+      notes: notes || "",
+      role_id: isCandela && roleId !== "" ? roleId : null,
+      specialty_id: isCandela && specialtyId !== "" ? specialtyId : null,
 };
 
       if (isCandela) {

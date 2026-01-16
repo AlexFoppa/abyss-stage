@@ -1,5 +1,5 @@
 .create-grid{
-  position: fixed;
+  position: absolute;
   inset: 16px;                 /* top/right/bottom/left */
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
