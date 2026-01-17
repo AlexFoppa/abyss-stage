@@ -109,10 +109,6 @@
   .create-actions .ui-btn{ width:100%; }
 }
 
-.center--app{
-  padding-top: 0;
-}
-
 .stage--zoom-in .create-panel{
   animation: formFloatUp 3s ease-out both;
 }
@@ -127,10 +123,6 @@
   width:100%;
   display:grid;
   align-items:start;
-}
-
-.stage--zoom-in .center{
-  animation:none;
 }
 
 @keyframes createRiseFull{

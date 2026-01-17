@@ -4,6 +4,7 @@
 @import "./styles/stage.css";
 @import "./styles/screens/lobby.css";
 @import "./styles/screens/createCharacter.css";
+@import "./styles/screens/selectCharacter.css";
 
 
 html, body, #root {

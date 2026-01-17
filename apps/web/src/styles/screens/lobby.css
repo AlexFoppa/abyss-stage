@@ -1,19 +1,26 @@
 /* Lobby cabinet (theater “armário”) */
 
-.lobby-cabinet{
+.lobby-wrap{
   position:absolute;
+  left:0;
   bottom:0;
   width: min(500px, 42vw);
+  pointer-events:none;
+  z-index: 10;
+}
+.lobby-wrap > *{ pointer-events:auto; }
+
+
+.lobby-cabinet{
+  position:relative;
+  width:100%;
   height:fit-content;
-  top:auto;
   padding-bottom:56px;
   display:flex;
   flex-direction:column;
   margin-right:0;
   padding:22px 18px 44px;
   box-sizing:border-box;
-  right: initial;
-  left:0;
   background:
     radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,.05), rgba(0,0,0,0) 55%),
     radial-gradient(140% 120% at 0% 30%, rgba(0,0,0,.35), transparent 55%),
@@ -24,8 +31,7 @@
   box-shadow:
     0 28px 90px var(--shadow-strong);
   font-family:var(--font-display);
-  position:absolute;
-  inset: auto auto 0 0; 
+  
   opacity:0;
   transform:translateY(160px);
   animation:lobbyCabinetUp 1200ms ease-out 300ms both;
@@ -103,3 +109,84 @@
 }
 
 .lobby-cabinet .ui-btn::after{ right:16px; } /* mantém o puxador afastado */
+
+.lobby-character{
+  position:absolute;
+  right:12%;
+  bottom:-6%;
+  height:33vh;
+  max-height:33vh;
+  object-fit:contain;
+  z-index:2;
+  pointer-events:none;
+}
+
+/* Ator (personagem selecionado) — fora do armário */
+.lobby-actor{
+  position:absolute;
+  right: 6vw;
+  bottom: -10vh;            /* “corta” pra ficar só acima das canelas */
+  height: 60vh;             /* 1/3 da tela */
+  width: auto;
+  z-index: 2;               /* abaixo da valance (z=3), acima do fundo */
+  pointer-events:none;
+  object-fit: contain;
+  filter: drop-shadow(0 22px 40px rgba(0,0,0,.60));
+}
+
+/* Poster na parede (levitando) — relativo ao .lobby-wrap */
+.lobby-wall-poster{
+  position:absolute;
+  left: 50%;
+  bottom: calc(100% + 22px);     /* acima do topo do armário */
+  width: 50%;
+  max-width: none;
+
+  padding: 14px 16px;
+  box-sizing: border-box;
+
+  border-radius: 12px;
+  border: 2px solid rgba(215,178,92,.95);
+  background:
+    radial-gradient(120% 140% at 12% 18%, rgba(255,255,255,.08), rgba(0,0,0,0) 55%),
+    linear-gradient(180deg, rgba(16,72,52,.96), rgba(8,34,25,.96));
+
+  box-shadow:
+    0 26px 60px rgba(0,0,0,.65),
+    inset 0 1px 0 rgba(255,255,255,.08);
+
+  transform: translateX(-50%);
+}
+
+/* brilho/sombra para “levitar” */
+.lobby-wall-poster::after{
+  content:"";
+  position:absolute;
+  left: 14px;
+  right: 14px;
+  bottom: -14px;
+  height: 18px;
+  background: radial-gradient(60% 100% at 50% 50%, rgba(0,0,0,.55), rgba(0,0,0,0) 70%);
+  filter: blur(1px);
+  pointer-events:none;
+}
+
+.lobby-wall-poster__kicker{
+  font-family: var(--font-display);
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  font-size:11px;
+  color: rgba(215,178,92,.92);
+  margin-bottom: 6px;
+}
+
+.lobby-wall-poster__name{
+  font-family: var(--font-display);
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  font-size: 16px;
+  line-height: 1.15;
+  color: var(--gold);
+  text-shadow: 0 2px 14px rgba(0,0,0,.65);
+}
+

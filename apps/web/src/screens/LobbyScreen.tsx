@@ -4,9 +4,17 @@ import { api } from "../api";
 import { useAuth } from "../auth/AuthProvider";
 import { joinRoom } from "../rtc/livekit";
 
-export function LobbyScreen({ onCreateCharacter }: { onCreateCharacter: () => void }) {
-  const { logout } = useAuth();
+export function LobbyScreen({
+    onCreateCharacter,
+    onSelectCharacter,
+    selectedCharacter,
+  }: {
+    onCreateCharacter: () => void;
+    onSelectCharacter: () => void;
+    selectedCharacter: null | { id: number; name: string; system: string };
+  }) {
 
+  const { logout } = useAuth();
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [err, setErr] = useState<string | null>(null);
 
@@ -26,32 +34,43 @@ export function LobbyScreen({ onCreateCharacter }: { onCreateCharacter: () => vo
   }
 
   return (
-    <div className="lobby-cabinet">
-      <div className="lobby-actions ui-stack" style={{ gap: 10 }}>
-        <button className="ui-btn" disabled /* sem personagem ainda */>
-          Selecionar<br />personagem
-        </button>
+    <div className="lobby-wrap">
+      {selectedCharacter ? (
+        <div className="lobby-wall-poster" aria-label="Poster do personagem selecionado">
+          <div className="lobby-wall-poster__kicker">Estrelando:</div>
+          <div className="lobby-wall-poster__name">{selectedCharacter.name}</div>
+        </div>
+      ) : null}
 
-        <button className="ui-btn" onClick={onCreateCharacter}>
-          Criar personagem
-        </button>
+      <div className="lobby-cabinet">
+        <div className="lobby-actions ui-stack" style={{ gap: 10 }}>
+          <button className="ui-btn" onClick={onSelectCharacter}>
+            Selecionar<br />personagem
+          </button>
 
-        <button className="ui-btn" disabled={status === "connecting" || status === "connected"} onClick={connectAudio}>
-          Compartilhar<br />áudio
-        </button>
+          <button className="ui-btn" onClick={onCreateCharacter}>
+            Criar personagem
+          </button>
 
-        <button className="ui-btn" disabled>
-          Informações do<br />jogador
-        </button>
+          <button
+            className="ui-btn"
+            disabled={status === "connecting" || status === "connected"}
+            onClick={connectAudio}
+          >
+            Compartilhar<br />áudio
+          </button>
 
-        <button className="ui-btn ui-btn--ghost" onClick={logout}>
-          Se retirar
-        </button>
+          <button className="ui-btn" disabled>
+            Informações do<br />jogador
+          </button>
+
+          <button className="ui-btn ui-btn--ghost" onClick={logout}>
+            Se retirar
+          </button>
+        </div>
+
+        {err && <div className="lobby-error">{err}</div>}
       </div>
-
-      {err && <div className="lobby-error">{err}</div>}
     </div>
-);
-
-
+  );
 }
