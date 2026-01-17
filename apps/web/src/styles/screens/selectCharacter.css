@@ -8,6 +8,14 @@
 .select-grid{
   width:100%;
   height:100%;
+  display:grid;
+  grid-template-columns: 1fr 2fr;
+  gap: var(--gap);
+  align-items: start;
+}
+
+@media (max-width: 980px){
+  .select-grid{ grid-template-columns: 1fr; }
 }
 
 .select-col{
@@ -56,6 +64,8 @@
   border:1px solid rgba(255,255,255,.10);
   background:rgba(0,0,0,.20);
   cursor:pointer;
+  color: var(--text-main);
+  font-family: var(--font-display);
 }
 
 .select-item.is-active{
@@ -67,12 +77,14 @@
   font-weight:600;
   text-transform:none;
   letter-spacing:.02em;
+  color: var(--text-main);
 }
 
 .select-item-sub{
   margin-top:4px;
   opacity:.75;
   font-size:12px;
+  color: var(--text-main);
 }
 
 .book{
@@ -112,4 +124,53 @@
 
 .select-actions{
   margin-top:14px;
+  display:flex;
+  gap:10px;
+}
+
+.select-actions .ui-btn{
+  width:auto;
+  flex:1;
+}
+
+
+.select-footer{
+  margin-top: 14px;
+}
+
+.book-page{
+  position: relative; /* necessário pro retrato absoluto */
+  padding:14px;
+  border-radius:14px;
+  background: rgba(0,0,0,.18);
+  border: 1px solid rgba(255,255,255,.10);
+}
+
+.book-portrait{
+  position:absolute;
+  top: 14px;
+  right: 14px;
+  width: 180px;
+  height: 220px;
+  border-radius: 12px;
+  border: 1px solid rgba(215,178,92,.35);
+  object-fit: cover;
+  object-position: 50% 0%; /* “da metade do corpo pra cima” */
+  filter: grayscale(1) contrast(1.15) brightness(.95);
+  opacity: .92;
+  pointer-events:none;
+}
+
+.book-row{
+  padding-right: 220px; /* reserva espaço pro retrato */
+}
+@media (max-width: 980px){
+  .book-row{ padding-right: 0; }
+  .book-portrait{
+    position: static;
+    width: 100%;
+    height: 220px;
+    margin-bottom: 12px;
+    display:block;
+  }
 }

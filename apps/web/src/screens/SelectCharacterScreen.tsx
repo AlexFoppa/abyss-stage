@@ -68,14 +68,11 @@ export function SelectCharacterScreen({
 
   return (
     <div className="select-scene">
-      <div className="select-grid ui-grid-3">
+      <div className="select-grid">
         {/* ESQUERDA: lista */}
         <section className="ui-card select-col select-col--list">
           <div className="select-head">
             <h2 className="select-title">Personagens</h2>
-            <button className="ui-btn ui-btn--ghost" onClick={onBack}>
-              Voltar
-            </button>
           </div>
 
           {loading ? (
@@ -100,7 +97,11 @@ export function SelectCharacterScreen({
               })}
             </div>
           )}
-
+          <div className="select-footer">
+            <button className="ui-btn ui-btn--ghost" onClick={onBack} type="button">
+              Voltar
+            </button>
+          </div>
           {err && <div className="select-error">{err}</div>}
         </section>
 
@@ -113,14 +114,14 @@ export function SelectCharacterScreen({
           ) : (
             <div className="book">
               <div className="book-page">
+                <img
+                  className="book-portrait"
+                  src="/assets/jogador_default.png"
+                  alt=""
+                />
                 <div className="book-row">
                   <div className="book-label">Nome</div>
                   <div className="book-value">{active.name || "—"}</div>
-                </div>
-
-                <div className="book-row">
-                  <div className="book-label">Sistema</div>
-                  <div className="book-value">{systemLabel(active.system)}</div>
                 </div>
 
                 <div className="book-row">
@@ -138,7 +139,7 @@ export function SelectCharacterScreen({
                   <div className="book-value book-multiline">{active.notes || "—"}</div>
                 </div>
 
-                <div className="ui-actions select-actions">
+                <div className="select-actions">
                   <button
                     className="ui-btn"
                     onClick={() => {
@@ -165,7 +166,6 @@ export function SelectCharacterScreen({
         </section>
 
         {/* TERCEIRA COLUNA: reservado (futuro: imagem/preview/etc) */}
-        <section className="select-col select-col--spacer" />
       </div>
     </div>
   );

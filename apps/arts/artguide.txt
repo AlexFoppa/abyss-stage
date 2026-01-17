@@ -1,3 +1,5 @@
+VERSÃO DE DESIGN (para etapa 1: gerar variações)
+
 Estou criando um personagem com o seguinte conceito e detalhes:
 [conceito narrativo, personalidade, arquétipo, papel no jogo]
 
@@ -8,29 +10,22 @@ Formato obrigatório:
 – Gere 4 variações lado a lado ou em sequência.
 
 Estrutura obrigatória das variações:
-– 1 ilustração deve ser a VERSÃO PADRÃO: pose base neutra, leitura clara, vestuário mais convencional.
-– 3 ilustrações devem ser VARIAÇÕES EXPLORATÓRIAS: maior liberdade controlada em postura, gesto, silhueta, acessórios e leitura psicológica.
-– As 3 variações devem ser claramente distintas entre si.
+– 1 ilustração deve ser a VERSÃO PADRÃO: pose base neutra, leitura clara, vestuário mais convencional para o arquétipo.
+– 3 ilustrações devem ser VARIAÇÕES EXPLORATÓRIAS: maior liberdade controlada em postura, gesto corporal, silhueta, desgaste do vestuário, acessórios e leitura psicológica.
+– As 3 variações devem ser visualmente distintas entre si, não apenas ajustes sutis da versão padrão.
 – Estilo, técnica, época e linguagem gráfica devem permanecer idênticos em todas.
 
 Regras de estilo (fixas):
-Personagem isolado, corpo inteiro, sem fundo (branco puro ou transparente). Ilustração colorida em estilo quadrinhos/mangá adulto de horror vitoriano. Lineart preto expressivo e orgânico, com imperfeições visíveis e linhas levemente quebradas. Uso de grandes massas de preto como elemento gráfico. Sombreamento por áreas chapadas e hachuras sutis.
+Personagem isolado, corpo inteiro, sem fundo (branco/off-white ou transparente). Ilustração colorida em estilo quadrinhos/mangá adulto de horror vitoriano. Lineart preto expressivo e orgânico, com imperfeições visíveis e linhas levemente quebradas. Uso de grandes massas de preto como elemento gráfico. Sombreamento por áreas chapadas e hachuras sutis.
 
-Anatomia realista estilizada, silhueta levemente exagerada. Rostos graficamente simplificados, não fotorrealistas.
+Anatomia realista estilizada, com silhueta levemente exagerada para efeito dramático, sem fotorrealismo. Rostos graficamente simplificados e estilizados.
 
-Iluminação suave e quente, contraste moderado. Paleta predominantemente neutra (preto, cinza, marrom/couro), com pequenos detalhes em uma única cor escura vitoriana.
+Iluminação suave e quente, contraste moderado. Paleta predominantemente neutra (preto, cinza, marrom/couro), com apenas pequenos detalhes em uma única cor escura da paleta vitoriana (verde profundo, dourado envelhecido, vinho escuro ou cinza carvão).
 
-Tons de pele realistas e variados, levemente dessaturados pela iluminação. Vestuário estritamente vitoriano (1830–1900), tecidos pesados e elegantes.
-
-Regras de recorte e legibilidade (CRÍTICAS):
-– Bordas externas do personagem devem ser limpas e bem definidas.
-– Evitar névoa, fumaça, véus, halos, brilhos difusos ou efeitos atmosféricos que se misturem ao fundo.
-– Elementos extras (aves, fumaça, objetos soltos) só podem existir se forem totalmente separados do corpo e com contorno claro.
-– Nenhuma área do personagem deve se confundir com o fundo branco.
-– Priorizar leitura clara de silhueta para recorte fácil.
+Tons de pele realistas e variados, levemente dessaturados pela iluminação. Vestuário estritamente vitoriano (1830–1900), tecidos pesados e elegantes, sem elementos modernos.
 
 Regra de detalhe:
 Detalhamento seletivo — em cada ilustração, priorize visualmente o rosto OU o vestuário, nunca ambos com o mesmo peso.
 
 Regra de diversidade humana (obrigatória):
-Varie gênero, idade aparente e traços fenotípicos entre as versões quando o conceito permitir, mantendo coerência histórica vitoriana.
+Ao gerar as quatro ilustrações, varie intencionalmente gênero, idade aparente e traços fenotípicos entre as versões quando o conceito permitir. Evite repetir o mesmo perfil humano. A diversidade deve ser coerente com o contexto histórico e social vitoriano, mantendo o conceito narrativo.
