@@ -7,9 +7,15 @@ import { ForceResetScreen } from "./screens/ForceResetScreen";
 import { LobbyScreen } from "./screens/LobbyScreen";
 import { CreateCharacterScreen } from "./screens/CreateCharacterScreen";
 import { SelectCharacterScreen } from "./screens/SelectCharacterScreen";
+import { EditCharacterScreen } from "./screens/EditCharacterScreen";
 
-
-type View = "LOGIN" | "RESET" | "LOBBY" | "CREATE_CHARACTER" | "SELECT_CHARACTER";
+type View =
+  | "LOGIN"
+  | "RESET"
+  | "LOBBY"
+  | "CREATE_CHARACTER"
+  | "SELECT_CHARACTER"
+  | "EDIT_CHARACTER";
 
 export function Routes() {
   const { user, loading } = useAuth();
@@ -17,13 +23,26 @@ export function Routes() {
   const isGM = user?.role === "GM";
   const showBackstage = !!user && user.role === "PLAYER" && !user.must_reset_password;
 
-  const [subView, setSubView] = useState<"LOBBY" | "CREATE_CHARACTER" | "SELECT_CHARACTER">("LOBBY");
+  const [subView, setSubView] = useState<
+    "LOBBY" | "CREATE_CHARACTER" | "SELECT_CHARACTER" | "EDIT_CHARACTER"
+  >("LOBBY");
+
   const [stageMode, setStageMode] = useState<"IDLE" | "ZOOM_IN">("IDLE");
   
   const [selectedCharacter, setSelectedCharacter] = useState<null | {
     id: number;
     name: string;
     system: string;
+  }>(null);
+  
+  const [editingCharacter, setEditingCharacter] = useState<null | {
+    id: number;
+    name: string;
+    concept: string;
+    system: string;
+    backstory: string;
+    notes: string;
+    systems?: string[];
   }>(null);
 
   const view: View = useMemo(() => {
@@ -34,29 +53,53 @@ export function Routes() {
   }, [user, loading, subView]);
 
   useEffect(() => {
-    setStageMode(view === "CREATE_CHARACTER" ? "ZOOM_IN" : "IDLE");
+    setStageMode(view === "CREATE_CHARACTER" || view === "EDIT_CHARACTER" ? "ZOOM_IN" : "IDLE");
   }, [view]);
 
   return (
-    <StageLayout logged={logged} isGM={isGM} showBackstage={showBackstage} stageMode={stageMode}>
-      {loading ? (
-        <Screen title="Carregando…" />
-      ) : view === "LOGIN" ? (
-        <LoginScreen />
-      ) : view === "RESET" ? (
-        <ForceResetScreen />
-      ) : view === "CREATE_CHARACTER" ? (
-  <CreateCharacterScreen onBack={() => setSubView("LOBBY")} />
+  <StageLayout
+    logged={logged}
+    isGM={isGM}
+    showBackstage={showBackstage}
+    stageMode={stageMode}
+  >
+    {loading ? (
+      <Screen title="Carregando…" />
+    ) : view === "LOGIN" ? (
+      <LoginScreen />
+    ) : view === "RESET" ? (
+      <ForceResetScreen />
+    ) : view === "CREATE_CHARACTER" ? (
+      <CreateCharacterScreen
+        onBack={() => setSubView("LOBBY")}
+      />
     ) : view === "SELECT_CHARACTER" ? (
       <SelectCharacterScreen
         onBack={() => setSubView("LOBBY")}
-        onSelect={(c) =>
-          setSelectedCharacter({ id: c.id, name: c.name, system: c.system })
-        }
+        onSelect={(c) => {
+          setSelectedCharacter({
+            id: c.id,
+            name: c.name,
+            system: c.system,
+          });
+          setSubView("LOBBY");
+        }}
+        onEdit={(c) => {
+          setEditingCharacter(c);
+          setSubView("EDIT_CHARACTER");
+        }}
+      />
+    ) : view === "EDIT_CHARACTER" ? (
+      <EditCharacterScreen
+        character={editingCharacter}
+        onBack={() => {
+          setEditingCharacter(null);
+          setSubView("SELECT_CHARACTER");
+        }}
       />
     ) : (
       <>
-        {selectedCharacter ? (
+        {selectedCharacter && (
           <>
             <img
               className="lobby-actor"
@@ -65,10 +108,12 @@ export function Routes() {
             />
             <div className="lobby-poster">
               <div className="lobby-poster-title">Estrelando:</div>
-              <div className="lobby-poster-name">{selectedCharacter.name}</div>
+              <div className="lobby-poster-name">
+                {selectedCharacter.name}
+              </div>
             </div>
           </>
-        ) : null}
+        )}
 
         <LobbyScreen
           selectedCharacter={selectedCharacter}
@@ -80,7 +125,7 @@ export function Routes() {
         />
       </>
     )}
+  </StageLayout>
+);
 
-    </StageLayout>
-  );
 }

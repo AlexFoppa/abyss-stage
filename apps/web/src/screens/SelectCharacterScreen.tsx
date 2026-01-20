@@ -8,6 +8,7 @@ type Character = {
   system: string;
   backstory: string;
   notes: string;
+  systems?: string[];
 };
 
 export function SelectCharacterScreen({
@@ -66,10 +67,15 @@ export function SelectCharacterScreen({
     return sys || "—";
   }
 
+  function systemsLabel(systems?: string[]) {
+    const list = (systems || []).filter(Boolean);
+    if (!list.length) return "—";
+    return list.map(systemLabel).join(", ");
+  }
+
   return (
     <div className="select-scene">
       <div className="select-grid">
-        {/* ESQUERDA: lista */}
         <section className="ui-card select-col select-col--list">
           <div className="select-head">
             <h2 className="select-title">Personagens</h2>
@@ -91,21 +97,22 @@ export function SelectCharacterScreen({
                     type="button"
                   >
                     <div className="select-item-name">{c.name}</div>
-                    <div className="select-item-sub">{systemLabel(c.system)}</div>
+                    <div className="select-item-sub">{systemsLabel(c.systems || [c.system])}</div>
                   </button>
                 );
               })}
             </div>
           )}
+
           <div className="select-footer">
             <button className="ui-btn ui-btn--ghost" onClick={onBack} type="button">
               Voltar
             </button>
           </div>
+
           {err && <div className="select-error">{err}</div>}
         </section>
 
-        {/* MEIO/DIREITA: “livro” */}
         <section className="ui-card select-col select-col--book">
           <h2 className="select-title">Ficha</h2>
 
@@ -114,11 +121,8 @@ export function SelectCharacterScreen({
           ) : (
             <div className="book">
               <div className="book-page">
-                <img
-                  className="book-portrait"
-                  src="/assets/jogador_default.png"
-                  alt=""
-                />
+                <img className="book-portrait" src="/assets/jogador_default.png" alt="" />
+
                 <div className="book-row">
                   <div className="book-label">Nome</div>
                   <div className="book-value">{active.name || "—"}</div>
@@ -139,6 +143,11 @@ export function SelectCharacterScreen({
                   <div className="book-value book-multiline">{active.notes || "—"}</div>
                 </div>
 
+                <div className="book-row">
+                  <div className="book-label">Sistemas</div>
+                  <div className="book-value">{systemsLabel(active.systems || [active.system])}</div>
+                </div>
+
                 <div className="select-actions">
                   <button
                     className="ui-btn"
@@ -154,8 +163,8 @@ export function SelectCharacterScreen({
                   <button
                     className="ui-btn ui-btn--ghost"
                     onClick={() => active && onEdit?.(active)}
-                    disabled
-                    title="Ainda não implementado"
+                    disabled={!active || !onEdit}
+                    title={!onEdit ? "Edição não disponível" : ""}
                   >
                     Editar
                   </button>
@@ -164,8 +173,6 @@ export function SelectCharacterScreen({
             </div>
           )}
         </section>
-
-        {/* TERCEIRA COLUNA: reservado (futuro: imagem/preview/etc) */}
       </div>
     </div>
   );
