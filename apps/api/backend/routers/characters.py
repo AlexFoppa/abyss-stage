@@ -32,17 +32,65 @@ class CharacterOut(BaseModel):
     systems: list[str] = Field(default_factory=list)     # sistemas ativos (ex: ["simplificado","candela_obscura"])
 
 
-class CandelaCreateIn(BaseModel):
+class CandelaActionIn(BaseModel):
+    action_key: str
+    rating: int
+    gilded: bool = False
+
+class CandelaGroupStateIn(BaseModel):
+    group_key: str
+    drive_current: int
+    drive_max: int
+    resist_current: int
+    resist_max: int
+
+class CandelaMarkIn(BaseModel):
+    mark_key: str
+    current: int
+    max: int
+
+class CandelaScarIn(BaseModel):
+    id: Optional[int] = None
+    mark_key: str
+    description: str
+
+class CandelaListItemIn(BaseModel):
+    id: Optional[int] = None
+    text: str
+
+class CandelaUpsertIn(BaseModel):
+    # obrigatório p/ identificar “build”
     role_id: int
     specialty_id: int
 
-class CandelaOut(BaseModel):
-    role_id: int
-    specialty_id: int
+    # candela_character_sheet (sem backstory/notes aqui)
+    pronouns: str = ""
+    circle: str = ""
+    style: str = ""
+    catalyst: str = ""
+    question: str = ""
 
-class CandelaUpdateIn(BaseModel):
-    role_id: int
-    specialty_id: int
+    # blocos numéricos
+    actions: list[CandelaActionIn] = Field(default_factory=list)
+    group_state: list[CandelaGroupStateIn] = Field(default_factory=list)
+    marks: list[CandelaMarkIn] = Field(default_factory=list)
+    scars: list[CandelaScarIn] = Field(default_factory=list)
+
+    relations: list[CandelaListItemIn] = Field(default_factory=list)
+    equipment: list[CandelaListItemIn] = Field(default_factory=list)
+    illumination_keys: list[CandelaListItemIn] = Field(default_factory=list)
+
+    # obrigatório
+    role_power_ids: list[int] = Field(default_factory=list)          # N
+    specialty_power_id: Optional[int] = None                         # 1
+
+    # obrigatório (1 do role + 1 da specialty), mas permite extras
+    ability_ids: list[int] = Field(default_factory=list)
+
+
+class CandelaOut(CandelaUpsertIn):
+    pass
+
 
 class CharacterUpdateIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
@@ -352,6 +400,10 @@ def create_character_system(
     if not row:
         raise HTTPException(status_code=404, detail="Character not found")
 
+# apps/api/backend/routers/characters.py
+# PASSO 4.2 (POST /{character_id}/systems/{system_key})
+# Substitua do `if system_key == "simplificado":` ate o `return {"ok": True}` por:
+
     if system_key == "simplificado":
         raise HTTPException(status_code=400, detail="Base system already exists")
 
@@ -383,7 +435,173 @@ def create_character_system(
             params={"cid": character_id, "sk": system_key},
         )
 
+        # cria base + defaults
         bootstrap_candela(session, character_id, int(data.role_id), int(data.specialty_id))
+
+        # aplica sheet (sem backstory/notes aqui)
+        session.exec(
+            text(
+                """
+                UPDATE candela_character_sheet
+                SET pronouns=:pronouns, circle=:circle, style=:style, catalyst=:catalyst, question=:question,
+                    updated_at=datetime('now')
+                WHERE character_id=:cid
+                """
+            ),
+            params={
+                "cid": character_id,
+                "pronouns": data.pronouns or "",
+                "circle": data.circle or "",
+                "style": data.style or "",
+                "catalyst": data.catalyst or "",
+                "question": data.question or "",
+            },
+        )
+
+        # role/specialty (se divergir do bootstrap, atualiza)
+        session.exec(
+            text(
+                """
+                UPDATE candela_character_choice
+                SET role_id=:rid, specialty_id=:sid
+                WHERE character_id=:cid
+                """
+            ),
+            params={"cid": character_id, "rid": int(data.role_id), "sid": int(data.specialty_id)},
+        )
+
+        # overrides (UPSERT)
+        for a in data.actions:
+            session.exec(
+                text(
+                    """
+                    INSERT INTO candela_character_action (character_id, action_key, group_key, rating, gilded)
+                    VALUES (:cid, :ak,
+                      CASE
+                        WHEN :ak IN ('MOVER','ATACAR','CONTROLAR') THEN 'VIGOR'
+                        WHEN :ak IN ('INFLUENCIAR','LER','ESCONDER') THEN 'ASTUCIA'
+                        ELSE 'INTUICAO'
+                      END,
+                      :rt, :gd
+                    )
+                    ON CONFLICT(character_id, action_key)
+                    DO UPDATE SET rating=excluded.rating, gilded=excluded.gilded
+                    """
+                ),
+                params={"cid": character_id, "ak": a.action_key, "rt": int(a.rating), "gd": 1 if a.gilded else 0},
+            )
+
+        for g in data.group_state:
+            session.exec(
+                text(
+                    """
+                    INSERT INTO candela_character_group_state
+                      (character_id, group_key, drive_current, drive_max, resist_current, resist_max)
+                    VALUES (:cid,:gk,:dc,:dm,:rc,:rm)
+                    ON CONFLICT(character_id, group_key)
+                    DO UPDATE SET drive_current=excluded.drive_current, drive_max=excluded.drive_max,
+                                 resist_current=excluded.resist_current, resist_max=excluded.resist_max
+                    """
+                ),
+                params={
+                    "cid": character_id,
+                    "gk": g.group_key,
+                    "dc": int(g.drive_current),
+                    "dm": int(g.drive_max),
+                    "rc": int(g.resist_current),
+                    "rm": int(g.resist_max),
+                },
+            )
+
+        for m in data.marks:
+            session.exec(
+                text(
+                    """
+                    INSERT INTO candela_character_mark (character_id, mark_key, current, max)
+                    VALUES (:cid,:mk,:c,:m)
+                    ON CONFLICT(character_id, mark_key)
+                    DO UPDATE SET current=excluded.current, max=excluded.max
+                    """
+                ),
+                params={"cid": character_id, "mk": m.mark_key, "c": int(m.current), "m": int(m.max)},
+            )
+
+        # lists: replace-all simples
+        session.exec(text("DELETE FROM candela_character_relation WHERE character_id=:cid"), params={"cid": character_id})
+        for it in data.relations:
+            if (it.text or "").strip():
+                session.exec(
+                    text("INSERT INTO candela_character_relation (character_id, text) VALUES (:cid,:t)"),
+                    params={"cid": character_id, "t": it.text.strip()},
+                )
+
+        session.exec(text("DELETE FROM candela_character_equipment WHERE character_id=:cid"), params={"cid": character_id})
+        for it in data.equipment:
+            if (it.text or "").strip():
+                session.exec(
+                    text("INSERT INTO candela_character_equipment (character_id, text) VALUES (:cid,:t)"),
+                    params={"cid": character_id, "t": it.text.strip()},
+                )
+
+        session.exec(text("DELETE FROM candela_character_illumination_key WHERE character_id=:cid"), params={"cid": character_id})
+        for it in data.illumination_keys:
+            if (it.text or "").strip():
+                session.exec(
+                    text("INSERT INTO candela_character_illumination_key (character_id, text) VALUES (:cid,:t)"),
+                    params={"cid": character_id, "t": it.text.strip()},
+                )
+
+        # scars: replace-all
+        session.exec(text("DELETE FROM candela_character_scar WHERE character_id=:cid"), params={"cid": character_id})
+        for sc in data.scars:
+            if (sc.description or "").strip():
+                session.exec(
+                    text(
+                        """
+                        INSERT INTO candela_character_scar (character_id, mark_key, description)
+                        VALUES (:cid,:mk,:d)
+                        """
+                    ),
+                    params={"cid": character_id, "mk": sc.mark_key, "d": sc.description.strip()},
+                )
+
+        # powers
+        session.exec(text("DELETE FROM candela_character_role_power_pick WHERE character_id=:cid"), params={"cid": character_id})
+        for pid in data.role_power_ids:
+            session.exec(
+                text(
+                    """
+                    INSERT OR IGNORE INTO candela_character_role_power_pick (character_id, power_id)
+                    VALUES (:cid,:pid)
+                    """
+                ),
+                params={"cid": character_id, "pid": int(pid)},
+            )
+
+        if data.specialty_power_id is not None:
+            session.exec(
+                text(
+                    """
+                    INSERT INTO candela_character_specialty_power_pick (character_id, power_id)
+                    VALUES (:cid,:pid)
+                    ON CONFLICT(character_id) DO UPDATE SET power_id=excluded.power_id
+                    """
+                ),
+                params={"cid": character_id, "pid": int(data.specialty_power_id)},
+            )
+
+        # abilities (requer migration 0006)
+        session.exec(text("DELETE FROM candela_character_ability_pick WHERE character_id=:cid"), params={"cid": character_id})
+        for aid in data.ability_ids:
+            session.exec(
+                text(
+                    """
+                    INSERT OR IGNORE INTO candela_character_ability_pick (character_id, ability_id)
+                    VALUES (:cid,:aid)
+                    """
+                ),
+                params={"cid": character_id, "aid": int(aid)},
+            )
 
         session.exec(text("COMMIT"))
     except HTTPException:
@@ -394,6 +612,7 @@ def create_character_system(
         raise HTTPException(status_code=500, detail=f"Create system failed: {e}")
 
     return {"ok": True}
+
 @router.get("/{character_id}/systems/candela_obscura")
 def get_candela_system(
     character_id: int,
@@ -418,25 +637,137 @@ def get_candela_system(
         raise HTTPException(status_code=404, detail="Candela system not found")
 
     choice = session.exec(
+        text("SELECT role_id, specialty_id FROM candela_character_choice WHERE character_id=:cid"),
+        params={"cid": character_id},
+    ).first()
+    if not choice:
+        raise HTTPException(status_code=500, detail="Candela data missing (choice)")
+
+    sheet = session.exec(
         text(
             """
-            SELECT role_id, specialty_id
-            FROM candela_character_choice
+            SELECT pronouns, circle, style, catalyst, question
+            FROM candela_character_sheet
             WHERE character_id=:cid
             """
         ),
         params={"cid": character_id},
     ).first()
+    if not sheet:
+        raise HTTPException(status_code=500, detail="Candela data missing (sheet)")
 
-    if not choice:
-        raise HTTPException(status_code=500, detail="Candela data missing (choice)")
+    actions = session.exec(
+        text(
+            """
+            SELECT action_key, rating, COALESCE(gilded,0)
+            FROM candela_character_action
+            WHERE character_id=:cid
+            ORDER BY action_key
+            """
+        ),
+        params={"cid": character_id},
+    ).all()
 
-    return CandelaOut(role_id=int(choice[0]), specialty_id=int(choice[1]))
+    groups = session.exec(
+        text(
+            """
+            SELECT group_key, drive_current, drive_max, resist_current, resist_max
+            FROM candela_character_group_state
+            WHERE character_id=:cid
+            ORDER BY group_key
+            """
+        ),
+        params={"cid": character_id},
+    ).all()
+
+    marks = session.exec(
+        text(
+            """
+            SELECT mark_key, current, max
+            FROM candela_character_mark
+            WHERE character_id=:cid
+            ORDER BY mark_key
+            """
+        ),
+        params={"cid": character_id},
+    ).all()
+
+    scars = session.exec(
+        text(
+            """
+            SELECT id, mark_key, description
+            FROM candela_character_scar
+            WHERE character_id=:cid
+            ORDER BY id
+            """
+        ),
+        params={"cid": character_id},
+    ).all()
+
+    rels = session.exec(
+        text("SELECT id, text FROM candela_character_relation WHERE character_id=:cid ORDER BY id"),
+        params={"cid": character_id},
+    ).all()
+
+    eq = session.exec(
+        text("SELECT id, text FROM candela_character_equipment WHERE character_id=:cid ORDER BY id"),
+        params={"cid": character_id},
+    ).all()
+
+    keys = session.exec(
+        text("SELECT id, text FROM candela_character_illumination_key WHERE character_id=:cid ORDER BY id"),
+        params={"cid": character_id},
+    ).all()
+
+    role_picks = session.exec(
+        text("SELECT power_id FROM candela_character_role_power_pick WHERE character_id=:cid ORDER BY power_id"),
+        params={"cid": character_id},
+    ).all()
+
+    sp_pick = session.exec(
+        text("SELECT power_id FROM candela_character_specialty_power_pick WHERE character_id=:cid"),
+        params={"cid": character_id},
+    ).first()
+
+    ability_picks = session.exec(
+        text("SELECT ability_id FROM candela_character_ability_pick WHERE character_id=:cid ORDER BY ability_id"),
+        params={"cid": character_id},
+    ).all()
+
+    return CandelaOut(
+        role_id=int(choice[0]),
+        specialty_id=int(choice[1]),
+        pronouns=sheet[0] or "",
+        circle=sheet[1] or "",
+        style=sheet[2] or "",
+        catalyst=sheet[3] or "",
+        question=sheet[4] or "",
+        actions=[{"action_key": a, "rating": int(r), "gilded": bool(g)} for (a, r, g) in actions],
+        group_state=[
+            {
+                "group_key": gk,
+                "drive_current": int(dc),
+                "drive_max": int(dm),
+                "resist_current": int(rc),
+                "resist_max": int(rm),
+            }
+            for (gk, dc, dm, rc, rm) in groups
+        ],
+        marks=[{"mark_key": mk, "current": int(c), "max": int(m)} for (mk, c, m) in marks],
+        scars=[{"id": int(i), "mark_key": mk, "description": d} for (i, mk, d) in scars],
+        relations=[{"id": int(i), "text": t} for (i, t) in rels],
+        equipment=[{"id": int(i), "text": t} for (i, t) in eq],
+        illumination_keys=[{"id": int(i), "text": t} for (i, t) in keys],
+        role_power_ids=[int(r[0]) for r in role_picks],
+        specialty_power_id=int(sp_pick[0]) if sp_pick else None,
+        ability_ids=[int(a[0]) for a in ability_picks],
+    )
+
 
 @router.put("/{character_id}/systems/candela_obscura")
 def update_candela_system(
     character_id: int,
-    data: CandelaUpdateIn,
+    data: CandelaUpsertIn,
     user: User = Depends(_require_player),
     session: Session = Depends(get_session),
 ):
@@ -460,8 +791,198 @@ def update_candela_system(
     try:
         session.exec(text("BEGIN"))
 
-        _candela_clear(session, character_id)
-        bootstrap_candela(session, character_id, int(data.role_id), int(data.specialty_id))
+        current = session.exec(
+            text("SELECT role_id, specialty_id FROM candela_character_choice WHERE character_id=:cid"),
+            params={"cid": character_id},
+        ).first()
+        if not current:
+            raise HTTPException(status_code=404, detail="Candela sheet not found")
+
+        cur_role_id, cur_specialty_id = int(current[0]), int(current[1])
+
+        # se mudou role/specialty, faz rebuild para reaplicar defaults do BE
+        if cur_role_id != int(data.role_id) or cur_specialty_id != int(data.specialty_id):
+            _candela_clear(session, character_id)
+            bootstrap_candela(session, character_id, int(data.role_id), int(data.specialty_id))
+        else:
+            # garante que existe sheet (caso antigo)
+            session.exec(
+                text(
+                    """
+                    INSERT OR IGNORE INTO candela_character_sheet (character_id)
+                    VALUES (:cid)
+                    """
+                ),
+                params={"cid": character_id},
+            )
+
+        # sheet (sem backstory/notes aqui)
+        session.exec(
+            text(
+                """
+                UPDATE candela_character_sheet
+                SET pronouns=:pronouns, circle=:circle, style=:style, catalyst=:catalyst, question=:question,
+                    updated_at=datetime('now')
+                WHERE character_id=:cid
+                """
+            ),
+            params={
+                "cid": character_id,
+                "pronouns": data.pronouns or "",
+                "circle": data.circle or "",
+                "style": data.style or "",
+                "catalyst": data.catalyst or "",
+                "question": data.question or "",
+            },
+        )
+
+        # role/specialty
+        session.exec(
+            text(
+                """
+                UPDATE candela_character_choice
+                SET role_id=:rid, specialty_id=:sid
+                WHERE character_id=:cid
+                """
+            ),
+            params={"cid": character_id, "rid": int(data.role_id), "sid": int(data.specialty_id)},
+        )
+
+        # actions (UPSERT)
+        for a in data.actions:
+            session.exec(
+                text(
+                    """
+                    INSERT INTO candela_character_action (character_id, action_key, group_key, rating, gilded)
+                    VALUES (:cid, :ak,
+                      CASE
+                        WHEN :ak IN ('MOVER','ATACAR','CONTROLAR') THEN 'VIGOR'
+                        WHEN :ak IN ('INFLUENCIAR','LER','ESCONDER') THEN 'ASTUCIA'
+                        ELSE 'INTUICAO'
+                      END,
+                      :rt, :gd
+                    )
+                    ON CONFLICT(character_id, action_key)
+                    DO UPDATE SET rating=excluded.rating, gilded=excluded.gilded
+                    """
+                ),
+                params={"cid": character_id, "ak": a.action_key, "rt": int(a.rating), "gd": 1 if a.gilded else 0},
+            )
+
+        # group state (UPSERT)
+        for g in data.group_state:
+            session.exec(
+                text(
+                    """
+                    INSERT INTO candela_character_group_state
+                      (character_id, group_key, drive_current, drive_max, resist_current, resist_max)
+                    VALUES (:cid,:gk,:dc,:dm,:rc,:rm)
+                    ON CONFLICT(character_id, group_key)
+                    DO UPDATE SET drive_current=excluded.drive_current, drive_max=excluded.drive_max,
+                                 resist_current=excluded.resist_current, resist_max=excluded.resist_max
+                    """
+                ),
+                params={
+                    "cid": character_id,
+                    "gk": g.group_key,
+                    "dc": int(g.drive_current),
+                    "dm": int(g.drive_max),
+                    "rc": int(g.resist_current),
+                    "rm": int(g.resist_max),
+                },
+            )
+
+        # marks (UPSERT)
+        for m in data.marks:
+            session.exec(
+                text(
+                    """
+                    INSERT INTO candela_character_mark (character_id, mark_key, current, max)
+                    VALUES (:cid,:mk,:c,:m)
+                    ON CONFLICT(character_id, mark_key)
+                    DO UPDATE SET current=excluded.current, max=excluded.max
+                    """
+                ),
+                params={"cid": character_id, "mk": m.mark_key, "c": int(m.current), "m": int(m.max)},
+            )
+
+        # lists: replace-all
+        session.exec(text("DELETE FROM candela_character_relation WHERE character_id=:cid"), params={"cid": character_id})
+        for it in data.relations:
+            if (it.text or "").strip():
+                session.exec(
+                    text("INSERT INTO candela_character_relation (character_id, text) VALUES (:cid,:t)"),
+                    params={"cid": character_id, "t": it.text.strip()},
+                )
+
+        session.exec(text("DELETE FROM candela_character_equipment WHERE character_id=:cid"), params={"cid": character_id})
+        for it in data.equipment:
+            if (it.text or "").strip():
+                session.exec(
+                    text("INSERT INTO candela_character_equipment (character_id, text) VALUES (:cid,:t)"),
+                    params={"cid": character_id, "t": it.text.strip()},
+                )
+
+        session.exec(text("DELETE FROM candela_character_illumination_key WHERE character_id=:cid"), params={"cid": character_id})
+        for it in data.illumination_keys:
+            if (it.text or "").strip():
+                session.exec(
+                    text("INSERT INTO candela_character_illumination_key (character_id, text) VALUES (:cid,:t)"),
+                    params={"cid": character_id, "t": it.text.strip()},
+                )
+
+        # scars: replace-all
+        session.exec(text("DELETE FROM candela_character_scar WHERE character_id=:cid"), params={"cid": character_id})
+        for sc in data.scars:
+            if (sc.description or "").strip():
+                session.exec(
+                    text(
+                        """
+                        INSERT INTO candela_character_scar (character_id, mark_key, description)
+                        VALUES (:cid,:mk,:d)
+                        """
+                    ),
+                    params={"cid": character_id, "mk": sc.mark_key, "d": sc.description.strip()},
+                )
+
+        # powers: role picks replace-all
+        session.exec(text("DELETE FROM candela_character_role_power_pick WHERE character_id=:cid"), params={"cid": character_id})
+        for pid in data.role_power_ids:
+            session.exec(
+                text(
+                    """
+                    INSERT OR IGNORE INTO candela_character_role_power_pick (character_id, power_id)
+                    VALUES (:cid,:pid)
+                    """
+                ),
+                params={"cid": character_id, "pid": int(pid)},
+            )
+
+        # specialty power: 1
+        if data.specialty_power_id is not None:
+            session.exec(
+                text(
+                    """
+                    INSERT INTO candela_character_specialty_power_pick (character_id, power_id)
+                    VALUES (:cid,:pid)
+                    ON CONFLICT(character_id) DO UPDATE SET power_id=excluded.power_id
+                    """
+                ),
+                params={"cid": character_id, "pid": int(data.specialty_power_id)},
+            )
+
+        # abilities: replace-all (requer migration 0006)
+        session.exec(text("DELETE FROM candela_character_ability_pick WHERE character_id=:cid"), params={"cid": character_id})
+        for aid in data.ability_ids:
+            session.exec(
+                text(
+                    """
+                    INSERT OR IGNORE INTO candela_character_ability_pick (character_id, ability_id)
+                    VALUES (:cid,:aid)
+                    """
+                ),
+                params={"cid": character_id, "aid": int(aid)},
+            )
 
         session.exec(text("COMMIT"))
     except HTTPException:
@@ -469,6 +990,6 @@ def update_candela_system(
         raise
     except Exception as e:
         session.exec(text("ROLLBACK"))
-        raise HTTPException(status_code=500, detail=f"Update system failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Update Candela failed: {e}")
 
     return {"ok": True}

@@ -129,3 +129,16 @@ def bootstrap_candela(
             ),
             params={"cid": character_id, "ak": first_action},
         )
+    
+    # 6) specialty power default (1:1)
+    session.exec(
+        text(
+            """
+            INSERT OR IGNORE INTO candela_character_specialty_power_pick (character_id, power_id)
+            SELECT :cid, sp.power_id
+            FROM candela_specialty_power sp
+            WHERE sp.specialty_id = :sid
+            """
+        ),
+        params={"cid": character_id, "sid": specialty_id},
+    )

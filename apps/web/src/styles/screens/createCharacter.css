@@ -59,12 +59,19 @@
   line-height: 1.2;
 }
 
-.create-col--system{ 
+.create-col--system{
   min-height: 240px;
   justify-self: start;
   width: 100%;
-  overflow: hidden;
+
+  /* permite rolar o form até o fim */
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  /* o grid já tem inset:16px => 100vh - 32px */
+  max-height: calc(100vh - 32px);
 }
+
 
 .create-col--preview{
   display:grid;
@@ -144,4 +151,13 @@
 
 .create-col--base select.ui-field{
   max-width: 100%;
+}
+
+.candela-grid-2{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+.candela-grid-2 .ui-label{
+  margin: 0;
 }
