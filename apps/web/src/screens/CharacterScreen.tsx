@@ -5,7 +5,6 @@ import {
   type Role,
   type Specialty,
   type CandelaDraft,
-  type CandelaPower,
   type CandelaAbility,
   type CandelaAction,
   type CandelaGroupState,
@@ -44,10 +43,6 @@ type CandelaOut = {
   relations: { id?: number; text: string }[];
   equipment: { id?: number; text: string }[];
   illumination_keys: { id?: number; text: string }[];
-
-  role_power_ids: number[];
-  specialty_power_id: number | null;
-
   ability_ids: number[];
 };
 
@@ -92,10 +87,6 @@ function emptyCandelaDraft(): CandelaDraft {
     relations: [],
     equipment: [],
     illumination_keys: [],
-
-    role_power_ids: [],
-    specialty_power_id: null,
-
     ability_ids: [],
   };
 }
@@ -141,25 +132,54 @@ export function CharacterScreen({
     return Array.from(new Set(s)).filter(Boolean);
   }, [character]);
 
-  const isCandela = selectedSystem === "candela_obscura";
-  const candelaAlreadyExists = existingSystems.includes("candela_obscura");
+  const [candelaDraft, setCandelaDraft] = useState<CandelaDraft>(() => emptyCandelaDraft());
+  const [roleAbilities, setRoleAbilities] = useState<CandelaAbility[]>([]);
+  const [specialtyAbilities, setSpecialtyAbilities] = useState<CandelaAbility[]>([]);
+  const [lastAppliedSpecialtyId, setLastAppliedSpecialtyId] = useState<number | null>(null);
+  const [candelaSheetExists, setCandelaSheetExists] = useState<boolean | null>(null);
 
+  const isCandela = selectedSystem === "candela_obscura";
+  const candelaAlreadyExists = candelaSheetExists === true;
+  // dirty check
+  const snapshot = useMemo(
+    () =>
+      JSON.stringify({
+        mode,
+        name: name || "",
+        concept: concept || "",
+        backstory: backstory || "",
+        notes: notes || "",
+        selectedSystem: selectedSystem || "",
+        roleId: roleId === "" ? null : roleId,
+        specialtyId: specialtyId === "" ? null : specialtyId,
+        candelaDraft: isCandela ? candelaDraft : null,
+        editingId: mode === "edit" ? character?.id ?? null : null,
+      }),
+    [mode, name, concept, backstory, notes, selectedSystem, roleId, specialtyId, isCandela, candelaDraft, character]
+  );
+
+  const [savedSnapshot, setSavedSnapshot] = useState(snapshot);
+  const isDirty = snapshot !== savedSnapshot;
+ 
   useEffect(() => {
     if (mode !== "edit") return;
     if (!character?.id) return;
     if (selectedSystem !== "candela_obscura") return;
 
-    // se já existe candela, carrega role/specialty atuais pra permitir editar
-    if (!candelaAlreadyExists) return;
-
     let cancelled = false;
+
     (async () => {
       setErr(null);
+
       try {
+        // Sempre tenta carregar: se existir, é edição; se 404, é criação.
         const data = await api<CandelaOut>(
           `/api/me/characters/${character.id}/systems/candela_obscura`
         );
         if (cancelled) return;
+
+        setCandelaSheetExists(true);
+
         setRoleId(data.role_id);
         setSpecialtyId(data.specialty_id);
 
@@ -198,17 +218,19 @@ export function CharacterScreen({
           relations: (data.relations || []).map((x) => ({ id: x.id, text: x.text || "" })),
           equipment: (data.equipment || []).map((x) => ({ id: x.id, text: x.text || "" })),
           illumination_keys: (data.illumination_keys || []).map((x) => ({ id: x.id, text: x.text || "" })),
-
-          role_power_ids: data.role_power_ids || [],
-          specialty_power_id: data.specialty_power_id ?? null,
-
           ability_ids: data.ability_ids || [],
         });
 
         setLastAppliedSpecialtyId(data.specialty_id);
-
       } catch (e: any) {
         if (cancelled) return;
+
+        // 404 = não existe ficha Candela ainda (criação). Não é erro.
+        if (e?.status === 404) {
+          setCandelaSheetExists(false);
+          return;
+        }
+
         const msg =
           typeof e?.message === "string"
             ? e.message
@@ -222,9 +244,8 @@ export function CharacterScreen({
     return () => {
       cancelled = true;
     };
-  }, [mode, character?.id, selectedSystem, candelaAlreadyExists]);
+  }, [mode, character?.id, selectedSystem]);
 
-  // preload do edit
   useEffect(() => {
     if (mode !== "edit") return;
     if (!character) return;
@@ -239,41 +260,13 @@ export function CharacterScreen({
     setRoleId("");
     setSpecialtyId("");
     setCandelaDraft(emptyCandelaDraft());
-    setRolePowers([]);
     setRoleAbilities([]);
     setSpecialtyAbilities([]);
-    setSpecialtyPower(null);
     setLastAppliedSpecialtyId(null);
 
   }, [mode, character]);
 
-  const [candelaDraft, setCandelaDraft] = useState<CandelaDraft>(() => emptyCandelaDraft());
-  const [rolePowers, setRolePowers] = useState<CandelaPower[]>([]);
-  const [roleAbilities, setRoleAbilities] = useState<CandelaAbility[]>([]);
-  const [specialtyAbilities, setSpecialtyAbilities] = useState<CandelaAbility[]>([]);
-  const [specialtyPower, setSpecialtyPower] = useState<CandelaPower | null>(null);
-  const [lastAppliedSpecialtyId, setLastAppliedSpecialtyId] = useState<number | null>(null);
 
-  // dirty check
-  const snapshot = useMemo(
-    () =>
-      JSON.stringify({
-        mode,
-        name: name || "",
-        concept: concept || "",
-        backstory: backstory || "",
-        notes: notes || "",
-        selectedSystem: selectedSystem || "",
-        roleId: roleId === "" ? null : roleId,
-        specialtyId: specialtyId === "" ? null : specialtyId,
-        candelaDraft: isCandela ? candelaDraft : null,
-        editingId: mode === "edit" ? character?.id ?? null : null,
-      }),
-    [mode, name, concept, backstory, notes, selectedSystem, roleId, specialtyId, isCandela, candelaDraft, character]
-  );
-
-  const [savedSnapshot, setSavedSnapshot] = useState(snapshot);
-  const isDirty = snapshot !== savedSnapshot;
 
   useEffect(() => {
     function onBeforeUnload(e: BeforeUnloadEvent) {
@@ -347,10 +340,8 @@ export function CharacterScreen({
     let cancelled = false;
 
     setSpecialties([]);
-    setRolePowers([]);
     setRoleAbilities([]);
     setSpecialtyAbilities([]);
-    setSpecialtyPower(null);
 
     if (!isCandela) return;
     if (roleId === "") return;
@@ -359,11 +350,11 @@ export function CharacterScreen({
       setErr(null);
       setLoadingSystemCatalog(true);
       try {
-        const [sAny, pAny, aAny] = await Promise.all([
+        const [sAny, aAny] = await Promise.all([
           api<any>(`/api/catalog/candela/specialties?role_id=${roleId}`),
-          api<any>(`/api/catalog/candela/role/powers?role_id=${roleId}`),
           api<any>(`/api/catalog/candela/abilities?role_id=${roleId}`),
         ]);
+
         if (cancelled) return;
 
         const nextSpecialties = Array.isArray(sAny) ? (sAny as Specialty[]) : [];
@@ -373,8 +364,6 @@ export function CharacterScreen({
         if (specialtyId !== "" && !nextSpecialties.some((s) => s.id === specialtyId)) {
           setSpecialtyId("");
         }
-
-        setRolePowers(Array.isArray(pAny) ? (pAny as CandelaPower[]) : []);
         setRoleAbilities(Array.isArray(aAny?.role) ? (aAny.role as CandelaAbility[]) : []);
       } catch (e: any) {
         if (!cancelled) setErr(e?.message || "Falha ao carregar catálogo Candela");
@@ -408,57 +397,41 @@ export function CharacterScreen({
           Array.isArray(abAny?.specialty) ? (abAny.specialty as CandelaAbility[]) : []
         );
 
-        const spPowerId =
-          typeof defaults?.specialty_power_id === "number" ? defaults.specialty_power_id : null;
-
         const shouldApplyDefaults = lastAppliedSpecialtyId !== specialtyId || mode === "create";
+        if (!shouldApplyDefaults) return;
 
-        if (shouldApplyDefaults) {
-          setCandelaDraft((prev) => {
-            const byKey: Record<string, { rating: number; gilded_default: number }> = {};
-            for (const a of defaults?.actions || []) {
-              byKey[a.action_key] = {
-                rating: Number(a.rating) || 0,
-                gilded_default: Number(a.gilded_default) || 0,
-              };
-            }
-
-            const nextActions = prev.actions.map((a) => {
-              const d = byKey[a.action_key];
-              return d
-                ? { ...a, rating: clampInt(d.rating, 0, 3), gilded: !!d.gilded_default }
-                : a;
-            });
-
-            const groupDefaults = defaults?.groups || [];
-            const nextGroupState = prev.group_state.map((g) => {
-              const found = groupDefaults.find((x: any) => x.group_key === g.group_key);
-              return found
-                ? { ...g, drive_max: clampInt(Number(found.drive_default) || 0, 0, 9) }
-                : g;
-            });
-
-            return {
-              ...prev,
-              actions: nextActions,
-              group_state: nextGroupState,
-              specialty_power_id: spPowerId,
+        setCandelaDraft((prev) => {
+          const byKey: Record<string, { rating: number; gilded_default: number }> = {};
+          for (const a of defaults?.actions || []) {
+            byKey[a.action_key] = {
+              rating: Number(a.rating) || 0,
+              gilded_default: Number(a.gilded_default) || 0,
             };
+          }
+
+          const nextActions = prev.actions.map((a) => {
+            const d = byKey[a.action_key];
+            return d
+              ? { ...a, rating: clampInt(d.rating, 0, 3), gilded: !!d.gilded_default }
+              : a;
           });
 
-          setLastAppliedSpecialtyId(specialtyId);
-        } else {
-          setCandelaDraft((prev) => ({
-            ...prev,
-            specialty_power_id: prev.specialty_power_id ?? spPowerId,
-          }));
-        }
+          const groupDefaults = defaults?.groups || [];
+          const nextGroupState = prev.group_state.map((g) => {
+            const found = groupDefaults.find((x: any) => x.group_key === g.group_key);
+            return found
+              ? { ...g, drive_max: clampInt(Number(found.drive_default) || 0, 0, 9) }
+              : g;
+          });
 
-        if (spPowerId != null) {
-          setSpecialtyPower({ id: spPowerId, name: `Poder da Especialidade #${spPowerId}`, description: "" });
-        } else {
-          setSpecialtyPower(null);
-        }
+          return {
+            ...prev,
+            actions: nextActions,
+            group_state: nextGroupState,
+          };
+        });
+
+        setLastAppliedSpecialtyId(specialtyId);
       } catch (e: any) {
         if (!cancelled) setErr(e?.message || "Falha ao carregar defaults da especialidade");
       } finally {
@@ -470,7 +443,6 @@ export function CharacterScreen({
       cancelled = true;
     };
   }, [isCandela, specialtyId, lastAppliedSpecialtyId, mode]);
-
 
   const selectedSpecialty = useMemo(() => {
     if (specialtyId === "") return null;
@@ -485,9 +457,12 @@ export function CharacterScreen({
 
   function validateCandelaBeforeSave(): string | null {
     if (roleId === "" || specialtyId === "") return "Selecione papel e especialidade";
-    if (!candelaDraft.specialty_power_id) return "Selecione o poder obrigatório da Especialidade";
-    if (!candelaDraft.role_power_ids.length) return "Selecione pelo menos 1 poder do Papel";
-    if (candelaDraft.ability_ids.length < 2) return "Selecione pelo menos 2 habilidades (Papel/Especialidade)";
+    if (candelaDraft.ability_ids.length !== 2) return "Selecione 1 habilidade do Papel e 1 da Especialidade";
+
+    const hasRoleAbility = candelaDraft.ability_ids.some((id) => roleAbilities.some((a) => a.id === id));
+    const hasSpecialtyAbility = candelaDraft.ability_ids.some((id) => specialtyAbilities.some((a) => a.id === id));
+    if (!hasRoleAbility || !hasSpecialtyAbility) return "Selecione 1 habilidade do Papel e 1 da Especialidade";
+
     return null;
   }
 
@@ -500,19 +475,13 @@ export function CharacterScreen({
       style: candelaDraft.style,
       catalyst: candelaDraft.catalyst,
       question: candelaDraft.question,
-
       actions: candelaDraft.actions,
       group_state: candelaDraft.group_state,
       marks: candelaDraft.marks,
       scars: candelaDraft.scars,
-
       relations: candelaDraft.relations,
       equipment: candelaDraft.equipment,
       illumination_keys: candelaDraft.illumination_keys,
-
-      role_power_ids: candelaDraft.role_power_ids,
-      specialty_power_id: candelaDraft.specialty_power_id,
-
       ability_ids: candelaDraft.ability_ids,
     };
   }
@@ -611,11 +580,20 @@ export function CharacterScreen({
 
     try {
       if (selectedSystem === "candela_obscura") {
-        // Se ja existe, edita. Se nao existe, cria.
+        // em edit de personagem base, Candela pode ser criação (404) ou edição (200)
+        if (mode === "edit" && candelaSheetExists === null) {
+          return setErr("Carregando estado da ficha Candela… tente novamente em 1s.");
+        }
+
+        const method = candelaAlreadyExists ? "PUT" : "POST";
         await api(`/api/me/characters/${character.id}/systems/candela_obscura`, {
-          method: candelaAlreadyExists ? "PUT" : "POST",
+          method,
           body: JSON.stringify(candelaPayload()),
         });
+
+        // após salvar, agora ela certamente existe
+        setCandelaSheetExists(true);
+
 
       } else {
         await api(`/api/me/characters/${character.id}/systems/${selectedSystem}`, {
@@ -725,6 +703,7 @@ export function CharacterScreen({
             {isCandela ? (
               <CandelaObscuraForm
                 loading={loadingSystemCatalog}
+                mode={candelaAlreadyExists ? "edit" : "create"}
                 roles={roles}
                 specialties={specialties}
                 roleId={roleId}
@@ -733,8 +712,6 @@ export function CharacterScreen({
                 setSpecialtyId={setSpecialtyId}
                 draft={candelaDraft}
                 setDraft={(updater) => setCandelaDraft((prev) => updater(prev))}
-                rolePowers={rolePowers}
-                specialtyPower={specialtyPower}
                 roleAbilities={roleAbilities}
                 specialtyAbilities={specialtyAbilities}
               />

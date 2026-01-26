@@ -161,3 +161,178 @@
 .candela-grid-2 .ui-label{
   margin: 0;
 }
+
+/* Candela: Ações/Motivações no formato 3 blocos */
+
+.candela-action-groups{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.candela-action-group{
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.candela-group-header{
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.candela-group-title{
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.candela-group-metrics{
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.candela-metric-label{
+  display: block;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.candela-metric-value{
+  display: block;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.candela-drive-edit{
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.candela-inline{
+  display: grid;
+  gap: 6px;
+  width: 100%;
+}
+
+.candela-inline-label{
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.candela-mini{
+  padding: 8px 10px;
+}
+
+.candela-actions-list{
+  display: grid;
+  gap: 8px;
+}
+
+.candela-action-row{
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.candela-action-name{
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.candela-dots{
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.candela-dot{
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.28);
+  background: transparent;
+  cursor: pointer;
+}
+
+.candela-dot.filled{
+  background: rgba(218,176,70,0.95);
+  border-color: rgba(218,176,70,0.95);
+}
+
+.candela-dot:disabled{
+  opacity: 0.4;
+  cursor: default;
+}
+
+.candela-actions-head{
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 12px;
+  margin-bottom: 10px;
+}
+
+.candela-action-groups{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.candela-group-card{
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.candela-group-head{
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.candela-action-row{
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.candela-drive-edit{
+  margin-bottom: 8px;
+}
+
+.candela-ability-block{
+  margin-bottom: 12px;
+}
+
+.candela-ability-desc{
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 12px;
+  background: rgba(0,0,0,0.18);
+}
+
+.candela-ability-name{
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.candela-ability-text{
+  font-size: 12px;
+  opacity: 0.85;
+  white-space: pre-wrap;
+}

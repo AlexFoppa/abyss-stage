@@ -1,4 +1,7 @@
+import { useEffect, useMemo, useRef } from "react";
+
 export type Role = { id: number; name: string; description?: string };
+
 export type Specialty = {
   id: number;
   name: string;
@@ -18,7 +21,7 @@ export type CandelaAction = {
     | "AVALIAR"
     | "FOCAR"
     | "SENTIR";
-  rating: number; // 0..3
+  rating: number; // 0..3 (mas na criação limitamos a 2)
   gilded: boolean;
 };
 
@@ -26,16 +29,16 @@ export type CandelaGroupKey = "VIGOR" | "ASTUCIA" | "INTUICAO";
 
 export type CandelaGroupState = {
   group_key: CandelaGroupKey;
-  drive_current: number; // 0..9
-  drive_max: number; // 0..9
-  resist_current: number; // 0..3
-  resist_max: number; // 0..3
+  drive_current: number; // mantido por contrato, mas UI edita só o max
+  drive_max: number;
+  resist_current: number; // calculado a partir do drive_max
+  resist_max: number; // calculado a partir do drive_max
 };
 
 export type CandelaMark = {
   mark_key: "CORPO" | "MENTE" | "SANGRIA";
-  current: number; // 0..3
-  max: number; // 0..3
+  current: number;
+  max: number;
 };
 
 export type CandelaScar = {
@@ -45,8 +48,6 @@ export type CandelaScar = {
 };
 
 export type CandelaListItem = { id?: number; text: string };
-
-export type CandelaPower = { id: number; name: string; description?: string };
 export type CandelaAbility = { id: number; name: string; description: string };
 
 export type CandelaDraft = {
@@ -58,20 +59,16 @@ export type CandelaDraft = {
 
   actions: CandelaAction[];
   group_state: CandelaGroupState[];
-  marks: CandelaMark[];
+  marks: CandelaMark[]; // mantido por contrato, mas removido da UI
   scars: CandelaScar[];
 
   relations: CandelaListItem[];
   equipment: CandelaListItem[];
   illumination_keys: CandelaListItem[];
-
-  // picks obrigatórios no BE
-  role_power_ids: number[];
-  specialty_power_id: number | null;
-
-  // picks obrigatórios no BE (min 2), mas permite extras
-  ability_ids: number[];
+  ability_ids: number[]; // UI força exatamente 2 (1 role + 1 specialty)
 };
+
+type Mode = "create" | "edit";
 
 const ACTIONS: CandelaAction["action_key"][] = [
   "MOVER",
@@ -85,6 +82,12 @@ const ACTIONS: CandelaAction["action_key"][] = [
   "SENTIR",
 ];
 
+const ACTION_GROUPS: { key: CandelaGroupKey; actions: CandelaAction["action_key"][] }[] = [
+  { key: "VIGOR", actions: ["MOVER", "ATACAR", "CONTROLAR"] },
+  { key: "ASTUCIA", actions: ["INFLUENCIAR", "LER", "ESCONDER"] },
+  { key: "INTUICAO", actions: ["AVALIAR", "FOCAR", "SENTIR"] },
+];
+
 function clampInt(v: number, min: number, max: number) {
   const n = Number.isFinite(v) ? Math.trunc(v) : min;
   return Math.min(max, Math.max(min, n));
@@ -95,7 +98,55 @@ function capFirst(s: string) {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
+// Regra: 1 resistência a cada bloco de 3 pontos de motivação (max)
+// Ex.: 4 => 1; 6 => 2; 1 => 0
+function resistFromDriveMax(driveMax: number) {
+  return Math.floor(clampInt(driveMax, 0, 9) / 3);
+}
+
+function RatingDots({
+  value,
+  max = 3,
+  onChange,
+  disabled,
+}: {
+  value: number;
+  max?: number;
+  onChange: (v: number) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="candela-dots">
+      {Array.from({ length: max }).map((_, i) => {
+        const dotValue = i + 1;
+        const filled = dotValue <= value;
+        return (
+          <button
+            key={i}
+            type="button"
+            className={`candela-dot ${filled ? "filled" : ""}`}
+            disabled={disabled}
+            onClick={() => {
+              if (disabled) return;
+              // permite “desmarcar”: clicar no mesmo valor reduz 1 (clicar no 1 vira 0)
+              const next = value === dotValue ? i : dotValue;
+              onChange(next);
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+type Baseline = {
+  actionBase: Record<CandelaAction["action_key"], { rating: number; gilded: boolean }>;
+  driveBase: Record<CandelaGroupKey, number>;
+  gildedDefaultKeys: Set<CandelaAction["action_key"]>;
+};
+
 export function CandelaObscuraForm({
+  mode,
   loading,
   roles,
   specialties,
@@ -103,15 +154,12 @@ export function CandelaObscuraForm({
   setRoleId,
   specialtyId,
   setSpecialtyId,
-
   draft,
   setDraft,
-
-  rolePowers,
-  specialtyPower,
   roleAbilities,
   specialtyAbilities,
 }: {
+  mode: Mode;
   loading: boolean;
   roles: Role[];
   specialties: Specialty[];
@@ -119,97 +167,258 @@ export function CandelaObscuraForm({
   setRoleId: (v: number | "") => void;
   specialtyId: number | "";
   setSpecialtyId: (v: number | "") => void;
-
   draft: CandelaDraft;
   setDraft: (updater: (prev: CandelaDraft) => CandelaDraft) => void;
-
-  rolePowers: CandelaPower[];
-  specialtyPower: CandelaPower | null;
-
   roleAbilities: CandelaAbility[];
   specialtyAbilities: CandelaAbility[];
 }) {
-  const toggleRolePower = (id: number) => {
-    setDraft((prev) => {
-      const has = prev.role_power_ids.includes(id);
-      return {
-        ...prev,
-        role_power_ids: has
-          ? prev.role_power_ids.filter((x) => x !== id)
-          : [...prev.role_power_ids, id],
-      };
-    });
-  };
+  // baseline: valores “default” vindos do BE (bloqueiam remoção na criação)
+  const baselineRef = useRef<Baseline | null>(null);
 
-  const toggleAbility = (id: number) => {
-    setDraft((prev) => {
-      const has = prev.ability_ids.includes(id);
-      return {
-        ...prev,
-        ability_ids: has ? prev.ability_ids.filter((x) => x !== id) : [...prev.ability_ids, id],
-      };
-    });
-  };
+  // quando troca specialty, a baseline muda (defaults do BE mudam)
+  useEffect(() => {
+    if (mode !== "create") return;
+    baselineRef.current = null;
+  }, [mode, specialtyId]);
 
-  const setActionRating = (action_key: CandelaAction["action_key"], rating: number) => {
-    setDraft((prev) => ({
-      ...prev,
-      actions: prev.actions.map((a) =>
-        a.action_key === action_key ? { ...a, rating: clampInt(rating, 0, 3) } : a
-      ),
-    }));
+  const baseline = useMemo(() => {
+    if (mode !== "create") return null;
+
+    if (baselineRef.current) return baselineRef.current;
+
+    const actionBase: Baseline["actionBase"] = {} as any;
+    const gildedDefaultKeys = new Set<CandelaAction["action_key"]>();
+
+    for (const ak of ACTIONS) {
+      const a = draft.actions.find((x) => x.action_key === ak);
+      const rating = clampInt(a?.rating ?? 0, 0, 2); // baseline de criação é no máx 2
+      const gilded = !!a?.gilded;
+      actionBase[ak] = { rating, gilded };
+      if (gilded) gildedDefaultKeys.add(ak);
+    }
+
+    const driveBase: Baseline["driveBase"] = {
+      VIGOR: clampInt(draft.group_state.find((g) => g.group_key === "VIGOR")?.drive_max ?? 0, 0, 9),
+      ASTUCIA: clampInt(draft.group_state.find((g) => g.group_key === "ASTUCIA")?.drive_max ?? 0, 0, 9),
+      INTUICAO: clampInt(draft.group_state.find((g) => g.group_key === "INTUICAO")?.drive_max ?? 0, 0, 9),
+    };
+
+    baselineRef.current = { actionBase, driveBase, gildedDefaultKeys };
+    return baselineRef.current;
+  }, [mode, draft.actions, draft.group_state]);
+
+  // -------------------------
+  // Pontos (CRIAÇÃO)
+  // -------------------------
+  const actionPointsTotal = 4; // 1 ponto em ação que era 0 + 3 pontos livres
+  const drivePointsTotal = 6;
+
+  const actionPointsSpent = useMemo(() => {
+    if (mode !== "create" || !baseline) return 0;
+    return ACTIONS.reduce((sum, ak) => {
+      const cur = clampInt(draft.actions.find((a) => a.action_key === ak)?.rating ?? 0, 0, 2);
+      const base = baseline.actionBase[ak]?.rating ?? 0;
+      return sum + Math.max(0, cur - base);
+    }, 0);
+  }, [mode, baseline, draft.actions]);
+
+  const actionPointsLeft = Math.max(0, actionPointsTotal - actionPointsSpent);
+
+  const hasBumpedAZeroAction = useMemo(() => {
+    if (mode !== "create" || !baseline) return true;
+    return ACTIONS.some((ak) => {
+      const base = baseline.actionBase[ak]?.rating ?? 0;
+      if (base !== 0) return false;
+      const cur = clampInt(draft.actions.find((a) => a.action_key === ak)?.rating ?? 0, 0, 2);
+      return cur >= 1;
+    });
+  }, [mode, baseline, draft.actions]);
+
+  const drivePointsSpent = useMemo(() => {
+    if (mode !== "create" || !baseline) return 0;
+    return (["VIGOR", "ASTUCIA", "INTUICAO"] as CandelaGroupKey[]).reduce((sum, gk) => {
+      const cur = clampInt(draft.group_state.find((g) => g.group_key === gk)?.drive_max ?? 0, 0, 9);
+      const base = baseline.driveBase[gk] ?? 0;
+      return sum + Math.max(0, cur - base);
+    }, 0);
+  }, [mode, baseline, draft.group_state]);
+
+  const drivePointsLeft = Math.max(0, drivePointsTotal - drivePointsSpent);
+
+  // gilded: defaults do BE + 1 escolha extra
+  const maxGilded = useMemo(() => {
+    if (mode !== "create" || !baseline) return 99;
+    return baseline.gildedDefaultKeys.size + 1;
+  }, [mode, baseline]);
+
+  const gildedCount = useMemo(() => {
+    return draft.actions.reduce((sum, a) => sum + (a.gilded ? 1 : 0), 0);
+  }, [draft.actions]);
+
+  // -------------------------
+  // Setters com regras
+  // -------------------------
+  const setActionRating = (action_key: CandelaAction["action_key"], nextRaw: number) => {
+    setDraft((prev) => {
+      const nextActions = prev.actions.map((a) => {
+        if (a.action_key !== action_key) return a;
+
+        const next = mode === "create" ? clampInt(nextRaw, 0, 2) : clampInt(nextRaw, 0, 3);
+
+        if (mode !== "create" || !baseline) return { ...a, rating: next };
+
+        const base = baseline.actionBase[action_key]?.rating ?? 0;
+        const current = clampInt(a.rating ?? 0, 0, 2);
+
+        // não permite remover default
+        const lockedNext = Math.max(base, next);
+
+        const currentDelta = Math.max(0, current - base);
+        const nextDelta = Math.max(0, lockedNext - base);
+        const additional = nextDelta - currentDelta;
+
+        // bloqueia se não tem pontos
+        if (additional > 0 && additional > actionPointsLeft) return a;
+
+        return { ...a, rating: lockedNext };
+      });
+
+      return { ...prev, actions: nextActions };
+    });
   };
 
   const toggleActionGilded = (action_key: CandelaAction["action_key"]) => {
-    setDraft((prev) => ({
-      ...prev,
-      actions: prev.actions.map((a) =>
-        a.action_key === action_key ? { ...a, gilded: !a.gilded } : a
-      ),
-    }));
+    setDraft((prev) => {
+      if (mode !== "create" || !baseline) {
+        return {
+          ...prev,
+          actions: prev.actions.map((a) =>
+            a.action_key === action_key ? { ...a, gilded: !a.gilded } : a
+          ),
+        };
+      }
+
+      // defaults do BE não podem ser alterados
+      if (baseline.gildedDefaultKeys.has(action_key)) return prev;
+
+      const isCurrentlyGilded = !!prev.actions.find((a) => a.action_key === action_key)?.gilded;
+
+      // se vai ligar, garante apenas 1 extra (desliga outras extras)
+      if (!isCurrentlyGilded && gildedCount >= maxGilded) {
+        // já tem a extra escolhida (além dos defaults) => força trocar: desliga outras extras
+        const turnedOffOthers = prev.actions.map((a) => {
+          if (!a.gilded) return a;
+          if (baseline.gildedDefaultKeys.has(a.action_key)) return a; // mantém default
+          return { ...a, gilded: false }; // remove extra atual
+        });
+
+        const nextActions = turnedOffOthers.map((a) =>
+          a.action_key === action_key ? { ...a, gilded: true } : a
+        );
+
+        return { ...prev, actions: nextActions };
+      }
+
+      // se está ligando e ainda tem espaço => liga e desliga outras extras
+      if (!isCurrentlyGilded) {
+        const nextActions = prev.actions.map((a) => {
+          if (a.action_key === action_key) return { ...a, gilded: true };
+          if (!a.gilded) return a;
+          if (baseline.gildedDefaultKeys.has(a.action_key)) return a;
+          return { ...a, gilded: false };
+        });
+        return { ...prev, actions: nextActions };
+      }
+
+      // se está desligando, pode desligar (exceto default, já bloqueado acima)
+      return {
+        ...prev,
+        actions: prev.actions.map((a) =>
+          a.action_key === action_key ? { ...a, gilded: false } : a
+        ),
+      };
+    });
   };
 
-  const setGroup = (group_key: CandelaGroupKey, patch: Partial<CandelaGroupState>) => {
-    setDraft((prev) => ({
-      ...prev,
-      group_state: prev.group_state.map((g) =>
-        g.group_key === group_key
-          ? {
-              ...g,
-              drive_current: patch.drive_current ?? g.drive_current,
-              drive_max: patch.drive_max ?? g.drive_max,
-              resist_current: patch.resist_current ?? g.resist_current,
-              resist_max: patch.resist_max ?? g.resist_max,
-            }
-          : g
-      ),
-    }));
+  const setDriveMax = (group_key: CandelaGroupKey, nextRaw: number) => {
+    setDraft((prev) => {
+      const next = clampInt(nextRaw, 0, 9);
+
+      const nextGroups = prev.group_state.map((g) => {
+        if (g.group_key !== group_key) return g;
+
+        if (mode !== "create" || !baseline) {
+          const dm = next;
+          const r = resistFromDriveMax(dm);
+          return {
+            ...g,
+            drive_max: dm,
+            drive_current: dm,
+            resist_max: r,
+            resist_current: r,
+          };
+        }
+
+        const base = baseline.driveBase[group_key] ?? 0;
+        const current = clampInt(g.drive_max ?? 0, 0, 9);
+
+        const lockedNext = Math.max(base, next);
+
+        const currentDelta = Math.max(0, current - base);
+        const nextDelta = Math.max(0, lockedNext - base);
+        const additional = nextDelta - currentDelta;
+
+        if (additional > 0 && additional > drivePointsLeft) return g;
+
+        const r = resistFromDriveMax(lockedNext);
+
+        return {
+          ...g,
+          drive_max: lockedNext,
+          drive_current: lockedNext,
+          resist_max: r,
+          resist_current: r,
+        };
+      });
+
+      return { ...prev, group_state: nextGroups };
+    });
   };
 
-  const setMark = (mark_key: CandelaMark["mark_key"], patch: Partial<CandelaMark>) => {
-    setDraft((prev) => ({
-      ...prev,
-      marks: prev.marks.map((m) =>
-        m.mark_key === mark_key
-          ? {
-              ...m,
-              current: patch.current ?? m.current,
-              max: patch.max ?? m.max,
-            }
-          : m
-      ),
-    }));
+  const selectedRoleAbilityId = useMemo(() => {
+    const fromRole = draft.ability_ids.find((id) => roleAbilities.some((a) => a.id === id));
+    return fromRole ?? null;
+  }, [draft.ability_ids, roleAbilities]);
+
+  const selectedSpecialtyAbilityId = useMemo(() => {
+    const fromSpec = draft.ability_ids.find((id) => specialtyAbilities.some((a) => a.id === id));
+    return fromSpec ?? null;
+  }, [draft.ability_ids, specialtyAbilities]);
+
+  const setRoleAbility = (idOrEmpty: number | null) => {
+    setDraft((prev) => {
+      const specId = prev.ability_ids.find((id) => specialtyAbilities.some((a) => a.id === id)) ?? null;
+      const nextIds = [idOrEmpty, specId].filter((x): x is number => typeof x === "number");
+      return { ...prev, ability_ids: nextIds };
+    });
   };
 
+  const setSpecialtyAbility = (idOrEmpty: number | null) => {
+    setDraft((prev) => {
+      const roleIdSel = prev.ability_ids.find((id) => roleAbilities.some((a) => a.id === id)) ?? null;
+      const nextIds = [roleIdSel, idOrEmpty].filter((x): x is number => typeof x === "number");
+      return { ...prev, ability_ids: nextIds };
+    });
+  };
+
+  // -------------------------
+  // Lists / Scars
+  // -------------------------
   const addListItem = (key: "relations" | "equipment" | "illumination_keys") => {
     setDraft((prev) => ({ ...prev, [key]: [...prev[key], { text: "" }] }));
   };
 
-  const setListItemText = (
-    key: "relations" | "equipment" | "illumination_keys",
-    idx: number,
-    text: string
-  ) => {
+  const setListItemText = (key: "relations" | "equipment" | "illumination_keys", idx: number, text: string) => {
     setDraft((prev) => ({
       ...prev,
       [key]: prev[key].map((it, i) => (i === idx ? { ...it, text } : it)),
@@ -235,10 +444,19 @@ export function CandelaObscuraForm({
     setDraft((prev) => ({ ...prev, scars: prev.scars.filter((_, i) => i !== idx) }));
   };
 
+  // UI helpers
+  const getAction = (ak: CandelaAction["action_key"]) => draft.actions.find((a) => a.action_key === ak);
+
+  const groupDriveMax = (gk: CandelaGroupKey) =>
+    clampInt(draft.group_state.find((g) => g.group_key === gk)?.drive_max ?? 0, 0, 9);
+
+  const groupResist = (gk: CandelaGroupKey) => resistFromDriveMax(groupDriveMax(gk));
+
   return (
     <>
       <h2 className="create-title">Ficha do Sistema — Candela Obscura</h2>
 
+      {/* 2 por linha (Papel, Especialidade, Pronomes, Círculo) */}
       <div className="candela-grid-2">
         <label className="ui-label">
           <span>Papel</span>
@@ -325,270 +543,158 @@ export function CandelaObscuraForm({
         />
       </label>
 
-      {/* Actions */}
-      <div style={{ marginTop: 12 }} />
-      <div className="select-muted" style={{ marginBottom: 6 }}>
-        Ações
+      {/* AÇÕES */}
+      <div className="candela-actions-head">
+        <div className="select-muted">Ações</div>
+        {mode === "create" ? (
+          <div className="select-muted" style={{ textAlign: "right" }}>
+            Pontos: {actionPointsSpent}/{actionPointsTotal} (restam {actionPointsLeft}) •{" "}
+            {hasBumpedAZeroAction ? "OK: +1 em ação 0" : "Falta: +1 em ação 0"}
+            {" • "}Douradas: {gildedCount}/{maxGilded}
+          </div>
+        ) : null}
       </div>
-      {ACTIONS.map((ak) => {
-        const row = draft.actions.find((a) => a.action_key === ak);
-        const rating = row?.rating ?? 0;
-        const gilded = row?.gilded ?? false;
-        return (
-          <div key={ak} style={{ display: "grid", gridTemplateColumns: "1fr 120px 120px", gap: 8, marginBottom: 8 }}>
-            <div className="select-muted" style={{ alignSelf: "center" }}>
-              {capFirst(ak)}
+
+      <div className="candela-action-groups">
+        {ACTION_GROUPS.map((grp) => (
+          <div key={grp.key} className="candela-group-card">
+            <div className="candela-group-head">
+              <div className="select-muted" style={{ fontWeight: 600 }}>
+                {capFirst(grp.key)}
+              </div>
+              <div className="select-muted" style={{ textAlign: "right" }}>
+                Motivação: {groupDriveMax(grp.key)} • Resistência: {groupResist(grp.key)}
+              </div>
             </div>
-            <input
-              className="ui-field"
-              type="number"
-              min={0}
-              max={3}
-              value={rating}
-              onChange={(e) => setActionRating(ak, Number(e.target.value))}
-              disabled={loading}
-            />
-            <label className="select-muted" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input
-                type="checkbox"
-                checked={gilded}
-                onChange={() => toggleActionGilded(ak)}
-                disabled={loading}
-              />
-              Dourada
-            </label>
+
+            {/* Motivação (apenas editável aqui) */}
+            <div className="candela-drive-edit">
+              <label className="ui-label" style={{ margin: 0 }}>
+                <span style={{ opacity: 0.85 }}>Motivação (máx)</span>
+                <input
+                  className="ui-field"
+                  type="number"
+                  min={0}
+                  max={9}
+                  value={groupDriveMax(grp.key)}
+                  onChange={(e) => setDriveMax(grp.key, Number(e.target.value))}
+                  disabled={loading}
+                />
+              </label>
+            </div>
+
+            {/* Lista de ações do bloco */}
+            {grp.actions.map((ak) => {
+              const row = getAction(ak);
+              const rating = clampInt(row?.rating ?? 0, 0, mode === "create" ? 2 : 3);
+              const gilded = !!row?.gilded;
+
+              return (
+                <div key={ak} className="candela-action-row">
+                  <input
+                    type="checkbox"
+                    checked={gilded}
+                    disabled={
+                      loading ||
+                      (mode === "create" &&
+                        !!baseline &&
+                        baseline.gildedDefaultKeys.has(ak)) // default não pode mexer
+                    }
+                    onChange={() => toggleActionGilded(ak)}
+                    title="Dourar"
+                  />
+
+                  <div className="select-muted">{capFirst(ak)}</div>
+
+                  <RatingDots
+                    value={rating}
+                    max={mode === "create" ? 2 : 3}
+                    disabled={loading}
+                    onChange={(v) => setActionRating(ak, v)}
+                  />
+                </div>
+              );
+            })}
           </div>
-        );
-      })}
-
-      {/* Drives/Resist */}
-      <div style={{ marginTop: 12 }} />
-      <div className="select-muted" style={{ marginBottom: 6 }}>
-        Motivações e Resistências
+        ))}
       </div>
-      {draft.group_state.map((g) => (
-        <div key={g.group_key} style={{ marginBottom: 10 }}>
-          <div className="select-muted" style={{ marginBottom: 6 }}>
-            {g.group_key}
+
+      {/* PONTOS de MOTIVAÇÃO */}
+      {mode === "create" ? (
+        <div className="select-muted" style={{ marginTop: 10 }}>
+          Motivações — Pontos: {drivePointsSpent}/{drivePointsTotal} (restam {drivePointsLeft}). Resistência é calculada (1 a cada 3 pontos).
+        </div>
+      ) : null}
+
+      {/* HABILIDADES (EXATAMENTE 1 de cada) */}
+      <div style={{ marginTop: 14 }} />
+      <div className="select-muted" style={{ marginBottom: 6 }}>
+        Habilidades (1 do Papel e 1 da Especialidade)
+      </div>
+
+      <div className="candela-ability-block">
+        <label className="ui-label">
+          <span>Do Papel</span>
+          <select
+            className="ui-field"
+            value={selectedRoleAbilityId ?? ""}
+            onChange={(e) => setRoleAbility(Number(e.target.value) || null)}
+            disabled={loading || !roleAbilities.length}
+          >
+            <option value="">{!roleAbilities.length ? "Selecione um papel…" : "Selecione…"}</option>
+            {roleAbilities.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {selectedRoleAbilityId ? (
+          <div className="candela-ability-desc">
+            <div className="candela-ability-name">
+              {(roleAbilities.find((a) => a.id === selectedRoleAbilityId)?.name) ?? ""}
+            </div>
+            <div className="candela-ability-text">
+              {(roleAbilities.find((a) => a.id === selectedRoleAbilityId)?.description) ?? ""}
+            </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <label className="ui-label">
-              <span>Motivação (atual)</span>
-              <input
-                className="ui-field"
-                type="number"
-                min={0}
-                max={9}
-                value={g.drive_current}
-                onChange={(e) => setGroup(g.group_key, { drive_current: clampInt(Number(e.target.value), 0, 9) })}
-                disabled={loading}
-              />
-            </label>
-            <label className="ui-label">
-              <span>Motivação (máx)</span>
-              <input
-                className="ui-field"
-                type="number"
-                min={0}
-                max={9}
-                value={g.drive_max}
-                onChange={(e) => setGroup(g.group_key, { drive_max: clampInt(Number(e.target.value), 0, 9) })}
-                disabled={loading}
-              />
-            </label>
+        ) : null}
+      </div>
 
-            <label className="ui-label">
-              <span>Resistência (atual)</span>
-              <input
-                className="ui-field"
-                type="number"
-                min={0}
-                max={3}
-                value={g.resist_current}
-                onChange={(e) =>
-                  setGroup(g.group_key, { resist_current: clampInt(Number(e.target.value), 0, 3) })
-                }
-                disabled={loading}
-              />
-            </label>
-            <label className="ui-label">
-              <span>Resistência (máx)</span>
-              <input
-                className="ui-field"
-                type="number"
-                min={0}
-                max={3}
-                value={g.resist_max}
-                onChange={(e) =>
-                  setGroup(g.group_key, { resist_max: clampInt(Number(e.target.value), 0, 3) })
-                }
-                disabled={loading}
-              />
-            </label>
+      <div className="candela-ability-block">
+        <label className="ui-label">
+          <span>Da Especialidade</span>
+          <select
+            className="ui-field"
+            value={selectedSpecialtyAbilityId ?? ""}
+            onChange={(e) => setSpecialtyAbility(Number(e.target.value) || null)}
+            disabled={loading || !specialtyAbilities.length}
+          >
+            <option value="">{!specialtyAbilities.length ? "Selecione uma especialidade…" : "Selecione…"}</option>
+            {specialtyAbilities.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {selectedSpecialtyAbilityId ? (
+          <div className="candela-ability-desc">
+            <div className="candela-ability-name">
+              {(specialtyAbilities.find((a) => a.id === selectedSpecialtyAbilityId)?.name) ?? ""}
+            </div>
+            <div className="candela-ability-text">
+              {(specialtyAbilities.find((a) => a.id === selectedSpecialtyAbilityId)?.description) ?? ""}
+            </div>
           </div>
-        </div>
-      ))}
-
-      {/* Marks */}
-      <div style={{ marginTop: 12 }} />
-      <div className="select-muted" style={{ marginBottom: 6 }}>
-        Marcas
-      </div>
-      {draft.marks.map((m) => (
-        <div key={m.mark_key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-          <label className="ui-label">
-            <span>{m.mark_key} (atual)</span>
-            <input
-              className="ui-field"
-              type="number"
-              min={0}
-              max={3}
-              value={m.current}
-              onChange={(e) => setMark(m.mark_key, { current: clampInt(Number(e.target.value), 0, 3) })}
-              disabled={loading}
-            />
-          </label>
-          <label className="ui-label">
-            <span>{m.mark_key} (máx)</span>
-            <input
-              className="ui-field"
-              type="number"
-              min={0}
-              max={3}
-              value={m.max}
-              onChange={(e) => setMark(m.mark_key, { max: clampInt(Number(e.target.value), 0, 3) })}
-              disabled={loading}
-            />
-          </label>
-        </div>
-      ))}
-
-      {/* Scars */}
-      <div style={{ marginTop: 12 }} />
-      <div className="select-muted" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span>Cicatrizes</span>
-        <button className="ui-btn ui-btn--ghost" type="button" onClick={addScar} disabled={loading}>
-          + Adicionar
-        </button>
-      </div>
-      {draft.scars.map((s, idx) => (
-        <div key={idx} style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 8, marginTop: 8 }}>
-          <label className="ui-label">
-            <span>Tipo</span>
-            <select
-              className="ui-field"
-              value={s.mark_key}
-              onChange={(e) => setScar(idx, { mark_key: e.target.value as any })}
-              disabled={loading}
-            >
-              <option value="CORPO">CORPO</option>
-              <option value="MENTE">MENTE</option>
-              <option value="SANGRIA">SANGRIA</option>
-            </select>
-          </label>
-          <label className="ui-label">
-            <span>Descrição</span>
-            <input
-              className="ui-field"
-              value={s.description}
-              onChange={(e) => setScar(idx, { description: e.target.value })}
-              disabled={loading}
-            />
-          </label>
-          <button className="ui-btn ui-btn--ghost" type="button" onClick={() => removeScar(idx)} disabled={loading}>
-            Remover
-          </button>
-        </div>
-      ))}
-
-      {/* Powers */}
-      <div style={{ marginTop: 12 }} />
-      <div className="select-muted" style={{ marginBottom: 6 }}>
-        Poderes do Papel (escolha livre)
-      </div>
-      {rolePowers.length ? (
-        rolePowers.map((p) => (
-          <label key={p.id} className="select-muted" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-            <input
-              type="checkbox"
-              checked={draft.role_power_ids.includes(p.id)}
-              onChange={() => toggleRolePower(p.id)}
-              disabled={loading}
-            />
-            <span>
-              {p.name}
-              {p.description ? <span style={{ opacity: 0.8 }}> — {p.description}</span> : null}
-            </span>
-          </label>
-        ))
-      ) : (
-        <div className="select-muted">Selecione um papel para carregar poderes.</div>
-      )}
-
-      <div style={{ marginTop: 10 }} />
-      <div className="select-muted" style={{ marginBottom: 6 }}>
-        Poder da Especialidade (1)
-      </div>
-      <div className="select-muted" style={{ marginBottom: 10 }}>
-        {specialtyPower
-          ? `${specialtyPower.name}${specialtyPower.description ? ` — ${specialtyPower.description}` : ""}`
-          : specialtyId === ""
-            ? "Selecione uma especialidade."
-            : "Carregando poder da especialidade…"}
+        ) : null}
       </div>
 
-      {/* Abilities */}
-      <div style={{ marginTop: 12 }} />
-      <div className="select-muted" style={{ marginBottom: 6 }}>
-        Habilidades (obrigatório: pelo menos 1 do papel e 1 da especialidade; pode marcar extras)
-      </div>
 
-      <div className="select-muted" style={{ marginTop: 8, marginBottom: 6 }}>
-        Do Papel
-      </div>
-      {roleAbilities.length ? (
-        roleAbilities.map((a) => (
-          <label key={a.id} className="select-muted" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-            <input
-              type="checkbox"
-              checked={draft.ability_ids.includes(a.id)}
-              onChange={() => toggleAbility(a.id)}
-              disabled={loading}
-            />
-            <span>
-              {a.name}
-              {a.description ? <span style={{ opacity: 0.8 }}> — {a.description}</span> : null}
-            </span>
-          </label>
-        ))
-      ) : (
-        <div className="select-muted">Selecione um papel para carregar habilidades.</div>
-      )}
-
-      <div className="select-muted" style={{ marginTop: 10, marginBottom: 6 }}>
-        Da Especialidade
-      </div>
-      {specialtyAbilities.length ? (
-        specialtyAbilities.map((a) => (
-          <label key={a.id} className="select-muted" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-            <input
-              type="checkbox"
-              checked={draft.ability_ids.includes(a.id)}
-              onChange={() => toggleAbility(a.id)}
-              disabled={loading}
-            />
-            <span>
-              {a.name}
-              {a.description ? <span style={{ opacity: 0.8 }}> — {a.description}</span> : null}
-            </span>
-          </label>
-        ))
-      ) : (
-        <div className="select-muted">Selecione uma especialidade para carregar habilidades.</div>
-      )}
-
-      {/* Lists */}
-      <div style={{ marginTop: 12 }} />
+      {/* LISTAS */}
+      <div style={{ marginTop: 14 }} />
       <div className="select-muted" style={{ marginBottom: 6 }}>
         Relações
       </div>
@@ -600,7 +706,12 @@ export function CandelaObscuraForm({
             onChange={(e) => setListItemText("relations", idx, e.target.value)}
             disabled={loading}
           />
-          <button className="ui-btn ui-btn--ghost" type="button" onClick={() => removeListItem("relations", idx)} disabled={loading}>
+          <button
+            className="ui-btn ui-btn--ghost"
+            type="button"
+            onClick={() => removeListItem("relations", idx)}
+            disabled={loading}
+          >
             Remover
           </button>
         </div>
@@ -621,7 +732,12 @@ export function CandelaObscuraForm({
             onChange={(e) => setListItemText("equipment", idx, e.target.value)}
             disabled={loading}
           />
-          <button className="ui-btn ui-btn--ghost" type="button" onClick={() => removeListItem("equipment", idx)} disabled={loading}>
+          <button
+            className="ui-btn ui-btn--ghost"
+            type="button"
+            onClick={() => removeListItem("equipment", idx)}
+            disabled={loading}
+          >
             Remover
           </button>
         </div>
@@ -642,7 +758,12 @@ export function CandelaObscuraForm({
             onChange={(e) => setListItemText("illumination_keys", idx, e.target.value)}
             disabled={loading}
           />
-          <button className="ui-btn ui-btn--ghost" type="button" onClick={() => removeListItem("illumination_keys", idx)} disabled={loading}>
+          <button
+            className="ui-btn ui-btn--ghost"
+            type="button"
+            onClick={() => removeListItem("illumination_keys", idx)}
+            disabled={loading}
+          >
             Remover
           </button>
         </div>
@@ -650,6 +771,47 @@ export function CandelaObscuraForm({
       <button className="ui-btn ui-btn--ghost" type="button" onClick={() => addListItem("illumination_keys")} disabled={loading}>
         + Adicionar chave
       </button>
+
+      {/* CICATRIZES (no final) */}
+      <div style={{ marginTop: 14 }} />
+      <div className="select-muted" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span>Cicatrizes</span>
+        <button className="ui-btn ui-btn--ghost" type="button" onClick={addScar} disabled={loading}>
+          + Adicionar
+        </button>
+      </div>
+
+      {draft.scars.map((s, idx) => (
+        <div key={idx} style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 8, marginTop: 8 }}>
+          <label className="ui-label">
+            <span>Tipo</span>
+            <select
+              className="ui-field"
+              value={s.mark_key}
+              onChange={(e) => setScar(idx, { mark_key: e.target.value as any })}
+              disabled={loading}
+            >
+              <option value="CORPO">CORPO</option>
+              <option value="MENTE">MENTE</option>
+              <option value="SANGRIA">SANGRIA</option>
+            </select>
+          </label>
+
+          <label className="ui-label">
+            <span>Descrição</span>
+            <input
+              className="ui-field"
+              value={s.description}
+              onChange={(e) => setScar(idx, { description: e.target.value })}
+              disabled={loading}
+            />
+          </label>
+
+          <button className="ui-btn ui-btn--ghost" type="button" onClick={() => removeScar(idx)} disabled={loading}>
+            Remover
+          </button>
+        </div>
+      ))}
     </>
   );
 }

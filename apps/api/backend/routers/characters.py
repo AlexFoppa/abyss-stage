@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 from sqlalchemy import text
@@ -380,7 +380,7 @@ def update_my_character(
 def create_character_system(
     character_id: int,
     system_key: str,
-    data: CandelaCreateIn,
+    data: CandelaUpsertIn = Body(...),
     user: User = Depends(_require_player),
     session: Session = Depends(get_session),
 ):
