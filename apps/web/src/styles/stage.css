@@ -91,9 +91,9 @@
 
 @keyframes seatAtTable {
   0%   { transform: translate(0, 0) scale(1); }
-  33%  { transform: translate(100px, 100px) scale(1.5); }
-  66%  { transform: translate(200px, 300px) scale(2); }
-  100% { transform: translate(300px, 600px) scale(2.5); }
+  33%  { transform: translate(0px, 100px) scale(1.5); }
+  66%  { transform: translate(0px, 150px) scale(2); }
+  100% { transform: translate(0px, 360px) scale(3.7); }
 }
 
 @keyframes valanceOut {

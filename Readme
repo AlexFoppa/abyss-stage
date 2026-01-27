@@ -128,3 +128,12 @@ OBSERVAÇÕES DE SEGURANÇA
 - Em produção, usar:
 export AUTH_COOKIE_SECURE="1"
 ```
+Comandos para rodar a aplicação
+
+# Backend (terminal 1) — sobe a API com env vars mínimas (dummy) só pra dev/teste local
+cd ~/abyss-stage && source apps/api/.venv/bin/activate
+LIVEKIT_API_KEY=dummy LIVEKIT_API_SECRET=dummy AUTH_JWT_SECRET=dummy \
+python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Frontend (terminal 2)
+cd ~/abyss-stage/apps/web && npm run dev -- --host
