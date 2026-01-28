@@ -9,12 +9,12 @@ from sqlmodel import Session
 from sqlalchemy import text
 
 from apps.api.backend.db import get_session
-from apps.api.backend.routers.auth import get_current_user
+from apps.api.backend.routers.auth import get_current_user, require_gm
 from apps.api.backend.models.user import User, Role
 from apps.api.backend.routers.candela_bootstrap import bootstrap_candela
 
 router = APIRouter(prefix="/me/characters", tags=["characters"])
-
+gm_router = APIRouter(prefix="/gm/characters", tags=["gm"])
 
 class CharacterCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
@@ -31,6 +31,8 @@ class CharacterOut(BaseModel):
     notes: str
     systems: list[str] = Field(default_factory=list)     # sistemas ativos (ex: ["simplificado","candela_obscura"])
 
+class GMCharacterOut(CharacterOut):
+    owner_email: str
 
 class CandelaActionIn(BaseModel):
     action_key: str
@@ -203,6 +205,45 @@ def list_my_characters(
             )
         )
     return out
+
+@gm_router.get("")
+def list_all_characters(
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    rows = session.exec(
+        text(
+            """
+            SELECT c.id, c.name, c.concept, c.system, c.backstory, c.notes, u.email
+            FROM character c
+            JOIN "user" u ON u.id = c.owner_user_id
+            WHERE c.kind='PC'
+            ORDER BY c.id DESC
+            """
+        )
+    ).all()
+
+    ids = [r[0] for r in rows]
+    sys_map = _load_systems_map(session, ids)
+
+    out: list[GMCharacterOut] = []
+    for r in rows:
+        cid = r[0]
+        base_system = (r[3] or "simplificado").strip() or "simplificado"
+        out.append(
+            GMCharacterOut(
+                id=cid,
+                name=r[1],
+                concept=r[2],
+                system=base_system,
+                backstory=r[4],
+                notes=r[5],
+                systems=(sys_map.get(cid) or [base_system]),
+                owner_email=r[6],
+            )
+        )
+    return out
+
 
 @router.post("", status_code=201)
 def create_my_character(

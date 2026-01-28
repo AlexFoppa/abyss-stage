@@ -9,11 +9,13 @@ import { CreateCharacterScreen } from "./screens/CreateCharacterScreen";
 import { SelectCharacterScreen } from "./screens/SelectCharacterScreen";
 import { EditCharacterScreen } from "./screens/EditCharacterScreen";
 import { HomeGMScreen } from "./screens/HomeGMScreen";
+import { GMCharactersScreen } from "./screens/GMCharactersScreen";
 
 type View =
   | "LOGIN"
   | "RESET"
   | "GM_HOME"
+  | "GM_CHARACTERS"
   | "LOBBY"
   | "CREATE_CHARACTER"
   | "SELECT_CHARACTER"
@@ -31,8 +33,8 @@ export function Routes() {
     "LOBBY" | "CREATE_CHARACTER" | "SELECT_CHARACTER" | "EDIT_CHARACTER"
   >("LOBBY");
 
+  const [gmSubView, setGmSubView] = useState<"GM_HOME" | "GM_CHARACTERS">("GM_HOME");
   const [stageMode, setStageMode] = useState<"IDLE" | "ZOOM_IN">("IDLE");
-  
   const [selectedCharacter, setSelectedCharacter] = useState<null | {
     id: number;
     name: string;
@@ -53,10 +55,9 @@ export function Routes() {
     if (loading) return "LOGIN";
     if (!user) return "LOGIN";
     if (user.must_reset_password) return "RESET";
-    if (effectiveRole === "GM") return "GM_HOME";
+    if (effectiveRole === "GM") return gmSubView;
     return subView;
-  }, [user, loading, subView, effectiveRole]);
-
+  }, [user, loading, subView, effectiveRole, gmSubView]);
 
   useEffect(() => {
     setStageMode(view === "CREATE_CHARACTER" || view === "EDIT_CHARACTER" ? "ZOOM_IN" : "IDLE");
@@ -76,7 +77,18 @@ export function Routes() {
     ) : view === "RESET" ? (
       <ForceResetScreen />
     ) : view === "GM_HOME" ? (
-      <HomeGMScreen />
+      <HomeGMScreen onCharacters={() => setGmSubView("GM_CHARACTERS")} />
+        ) : view === "GM_CHARACTERS" ? (
+      <GMCharactersScreen
+        onBack={() => setGmSubView("GM_HOME")}
+        onEdit={(c) => {
+          setEditingCharacter(c);
+          setSubView("EDIT_CHARACTER");
+        }}
+        onCreate={() => {
+          setSubView("CREATE_CHARACTER");
+        }}
+      />
     ) : view === "CREATE_CHARACTER" ? (
       <CreateCharacterScreen
         onBack={() => setSubView("LOBBY")}

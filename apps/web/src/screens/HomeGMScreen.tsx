@@ -1,6 +1,11 @@
 import { useAuth } from "../auth/AuthProvider";
 
-export function HomeGMScreen() {
+export function HomeGMScreen({
+  onCharacters,
+}: {
+  onCharacters: () => void;
+}) {
+
   const auth = useAuth();
 
   return (
@@ -10,8 +15,7 @@ export function HomeGMScreen() {
           <button className="ui-btn" type="button" onClick={() => auth.setViewMode("PLAYER")}>
             Alternar para<br />visão de Jogador
           </button>
-
-          <button className="ui-btn" type="button" disabled title="Próximo passo: tela GM de personagens">
+          <button className="ui-btn" type="button" onClick={onCharacters}>
             Personagens
           </button>
         </div>
