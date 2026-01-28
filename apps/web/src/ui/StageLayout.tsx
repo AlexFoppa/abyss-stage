@@ -1,4 +1,5 @@
 import "../styles/stage.css";
+import { useAuth } from "../auth/AuthProvider";
 
 export function StageLayout({
   logged,
@@ -13,7 +14,12 @@ export function StageLayout({
   stageMode?: "IDLE" | "ZOOM_IN";
   children: React.ReactNode;
 }) {
+  const auth = useAuth();
+  const showBackToGM =
+    logged && auth.user?.role === "GM" && auth.gmView === "PLAYER";
+
   return (
+
     <div
       className={`stage ${logged && isGM ? "logged" : ""} ${
         stageMode === "ZOOM_IN" ? "stage--zoom-in" : ""
@@ -27,6 +33,28 @@ export function StageLayout({
       {showBackstage && <img src="/backstage.png" className="backstage" alt="" />}
 
     <div className={`center ${logged ? "center--app" : "center--modal"}`}>
+      {showBackToGM && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            paddingRight: 28,
+            marginTop: 24,
+            marginBottom: 10,
+          }}
+        >
+          <button
+            type="button"
+            className="ui-btn ui-btn--ghost"
+            onClick={() => auth.setViewMode("GM")}
+            style={{ width: "auto" }}
+          >
+            Voltar para Mestre
+          </button>
+        </div>
+      )}
+
+
       {children}
     </div>
 

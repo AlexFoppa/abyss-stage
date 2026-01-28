@@ -17,13 +17,24 @@ type AuthCtx = {
   login: (email: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   refreshMe: () => Promise<User | null>;
+
+  gmView: "GM" | "PLAYER";
+  setViewMode: (mode: "GM" | "PLAYER") => void;
 };
 
+
 const Ctx = createContext<AuthCtx | null>(null);
+
+const GM_VIEW_KEY = "gm_view_mode";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [gmView, setGmView] = useState<"GM" | "PLAYER">(() => {
+    const v = localStorage.getItem(GM_VIEW_KEY);
+    return v === "PLAYER" ? "PLAYER" : "GM";
+  });
 
   async function refreshMe() {
     try {
@@ -55,15 +66,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  function setViewMode(mode: "GM" | "PLAYER") {
+    if (user?.role !== "GM") return;
+    setGmView(mode);
+    localStorage.setItem(GM_VIEW_KEY, mode);
+  }
+
   useEffect(() => {
     refreshMe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const value = useMemo<AuthCtx>(
-    () => ({ user, loading, login, logout, refreshMe }),
-    [user, loading]
+    () => ({ user, loading, login, logout, refreshMe, gmView, setViewMode }),
+    [user, loading, gmView]
   );
+
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

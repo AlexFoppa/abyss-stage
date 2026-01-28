@@ -8,20 +8,24 @@ import { LobbyScreen } from "./screens/LobbyScreen";
 import { CreateCharacterScreen } from "./screens/CreateCharacterScreen";
 import { SelectCharacterScreen } from "./screens/SelectCharacterScreen";
 import { EditCharacterScreen } from "./screens/EditCharacterScreen";
+import { HomeGMScreen } from "./screens/HomeGMScreen";
 
 type View =
   | "LOGIN"
   | "RESET"
+  | "GM_HOME"
   | "LOBBY"
   | "CREATE_CHARACTER"
   | "SELECT_CHARACTER"
   | "EDIT_CHARACTER";
 
 export function Routes() {
-  const { user, loading } = useAuth();
+  const { user, loading, gmView } = useAuth();
   const logged = !!user && !user.must_reset_password;
   const isGM = user?.role === "GM";
-  const showBackstage = !!user && user.role === "PLAYER" && !user.must_reset_password;
+  const effectiveRole = isGM && gmView === "PLAYER" ? "PLAYER" : user?.role;
+  const showBackstage = !!user && effectiveRole === "PLAYER" && !user.must_reset_password;
+
 
   const [subView, setSubView] = useState<
     "LOBBY" | "CREATE_CHARACTER" | "SELECT_CHARACTER" | "EDIT_CHARACTER"
@@ -49,8 +53,10 @@ export function Routes() {
     if (loading) return "LOGIN";
     if (!user) return "LOGIN";
     if (user.must_reset_password) return "RESET";
+    if (effectiveRole === "GM") return "GM_HOME";
     return subView;
-  }, [user, loading, subView]);
+  }, [user, loading, subView, effectiveRole]);
+
 
   useEffect(() => {
     setStageMode(view === "CREATE_CHARACTER" || view === "EDIT_CHARACTER" ? "ZOOM_IN" : "IDLE");
@@ -69,6 +75,8 @@ export function Routes() {
       <LoginScreen />
     ) : view === "RESET" ? (
       <ForceResetScreen />
+    ) : view === "GM_HOME" ? (
+      <HomeGMScreen />
     ) : view === "CREATE_CHARACTER" ? (
       <CreateCharacterScreen
         onBack={() => setSubView("LOBBY")}
