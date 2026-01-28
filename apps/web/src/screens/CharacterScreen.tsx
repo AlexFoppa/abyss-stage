@@ -92,11 +92,13 @@ function emptyCandelaDraft(): CandelaDraft {
 }
 
 export function CharacterScreen({
+  scope,
   mode,
   character,
   onBack,
   onCreated,
 }: {
+  scope?: "ME" | "GM";
   mode: Mode;
   character?: Character | null;
   onBack: () => void;
@@ -120,9 +122,9 @@ export function CharacterScreen({
   const [loadingSystemCatalog, setLoadingSystemCatalog] = useState(false);
   const [roleId, setRoleId] = useState<number | "">("");
   const [specialtyId, setSpecialtyId] = useState<number | "">("");
-
   const [confirmOpen, setConfirmOpen] = useState(false);
-
+  const basePrefix = scope === "GM" ? "/api/gm/characters" : "/api/me/characters";
+  
   const existingSystems = useMemo(() => {
     const s = character?.systems?.length
       ? character.systems
@@ -174,7 +176,7 @@ export function CharacterScreen({
       try {
         // Sempre tenta carregar: se existir, é edição; se 404, é criação.
         const data = await api<CandelaOut>(
-          `/api/me/characters/${character.id}/systems/candela_obscura`
+          `${basePrefix}/${character.id}/systems/candela_obscura`
         );
         if (cancelled) return;
 
@@ -493,7 +495,7 @@ export function CharacterScreen({
     if (!name.trim()) return setErr("Nome é obrigatório");
 
     try {
-      const updated = await api<Character>(`/api/me/characters/${character.id}`, {
+      const updated = await api<Character>(`${basePrefix}/${character.id}`, {
         method: "PUT",
         body: JSON.stringify({ name, concept, backstory, notes }),
       });
@@ -534,7 +536,7 @@ export function CharacterScreen({
     }
 
     try {
-      const res = await api<{ character: Character }>("/api/me/characters", {
+      const res = await api<{ character: Character }>(basePrefix, {
         method: "POST",
         body: JSON.stringify({
           name: name || "",
@@ -547,7 +549,7 @@ export function CharacterScreen({
       const created = res.character;
 
       if (selectedSystem === "candela_obscura") {
-        await api(`/api/me/characters/${created.id}/systems/candela_obscura`, {
+        await api(`${basePrefix}/${created.id}/systems/candela_obscura`, {
           method: "POST",
           body: JSON.stringify(candelaPayload()),
         });
@@ -586,7 +588,7 @@ export function CharacterScreen({
         }
 
         const method = candelaAlreadyExists ? "PUT" : "POST";
-        await api(`/api/me/characters/${character.id}/systems/candela_obscura`, {
+        await api(`${basePrefix}/${character.id}/systems/candela_obscura`, {
           method,
           body: JSON.stringify(candelaPayload()),
         });
@@ -596,7 +598,7 @@ export function CharacterScreen({
 
 
       } else {
-        await api(`/api/me/characters/${character.id}/systems/${selectedSystem}`, {
+          await api(`${basePrefix}/${character.id}/systems/${selectedSystem}`, {
           method: "POST",
           body: JSON.stringify({}),
         });
@@ -733,9 +735,9 @@ export function CharacterScreen({
           </section>
         ) : null}
       </div>
-
       <ConfirmDialog
         open={confirmOpen}
+
         title="Sair sem salvar?"
         message="Há alterações não salvas. Se sair agora, elas serão perdidas."
         confirmText="Sair"

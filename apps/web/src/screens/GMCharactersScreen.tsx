@@ -26,6 +26,32 @@ export function GMCharactersScreen({
 
   const [chars, setChars] = useState<GMCharacter[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  async function deleteCharacter(c: GMCharacter) {
+    const ok = window.confirm(`Apagar personagem "${c.name}"?\n\nEssa ação não pode ser desfeita.`);
+    if (!ok) return;
+
+    setErr(null);
+    setDeletingId(c.id);
+    try {
+      await api(`/api/gm/characters/${c.id}`, { method: "DELETE" });
+      setChars((prev) => prev.filter((x) => x.id !== c.id));
+      setActiveId((prev) => (prev === c.id ? null : prev));
+    } catch (e: any) {
+      const msg =
+        typeof e?.message === "string"
+          ? e.message
+          : typeof e === "string"
+            ? e
+            : typeof e?.body?.detail === "string"
+              ? e.body.detail
+              : "Falha ao apagar personagem";
+      setErr(msg);
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const active = useMemo(
     () => chars.find((c) => c.id === activeId) || null,
@@ -109,7 +135,7 @@ export function GMCharactersScreen({
             </div>
           )}
 
-          <div className="select-footer">
+          <div className="select-footer" style={{ display: "flex", gap: 10, justifyContent: "space-between" }}>
             <button className="ui-btn ui-btn--ghost" onClick={onBack} type="button">
               Voltar
             </button>
@@ -168,16 +194,28 @@ export function GMCharactersScreen({
                   <div className="book-value">{systemsLabel(active.systems || [active.system])}</div>
                 </div>
 
-                <div className="select-actions">
+                <div className="select-actions" style={{ display: "flex", gap: 10 }}>
                   <button
                     className="ui-btn ui-btn--ghost"
                     onClick={() => active && onEdit?.(active)}
                     disabled={!active || !onEdit}
                     title={!onEdit ? "Edição não disponível" : ""}
+                    type="button"
                   >
                     Editar
                   </button>
+
+                  <button
+                    className="ui-btn ui-btn--ghost"
+                    onClick={() => active && deleteCharacter(active)}
+                    disabled={!active || deletingId === active?.id}
+                    type="button"
+                    title={!active ? "Selecione um personagem" : ""}
+                  >
+                    {deletingId === active?.id ? "Apagando..." : "Apagar"}
+                  </button>
                 </div>
+
               </div>
             </div>
           )}

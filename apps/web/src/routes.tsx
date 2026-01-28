@@ -51,10 +51,13 @@ export function Routes() {
     systems?: string[];
   }>(null);
 
+  const [editingFromGM, setEditingFromGM] = useState(false);
   const view: View = useMemo(() => {
     if (loading) return "LOGIN";
     if (!user) return "LOGIN";
     if (user.must_reset_password) return "RESET";
+    if (subView === "CREATE_CHARACTER" || subView === "EDIT_CHARACTER") return subView;
+
     if (effectiveRole === "GM") return gmSubView;
     return subView;
   }, [user, loading, subView, effectiveRole, gmSubView]);
@@ -82,16 +85,34 @@ export function Routes() {
       <GMCharactersScreen
         onBack={() => setGmSubView("GM_HOME")}
         onEdit={(c) => {
+          setEditingFromGM(true);
           setEditingCharacter(c);
           setSubView("EDIT_CHARACTER");
         }}
         onCreate={() => {
+          setEditingFromGM(true);
           setSubView("CREATE_CHARACTER");
         }}
       />
     ) : view === "CREATE_CHARACTER" ? (
       <CreateCharacterScreen
-        onBack={() => setSubView("LOBBY")}
+        scope={editingFromGM ? "GM" : "ME"}
+        onBack={() => {
+          if (editingFromGM) {
+            setSubView("LOBBY");
+            setGmSubView("GM_CHARACTERS");
+            setEditingFromGM(false);
+            return;
+          }
+          setSubView("LOBBY");
+        }}
+        onCreated={() => {
+          if (editingFromGM) {
+            setSubView("LOBBY");
+            setGmSubView("GM_CHARACTERS");
+            setEditingFromGM(false);
+          }
+        }}
       />
     ) : view === "SELECT_CHARACTER" ? (
       <SelectCharacterScreen
@@ -111,12 +132,20 @@ export function Routes() {
       />
     ) : view === "EDIT_CHARACTER" ? (
       <EditCharacterScreen
+        scope={editingFromGM ? "GM" : "ME"}
         character={editingCharacter}
         onBack={() => {
           setEditingCharacter(null);
+          if (editingFromGM) {
+            setSubView("LOBBY");
+            setGmSubView("GM_CHARACTERS");
+            setEditingFromGM(false);
+            return;
+          }
           setSubView("SELECT_CHARACTER");
         }}
       />
+
     ) : (
       <>
         {selectedCharacter && (
