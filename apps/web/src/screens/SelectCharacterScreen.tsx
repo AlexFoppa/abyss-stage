@@ -73,6 +73,34 @@ export function SelectCharacterScreen({
     return list.map(systemLabel).join(", ");
   }
 
+  function portraitSrc(c: any): string {
+  const fallback = "/assets/jogador_default.png";
+
+  const direct =
+    c?.portrait_url ??
+    c?.portraitUrl ??
+    c?.portrait ??
+    c?.image_url ??
+    c?.imageUrl ??
+    c?.image ??
+    null;
+
+  const fromImages =
+    Array.isArray(c?.images) && c.images.length
+      ? (c.images[0]?.url ?? c.images[0]?.path ?? c.images[0]?.filename ?? c.images[0])
+      : null;
+
+  const raw = (typeof direct === "string" && direct.trim()) ? direct.trim()
+           : (typeof fromImages === "string" && fromImages.trim()) ? fromImages.trim()
+           : null;
+
+  if (!raw) return fallback;
+  if (/^https?:\/\//.test(raw) || raw.startsWith("/")) return raw;
+  if (c?.id) return `/uploads/characters/${c.id}/${raw}`;
+
+  return fallback;
+}
+
   return (
     <div className="select-scene">
       <div className="select-grid">
@@ -121,31 +149,35 @@ export function SelectCharacterScreen({
           ) : (
             <div className="book">
               <div className="book-page">
-                <img className="book-portrait" src="/assets/jogador_default.png" alt="" />
-
-                <div className="book-row">
-                  <div className="book-label">Nome</div>
-                  <div className="book-value">{active.name || "—"}</div>
+                <div className="book-portrait">
+                  <img className="book-portrait__img" src={portraitSrc(active)} alt="" />
                 </div>
 
-                <div className="book-row">
-                  <div className="book-label">Conceito</div>
-                  <div className="book-value">{active.concept || "—"}</div>
-                </div>
+                <div className="book-content">
+                  <div className="book-row">
+                    <div className="book-label">Nome</div>
+                    <div className="book-value">{active.name || "—"}</div>
+                  </div>
 
-                <div className="book-row">
-                  <div className="book-label">Backstory</div>
-                  <div className="book-value book-multiline">{active.backstory || "—"}</div>
-                </div>
+                  <div className="book-row">
+                    <div className="book-label">Conceito</div>
+                    <div className="book-value">{active.concept || "—"}</div>
+                  </div>
 
-                <div className="book-row">
-                  <div className="book-label">Notas</div>
-                  <div className="book-value book-multiline">{active.notes || "—"}</div>
-                </div>
+                  <div className="book-row">
+                    <div className="book-label">Backstory</div>
+                    <div className="book-value book-multiline">{active.backstory || "—"}</div>
+                  </div>
 
-                <div className="book-row">
-                  <div className="book-label">Sistemas</div>
-                  <div className="book-value">{systemsLabel(active.systems || [active.system])}</div>
+                  <div className="book-row">
+                    <div className="book-label">Notas</div>
+                    <div className="book-value book-multiline">{active.notes || "—"}</div>
+                  </div>
+
+                  <div className="book-row">
+                    <div className="book-label">Sistemas</div>
+                    <div className="book-value">{systemsLabel(active.systems || [active.system])}</div>
+                  </div>
                 </div>
 
                 <div className="select-actions">
@@ -156,6 +188,7 @@ export function SelectCharacterScreen({
                       onBack();
                     }}
                     disabled={!active}
+                    type="button"
                   >
                     Selecionar
                   </button>
@@ -165,6 +198,7 @@ export function SelectCharacterScreen({
                     onClick={() => active && onEdit?.(active)}
                     disabled={!active || !onEdit}
                     title={!onEdit ? "Edição não disponível" : ""}
+                    type="button"
                   >
                     Editar
                   </button>

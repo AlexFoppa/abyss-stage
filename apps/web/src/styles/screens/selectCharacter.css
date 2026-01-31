@@ -92,13 +92,6 @@
   display:grid;
 }
 
-.book-page{
-  padding:14px;
-  border-radius:14px;
-  background: rgba(0,0,0,.18);
-  border: 1px solid rgba(255,255,255,.10);
-}
-
 .book-row{
   display:grid;
   gap:6px;
@@ -119,13 +112,16 @@
 }
 
 .book-multiline{
-  min-height:52px;
+  min-height:0px;
 }
 
 .select-actions{
-  margin-top:14px;
-  display:flex;
-  gap:10px;
+  grid-column: 1 / -1;  /* ocupa texto + retrato */
+  display: flex;
+  gap: 12px;
+  flex-wrap: nowrap;
+  width: 100%;
+  margin-top: 16px;
 }
 
 .select-actions .ui-btn{
@@ -138,39 +134,100 @@
   margin-top: 14px;
 }
 
-.book-page{
-  position: relative; /* necessário pro retrato absoluto */
-  padding:14px;
-  border-radius:14px;
-  background: rgba(0,0,0,.18);
-  border: 1px solid rgba(255,255,255,.10);
+/* Book layout (sem hacks de padding-right) */
+.book{
+  width: 100%;
+  display: grid;
 }
 
-.book-portrait{
-  position:absolute;
-  top: 14px;
-  right: 14px;
-  width: 180px;
-  height: 220px;
-  border-radius: 12px;
-  border: 1px solid rgba(215,178,92,.35);
-  object-fit: cover;
-  object-position: 50% 0%; /* “da metade do corpo pra cima” */
-  filter: grayscale(1) contrast(1.15) brightness(.95);
-  opacity: .92;
-  pointer-events:none;
+.book-page{
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(0,0,0,.18);
+  border: 1px solid rgba(255,255,255,.10);
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  grid-template-rows: auto auto;
+  column-gap: 16px;
+  row-gap: 14px;
+  align-items: start;
+}
+
+.book-content{
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  gap: 12px; /* espaçamento uniforme entre blocos */
+  min-width: 0;
 }
 
 .book-row{
-  padding-right: 220px; /* reserva espaço pro retrato */
+  display: grid;
+  gap: 6px;
+  margin: 0; /* evita “saltos” de spacing */
 }
+
+.book-portrait{
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  align-self: start;
+
+  width: 180px;
+  height: 240px;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid rgba(215,178,92,.35);
+  pointer-events: none;
+}
+
+.book-portrait__img{
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: 50% 0%;
+  filter: grayscale(1) contrast(1.15) brightness(.95);
+  opacity: .92;
+}
+
+/* Actions span full width: botão da direita encosta na borda do card */
+.select-actions{
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin-top: 0;
+}
+
+.select-actions .ui-btn{
+  flex: 1;
+  width: 0; /* força dividir igualmente e encostar nas extremidades */
+}
+
 @media (max-width: 980px){
-  .book-row{ padding-right: 0; }
+  .book-page{
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+  }
+
   .book-portrait{
-    position: static;
+    grid-column: 1;
+    grid-row: 1;
     width: 100%;
     height: 220px;
-    margin-bottom: 12px;
-    display:block;
+    justify-self: stretch;
+  }
+
+  .book-content{
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .select-actions{
+    grid-column: 1;
+    grid-row: 3;
   }
 }
