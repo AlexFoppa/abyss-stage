@@ -1,17 +1,23 @@
 # apps/api/backend/routers/characters.py
 from __future__ import annotations
+import os
+import uuid
+import hashlib
+import time
 
-from typing import Optional
-
-from fastapi import APIRouter, Body, Depends, HTTPException
+from pathlib import Path
+from fastapi import UploadFile, File
+from fastapi import APIRouter, Body, Depends, HTTPException, File, UploadFile, Form
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 from sqlalchemy import text
 
+from typing import Optional
 from apps.api.backend.db import get_session
 from apps.api.backend.routers.auth import get_current_user, require_gm
 from apps.api.backend.models.user import User, Role
 from apps.api.backend.routers.candela_bootstrap import bootstrap_candela
+from typing import Optional
 
 router = APIRouter(prefix="/me/characters", tags=["characters"])
 gm_router = APIRouter(prefix="/gm/characters", tags=["gm"])
@@ -30,9 +36,18 @@ class CharacterOut(BaseModel):
     backstory: str
     notes: str
     systems: list[str] = Field(default_factory=list)     # sistemas ativos (ex: ["simplificado","candela_obscura"])
+    default_image_url: Optional[str] = None
+    default_image_rev: Optional[str] = None
+
+
 
 class GMCharacterOut(CharacterOut):
     owner_email: str
+
+class CharacterImageOut(BaseModel):
+    slot: int
+    storage_key: str
+    url: str
 
 class CandelaActionIn(BaseModel):
     action_key: str
@@ -146,7 +161,6 @@ def _candela_exists(session: Session, character_id: int) -> bool:
 
 
 def _candela_clear(session: Session, character_id: int) -> None:
-    # ordem segura por FKs (children -> parent)
     session.exec(
         text("DELETE FROM candela_character_action WHERE character_id=:cid"),
         params={"cid": character_id},
@@ -168,6 +182,364 @@ def _candela_clear(session: Session, character_id: int) -> None:
         params={"cid": character_id},
     )
 
+def _uploads_root() -> Path:
+    p = Path("uploads")
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+def _img_url(storage_key: str) -> str:
+    # storage_key é caminho relativo dentro de /uploads
+    storage_key = (storage_key or "").lstrip("/")
+    return f"/uploads/{storage_key}"
+
+def _sha256_bytes(data: bytes) -> str:
+    h = hashlib.sha256()
+    h.update(data)
+    return h.hexdigest()
+
+
+def _gm_require_character_exists(session: Session, character_id: int) -> None:
+    row = session.exec(
+        text(
+            """
+            SELECT 1
+            FROM character
+            WHERE id = :cid AND kind='PC'
+            """
+        ),
+        params={"cid": character_id},
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+
+def _ensure_upload_dir(character_id: int) -> str:
+    # guarda em ./uploads/characters/<id>/
+    base = os.path.join("uploads", "characters", str(character_id))
+    os.makedirs(base, exist_ok=True)
+    return base
+
+
+def _save_upload(character_id: int, up: UploadFile) -> tuple[str, str, int, str]:
+    raw = up.file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    sha = hashlib.sha256(raw).hexdigest()
+    mime = (up.content_type or "").strip() or None
+
+    ext = ""
+    if up.filename and "." in up.filename:
+        ext = "." + up.filename.split(".")[-1].lower().strip()
+        if len(ext) > 10:
+            ext = ""
+
+    fname = f"{uuid.uuid4().hex}{ext}"
+    folder = _ensure_upload_dir(character_id)
+    abs_path = os.path.join(folder, fname)
+
+    with open(abs_path, "wb") as f:
+        f.write(raw)
+
+    # storage_key é relativo ao mount /uploads
+    storage_key = f"characters/{character_id}/{fname}"
+    return storage_key, (mime or ""), len(raw), sha
+
+
+@gm_router.get("/{character_id}/images")
+def gm_list_character_images(
+    character_id: int,
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    _gm_require_character_exists(session, character_id)
+
+    rows = session.exec(
+        text(
+            """
+            SELECT slot, storage_key, mime, size_bytes, sha256, created_at
+            FROM character_image
+            WHERE character_id=:cid
+            ORDER BY slot ASC
+            """
+        ),
+        params={"cid": character_id},
+    ).all()
+
+    return [
+        {
+            "slot": int(r[0]),
+            "storage_key": r[1],
+            "mime": r[2],
+            "size_bytes": r[3],
+            "sha256": r[4],
+            "created_at": r[5],
+        }
+        for r in rows
+    ]
+
+
+@gm_router.post("/{character_id}/images", status_code=201)
+def gm_upload_character_image(
+    character_id: int,
+    file: UploadFile = File(...),
+    slot: Optional[int] = Form(None),  # se None, escolhe 1º livre (0..9)
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    _gm_require_character_exists(session, character_id)
+
+    if slot is not None and (slot < 0 or slot > 9):
+        raise HTTPException(status_code=400, detail="Invalid slot (0..9)")
+
+    # escolhe slot se não veio
+    if slot is None:
+        used = session.exec(
+            text("SELECT slot FROM character_image WHERE character_id=:cid"),
+            params={"cid": character_id},
+        ).all()
+        used_set = {int(r[0]) for r in used}
+        free = [s for s in range(10) if s not in used_set]
+        if not free:
+            raise HTTPException(status_code=409, detail="No free slots (0..9)")
+        # se ainda não existe default, prioriza 0; senão usa o menor livre >=1
+        if 0 in free:
+            slot = 0
+        else:
+            slot = min(free)
+
+    storage_key, mime, size_bytes, sha = _save_upload(character_id, file)
+
+    try:
+        session.exec(text("BEGIN"))
+
+        # substitui o slot (DELETE+INSERT) para evitar conflito de PK
+        session.exec(
+            text("DELETE FROM character_image WHERE character_id=:cid AND slot=:slot"),
+            params={"cid": character_id, "slot": int(slot)},
+        )
+        session.exec(
+            text(
+                """
+                INSERT INTO character_image (character_id, slot, storage_key, mime, size_bytes, sha256)
+                VALUES (:cid, :slot, :sk, :mime, :sz, :sha)
+                """
+            ),
+            params={
+                "cid": character_id,
+                "slot": int(slot),
+                "sk": storage_key,
+                "mime": mime,
+                "sz": int(size_bytes),
+                "sha": sha,
+            },
+        )
+
+        session.exec(text("COMMIT"))
+    except Exception as e:
+        session.exec(text("ROLLBACK"))
+        raise HTTPException(status_code=500, detail=f"Upload image failed: {e}")
+
+    return {"slot": int(slot), "storage_key": storage_key}
+
+
+@gm_router.put("/{character_id}/images/default")
+def gm_set_default_character_image(
+    character_id: int,
+    payload: dict = Body(...),
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    _gm_require_character_exists(session, character_id)
+
+    slot = payload.get("slot", None)
+    if not isinstance(slot, int) or slot < 0 or slot > 9:
+        raise HTTPException(status_code=400, detail="slot must be int (0..9)")
+
+    if slot == 0:
+        return {"ok": True}
+
+    # precisa existir imagem no slot alvo
+    row_src = session.exec(
+        text(
+            """
+            SELECT storage_key, mime, size_bytes, sha256, created_at
+            FROM character_image
+            WHERE character_id=:cid AND slot=:slot
+            """
+        ),
+        params={"cid": character_id, "slot": slot},
+    ).first()
+    if not row_src:
+        raise HTTPException(status_code=404, detail="Image not found for slot")
+
+    row_dst = session.exec(
+        text(
+            """
+            SELECT storage_key, mime, size_bytes, sha256, created_at
+            FROM character_image
+            WHERE character_id=:cid AND slot=0
+            """
+        ),
+        params={"cid": character_id},
+    ).first()
+
+    try:
+        session.exec(text("BEGIN"))
+
+        # remove os dois slots e reinsere invertido (slot 0 vira default)
+        session.exec(
+            text("DELETE FROM character_image WHERE character_id=:cid AND slot IN (0, :slot)"),
+            params={"cid": character_id, "slot": slot},
+        )
+
+        # insere novo default (slot 0)
+        session.exec(
+            text(
+                """
+                INSERT INTO character_image (character_id, slot, storage_key, mime, size_bytes, sha256, created_at)
+                VALUES (:cid, 0, :sk, :mime, :sz, :sha, :created)
+                """
+            ),
+            params={
+                "cid": character_id,
+                "sk": row_src[0],
+                "mime": row_src[1],
+                "sz": row_src[2],
+                "sha": row_src[3],
+                "created": row_src[4],
+            },
+        )
+
+        # se tinha default antes, ele vai pro slot antigo
+        if row_dst:
+            session.exec(
+                text(
+                    """
+                    INSERT INTO character_image (character_id, slot, storage_key, mime, size_bytes, sha256, created_at)
+                    VALUES (:cid, :slot, :sk, :mime, :sz, :sha, :created)
+                    """
+                ),
+                params={
+                    "cid": character_id,
+                    "slot": slot,
+                    "sk": row_dst[0],
+                    "mime": row_dst[1],
+                    "sz": row_dst[2],
+                    "sha": row_dst[3],
+                    "created": row_dst[4],
+                },
+            )
+
+        session.exec(text("COMMIT"))
+    except Exception as e:
+        session.exec(text("ROLLBACK"))
+        raise HTTPException(status_code=500, detail=f"Set default failed: {e}")
+
+    return {"ok": True}
+
+
+@gm_router.delete("/{character_id}/images/{slot}")
+def gm_delete_character_image(
+    character_id: int,
+    slot: int,
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    _gm_require_character_exists(session, character_id)
+
+    if slot < 0 or slot > 9:
+        raise HTTPException(status_code=400, detail="Invalid slot (0..9)")
+
+    row = session.exec(
+        text(
+            """
+            SELECT storage_key
+            FROM character_image
+            WHERE character_id=:cid AND slot=:slot
+            """
+        ),
+        params={"cid": character_id, "slot": slot},
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    storage_key = row[0]
+    abs_path = os.path.join("uploads", storage_key)
+
+    try:
+        session.exec(text("BEGIN"))
+
+        session.exec(
+            text("DELETE FROM character_image WHERE character_id=:cid AND slot=:slot"),
+            params={"cid": character_id, "slot": slot},
+        )
+
+        # se apagou o default e existe outra imagem, promove a menor slot para 0
+        if slot == 0:
+            nxt = session.exec(
+                text(
+                    """
+                    SELECT slot
+                    FROM character_image
+                    WHERE character_id=:cid
+                    ORDER BY slot ASC
+                    LIMIT 1
+                    """
+                ),
+                params={"cid": character_id},
+            ).first()
+            if nxt:
+                session.exec(text("COMMIT"))
+                # promove fora da txn antiga, usando o endpoint lógico
+                # (swap seguro via gm_set_default_character_image)
+                gm_set_default_character_image(character_id, {"slot": int(nxt[0])}, gm, session)  # type: ignore
+                return {"ok": True}
+
+        session.exec(text("COMMIT"))
+    except Exception as e:
+        session.exec(text("ROLLBACK"))
+        raise HTTPException(status_code=500, detail=f"Delete image failed: {e}")
+
+    try:
+        if os.path.exists(abs_path):
+            os.remove(abs_path)
+    except Exception:
+        pass
+
+    return {"ok": True}
+
+def _load_default_image_map(session: Session, character_ids: list[int]) -> dict[int, tuple[str, str]]:
+    """
+    Retorna: { character_id: (url, rev) } para slot 0.
+    rev usa created_at (string do sqlite) para cache-busting no front.
+    """
+    ids = [int(x) for x in (character_ids or []) if isinstance(x, int) or str(x).isdigit()]
+    if not ids:
+        return {}
+
+    ph = ",".join([f":id{i}" for i in range(len(ids))])
+    params = {f"id{i}": ids[i] for i in range(len(ids))}
+
+    rows = session.exec(
+        text(
+            f"""
+            SELECT character_id, storage_key, created_at
+            FROM character_image
+            WHERE slot=0 AND character_id IN ({ph})
+            """
+        ),
+        params=params,
+    ).all()
+
+    out: dict[int, tuple[str, str]] = {}
+    for r in rows:
+        cid = int(r[0])
+        sk = str(r[1] or "")
+        created = str(r[2] or "")
+        if sk:
+            out[cid] = (_img_url(sk), created)
+    return out
 
 @router.get("")
 def list_my_characters(
@@ -188,6 +560,7 @@ def list_my_characters(
 
     ids = [r[0] for r in rows]
     sys_map = _load_systems_map(session, ids)
+    img_map = _load_default_image_map(session, ids)
 
     out: list[CharacterOut] = []
     for r in rows:
@@ -225,6 +598,7 @@ def list_all_characters(
 
     ids = [r[0] for r in rows]
     sys_map = _load_systems_map(session, ids)
+    img_map = _load_default_image_map(session, ids)
 
     out: list[GMCharacterOut] = []
     for r in rows:

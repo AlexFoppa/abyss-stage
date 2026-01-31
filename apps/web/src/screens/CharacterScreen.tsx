@@ -92,7 +92,7 @@ function emptyCandelaDraft(): CandelaDraft {
 }
 
 export function CharacterScreen({
-  scope,
+  scope = "ME",
   mode,
   character,
   onBack,
@@ -114,9 +114,32 @@ export function CharacterScreen({
   const [backstory, setBackstory] = useState("");
   const [notes, setNotes] = useState("");
 
-  // mesma UX em create/edit: select sempre existe
-  const [selectedSystem, setSelectedSystem] = useState<string>("");
+  type CharacterImage = { slot: number; storage_key: string };
+  const [images, setImages] = useState<CharacterImage[]>([]);
+  const [imgIndex, setImgIndex] = useState(0); // agora representa SLOT visível (0..9)
+  const [imgBusy, setImgBusy] = useState(false);
+  const [imgRevision, setImgRevision] = useState(0); // força reload da URL após refresh
 
+  const SLOT_MIN = 0;
+
+  const SLOT_MAX = 9;
+
+  const visibleSlot = useMemo(() => clampInt(imgIndex, SLOT_MIN, SLOT_MAX), [imgIndex]);
+
+  const imageBySlot = useMemo(() => {
+    const m = new Map<number, CharacterImage>();
+    for (const im of images) m.set(im.slot, im);
+    return m;
+  }, [images]);
+
+  const visibleImage = imageBySlot.get(visibleSlot) || null;
+
+  const visibleImageUrl = useMemo(() => {
+    const sk = (visibleImage?.storage_key || "").replace(/^\/+/, "");
+    return sk ? `/api/uploads/${sk}?v=${imgRevision}` : "";
+  }, [visibleImage, imgRevision]);
+
+  const [selectedSystem, setSelectedSystem] = useState<string>("");
   const [roles, setRoles] = useState<Role[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [loadingSystemCatalog, setLoadingSystemCatalog] = useState(false);
@@ -163,6 +186,34 @@ export function CharacterScreen({
   const [savedSnapshot, setSavedSnapshot] = useState(snapshot);
   const isDirty = snapshot !== savedSnapshot;
  
+  async function refreshImages() {
+    if (scope !== "GM") return;
+    if (mode !== "edit") return;
+    if (!character?.id) return;
+
+    try {
+      const rows = await api<CharacterImage[]>(`${basePrefix}/${character.id}/images`);
+      const norm = (rows || [])
+        .filter((r) => typeof (r as any)?.slot === "number" && typeof (r as any)?.storage_key === "string")
+        .sort((a, b) => a.slot - b.slot);
+
+      setImages(norm);
+      setImgIndex((prev) => clampInt(prev, 0, 9));
+      setImgRevision((r) => r + 1);
+
+    } catch (e: any) {
+      // no GM, erros de imagem não devem bloquear a edição
+    }
+  }
+
+  useEffect(() => {
+    if (scope !== "GM") return;
+    if (mode !== "edit") return;
+    if (!character?.id) return;
+    refreshImages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, mode, character?.id]);
+
   useEffect(() => {
     if (mode !== "edit") return;
     if (!character?.id) return;
@@ -624,7 +675,15 @@ export function CharacterScreen({
 
   return (
     <div className="create-scene">
-      <div className={`create-grid ${selectedSystem ? "" : "create-grid--single"}`}>
+      <div
+        className={`create-grid ${
+          selectedSystem
+            ? ""
+            : mode === "edit" && scope === "GM"
+              ? "create-grid--gm"
+              : "create-grid--single"
+        }`}
+      >
         <section className="ui-card create-col create-col--base create-panel">
           <h2 className="create-title">{title}</h2>
 
@@ -675,6 +734,7 @@ export function CharacterScreen({
 
           <div className="ui-actions create-actions">
             <button
+              type="button"
               className="ui-btn"
               onClick={
                 mode === "create"
@@ -692,7 +752,7 @@ export function CharacterScreen({
               Salvar
             </button>
 
-            <button className="ui-btn ui-btn--ghost" onClick={requestBack}>
+            <button type="button" className="ui-btn ui-btn--ghost" onClick={requestBack}>
               Voltar
             </button>
           </div>
@@ -723,17 +783,91 @@ export function CharacterScreen({
           </section>
         ) : null}
 
-        {selectedSystem ? (
+        {selectedSystem || (scope === "GM" && mode === "edit") ? (
           <section className="create-col create-col--preview">
+
             <div className="mirror">
-              {specialtyImgSrc ? (
-                <img className="portrait" src={specialtyImgSrc} alt="Especialidade" />
-              ) : (
-                <div className="mirror-empty" />
-              )}
+              {(() => {
+                if (scope === "GM") {
+                  if (visibleImageUrl) return <img className="portrait" src={visibleImageUrl} alt="Personagem" />;
+                  return <div className="mirror-empty" />;
+                }
+
+                // PLAYER: vê apenas a imagem do sistema (Candela)
+                const canShowSystemPortrait = Boolean(specialtyImgSrc) && selectedSystem === "candela_obscura";
+                if (canShowSystemPortrait) {
+                  return <img className="portrait" src={specialtyImgSrc} alt="Personagem" />;
+                }
+                return <div className="mirror-empty" />;
+              })()}
             </div>
+
+            {/* GM: controles abaixo da imagem */}
+            {scope === "GM" ? <div className="mirror-controls">
+
+              <div className="mirror-controls__nav">
+                <button
+                  className="ui-btn ui-btn--ghost"
+                  type="button"
+                  onClick={() => setImgIndex((i) => clampInt(i - 1, 0, 9))}
+                  disabled={imgBusy || (scope !== "GM") || visibleSlot <= 0}
+                >
+                  ←
+                </button>
+
+                <div className="mirror-controls__meta">
+                  {scope === "GM" ? (visibleSlot === 0 ? "Principal (slot 0)" : `Galeria (slot ${visibleSlot})`) : " "}
+                </div>
+
+                <button
+                  className="ui-btn ui-btn--ghost"
+                  type="button"
+                  onClick={() => setImgIndex((i) => clampInt(i + 1, 0, 9))}
+                  disabled={imgBusy || (scope !== "GM") || visibleSlot >= 9}
+                >
+                  →
+                </button>
+              </div>
+
+              {/* GM: UM botão “Adicionar/Substituir” (upload substitui o slot visível) */}
+              {scope === "GM" ? (
+                <div className="mirror-controls__actions">
+                  <label className="ui-btn ui-btn--ghost mirror-controls__file">
+                    Adicionar/Substituir
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={imgBusy || !character?.id}
+                      onChange={async (ev) => {
+                        const f = ev.target.files?.[0];
+                        ev.target.value = "";
+                        if (!f || !character?.id) return;
+
+                        const fd = new FormData();
+                        fd.append("file", f);
+                        fd.append("slot", String(visibleSlot)); // determinístico: substitui o slot visível
+
+                        setImgBusy(true);
+                        setErr(null);
+                        try {
+                          await api(`${basePrefix}/${character.id}/images`, { method: "POST", body: fd });
+                          await refreshImages();
+                        } catch (e: any) {
+                          setErr(e?.message || "Falha no upload");
+                        } finally {
+                          setImgBusy(false);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              ) : null}
+            </div> : null}
           </section>
+
+
         ) : null}
+
       </div>
       <ConfirmDialog
         open={confirmOpen}

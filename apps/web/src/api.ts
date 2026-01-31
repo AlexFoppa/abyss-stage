@@ -9,9 +9,20 @@ async function readBody(res: Response) {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const isFormData =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
+
+  const headers: Record<string, string> = { ...(init.headers as any) };
+  if (!isFormData) {
+    headers["Content-Type"] = headers["Content-Type"] || "application/json";
+  } else {
+    // Importante: não setar Content-Type aqui (o browser inclui boundary)
+    delete headers["Content-Type"];
+  }
+
   const res = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init.headers || {}) },
+    headers,
     credentials: "include",
   });
 
@@ -23,3 +34,5 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   return body as T;
 }
+
+

@@ -16,6 +16,11 @@
   grid-template-columns: minmax(420px, 520px);
 }
 
+.create-grid--gm{
+  grid-template-columns: minmax(420px, 520px) minmax(420px, 520px);
+  gap: 16px;
+}
+
 .create-col{
   min-height: 0;
   min-width: 0;
@@ -72,29 +77,41 @@
   max-height: calc(100vh - 32px);
 }
 
-
 .create-col--preview{
-  display:grid;
-  align-content:start;
+  display: grid;
+  align-content: start;
   width: 100%;
-  height: 520px; 
   justify-self: stretch;
+  padding: 16px;
+  box-sizing: border-box;
+
+  /* fundo uniforme cobrindo imagem + botões */
+  background: rgba(30, 18, 8, .28);
+  border: 1px solid rgba(210,170,80,.35);
+  border-radius: 14px;
 }
 
 .mirror{
   position: relative;
   width: min(520px, 32vw);
   height: min(520px, 32vw);
-  display:grid;
-  place-items:center;
+  display: grid;
+  place-items: center;
+
+  /* o fundo ficou no container (.create-col--preview) */
   background: transparent;
+  border: none;
+  border-radius: 14px;
+
+  /* evita a imagem “vazar” e cobrir botões */
+  overflow: hidden;
 }
 
 .portrait{
   position: absolute;
   left: 50%;
-  top: 85%;
-  transform: translate(-0%, -50%) scale(1.25);
+  top: 50%;
+  transform: translate(-50%, -50%);
   transform-origin: center;
   max-width: 95%;
   max-height: 95%;
@@ -103,12 +120,68 @@
   object-fit: contain;
   background: transparent;
   filter: drop-shadow(0 12px 28px rgba(0,0,0,.55));
+
+  /* não intercepta clique */
+  pointer-events: none;
 }
 
 .mirror-empty{
   height: 1px;
   width: 1px;
 }
+
+.mirror-controls__nav{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+.mirror-controls__nav .ui-btn{
+  width: auto;
+  min-width: 44px;
+}
+
+.mirror-controls__meta{
+  font-size: 12px;
+  opacity: 0.8;
+  min-width: 140px;
+  text-align: center;
+}
+
+.mirror-controls__actions{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mirror-controls{
+  width: min(520px, 32vw);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+
+  position: relative;
+  z-index: 2;
+}
+
+.mirror-controls__file{
+  position: relative;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.mirror-controls__file input[type="file"]{
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 3;
+}
+
 
 @media (max-width: 980px){
   .create-grid{ grid-template-columns: 1fr; }
@@ -336,3 +409,4 @@
   opacity: 0.85;
   white-space: pre-wrap;
 }
+
