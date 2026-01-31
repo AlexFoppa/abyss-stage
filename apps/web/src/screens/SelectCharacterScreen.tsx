@@ -9,6 +9,8 @@ type Character = {
   backstory: string;
   notes: string;
   systems?: string[];
+  default_image_url?: string | null;
+  default_image_rev?: string | null;
 };
 
 export function SelectCharacterScreen({
@@ -73,33 +75,20 @@ export function SelectCharacterScreen({
     return list.map(systemLabel).join(", ");
   }
 
-  function portraitSrc(c: any): string {
-  const fallback = "/assets/jogador_default.png";
+  function portraitSrc(c: Character): string {
+    const fallback = "/assets/jogador_default.png";
 
-  const direct =
-    c?.portrait_url ??
-    c?.portraitUrl ??
-    c?.portrait ??
-    c?.image_url ??
-    c?.imageUrl ??
-    c?.image ??
-    null;
+    if (!c.default_image_url) {
+      return fallback;
+    }
 
-  const fromImages =
-    Array.isArray(c?.images) && c.images.length
-      ? (c.images[0]?.url ?? c.images[0]?.path ?? c.images[0]?.filename ?? c.images[0])
-      : null;
+    if (c.default_image_rev) {
+      return `${c.default_image_url}?rev=${encodeURIComponent(c.default_image_rev)}`;
+    }
 
-  const raw = (typeof direct === "string" && direct.trim()) ? direct.trim()
-           : (typeof fromImages === "string" && fromImages.trim()) ? fromImages.trim()
-           : null;
+    return c.default_image_url;
+  }
 
-  if (!raw) return fallback;
-  if (/^https?:\/\//.test(raw) || raw.startsWith("/")) return raw;
-  if (c?.id) return `/uploads/characters/${c.id}/${raw}`;
-
-  return fallback;
-}
 
   return (
     <div className="select-scene">

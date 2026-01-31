@@ -11,7 +11,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, File, UploadFile, F
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 from sqlalchemy import text
-
+from urllib.parse import quote
 from typing import Optional
 from apps.api.backend.db import get_session
 from apps.api.backend.routers.auth import get_current_user, require_gm
@@ -187,10 +187,12 @@ def _uploads_root() -> Path:
     p.mkdir(parents=True, exist_ok=True)
     return p
 
-def _img_url(storage_key: str) -> str:
-    # storage_key é caminho relativo dentro de /uploads
+def _img_url(storage_key: str, rev: str | None = None) -> str:
     storage_key = (storage_key or "").lstrip("/")
-    return f"/uploads/{storage_key}"
+    url = f"/api/uploads/{storage_key}"
+    if rev:
+        url += f"?v={quote(rev)}"
+    return url
 
 def _sha256_bytes(data: bytes) -> str:
     h = hashlib.sha256()
@@ -538,7 +540,7 @@ def _load_default_image_map(session: Session, character_ids: list[int]) -> dict[
         sk = str(r[1] or "")
         created = str(r[2] or "")
         if sk:
-            out[cid] = (_img_url(sk), created)
+            out[cid] = (_img_url(sk, created), created)
     return out
 
 @router.get("")
@@ -566,6 +568,8 @@ def list_my_characters(
     for r in rows:
         cid = r[0]
         base_system = (r[3] or "simplificado").strip() or "simplificado"
+        img = img_map.get(cid)
+
         out.append(
             CharacterOut(
                 id=cid,
@@ -575,6 +579,8 @@ def list_my_characters(
                 backstory=r[4],
                 notes=r[5],
                 systems=(sys_map.get(cid) or [base_system]),
+                default_image_url=img[0] if img else None,
+                default_image_rev=img[1] if img else None,
             )
         )
     return out
@@ -604,6 +610,7 @@ def list_all_characters(
     for r in rows:
         cid = r[0]
         base_system = (r[3] or "simplificado").strip() or "simplificado"
+        img = img_map.get(cid)
         out.append(
             GMCharacterOut(
                 id=cid,
@@ -614,6 +621,8 @@ def list_all_characters(
                 notes=r[5],
                 systems=(sys_map.get(cid) or [base_system]),
                 owner_email=r[6],
+                default_image_url=img[0] if img else None,
+                default_image_rev=img[1] if img else None,
             )
         )
     return out
