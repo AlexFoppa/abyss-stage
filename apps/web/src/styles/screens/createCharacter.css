@@ -84,11 +84,14 @@
   justify-self: stretch;
   padding: 16px;
   box-sizing: border-box;
+  background: transparent;
+  border: 0;
+  border-radius: 14px;
+}
 
-  /* fundo uniforme cobrindo imagem + botões */
+.create-col--preview--gm{
   background: rgba(30, 18, 8, .28);
   border: 1px solid rgba(210,170,80,.35);
-  border-radius: 14px;
 }
 
 .mirror{

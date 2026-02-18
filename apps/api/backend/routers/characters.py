@@ -543,6 +543,50 @@ def _load_default_image_map(session: Session, character_ids: list[int]) -> dict[
             out[cid] = (_img_url(sk, created), created)
     return out
 
+@router.get("/{character_id}/images")
+def list_my_character_images(
+    character_id: int,
+    user: User = Depends(_require_player),
+    session: Session = Depends(get_session),
+):
+    # valida dono
+    row = session.exec(
+        text(
+            """
+            SELECT 1
+            FROM character
+            WHERE id = :cid AND kind='PC' AND owner_user_id = :uid
+            """
+        ),
+        params={"cid": character_id, "uid": user.id},
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    rows = session.exec(
+        text(
+            """
+            SELECT slot, storage_key, mime, size_bytes, sha256, created_at
+            FROM character_image
+            WHERE character_id=:cid
+            ORDER BY slot ASC
+            """
+        ),
+        params={"cid": character_id},
+    ).all()
+
+    return [
+        {
+            "slot": int(r[0]),
+            "storage_key": r[1],
+            "mime": r[2],
+            "size_bytes": r[3],
+            "sha256": r[4],
+            "created_at": r[5],
+        }
+        for r in rows
+    ]
+
 @router.get("")
 def list_my_characters(
     user: User = Depends(_require_player),

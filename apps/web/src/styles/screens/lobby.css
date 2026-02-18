@@ -1,4 +1,3 @@
-/* Lobby cabinet (theater “armário”) */
 
 .lobby-wrap{
   position:absolute;
@@ -25,9 +24,8 @@
     radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,.05), rgba(0,0,0,0) 55%),
     radial-gradient(140% 120% at 0% 30%, rgba(0,0,0,.35), transparent 55%),
     linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%),
-    linear-gradient(var(--bg-ink-2), var(--bg-ink));
+    linear-gradient(rgba(20, 17, 14, 0.92), rgba(9, 7, 5, 0.95));
 
-  /* “tampa” do vão à direita + sombra */
   box-shadow:
     0 28px 90px var(--shadow-strong);
   font-family:var(--font-display);
@@ -48,7 +46,6 @@
   overflow:hidden;
   width:100%;
 }
-
 
 .lobby-cabinet .ui-btn::before{
   content:"";
@@ -189,4 +186,3 @@
   color: var(--gold);
   text-shadow: 0 2px 14px rgba(0,0,0,.65);
 }
-

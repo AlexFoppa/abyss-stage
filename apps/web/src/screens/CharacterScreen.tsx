@@ -187,7 +187,6 @@ export function CharacterScreen({
   const isDirty = snapshot !== savedSnapshot;
  
   async function refreshImages() {
-    if (scope !== "GM") return;
     if (mode !== "edit") return;
     if (!character?.id) return;
 
@@ -207,12 +206,12 @@ export function CharacterScreen({
   }
 
   useEffect(() => {
-    if (scope !== "GM") return;
     if (mode !== "edit") return;
     if (!character?.id) return;
     refreshImages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, mode, character?.id]);
+  }, [mode, character?.id]);
+
 
   useEffect(() => {
     if (mode !== "edit") return;
@@ -784,8 +783,11 @@ export function CharacterScreen({
         ) : null}
 
         {selectedSystem || (scope === "GM" && mode === "edit") ? (
-          <section className="create-col create-col--preview">
-
+          <section
+            className={`create-col create-col--preview ${
+              scope === "GM" ? "create-col--preview--gm" : "create-col--preview--player"
+            }`}
+          >
             <div className="mirror">
               {(() => {
                 if (scope === "GM") {
@@ -803,27 +805,27 @@ export function CharacterScreen({
             </div>
 
             {/* GM: controles abaixo da imagem */}
-            {scope === "GM" ? <div className="mirror-controls">
+            <div className="mirror-controls">
 
               <div className="mirror-controls__nav">
                 <button
-                  className="ui-btn ui-btn--ghost"
+                  className="ui-btn"
                   type="button"
                   onClick={() => setImgIndex((i) => clampInt(i - 1, 0, 9))}
-                  disabled={imgBusy || (scope !== "GM") || visibleSlot <= 0}
+                  disabled={imgBusy || visibleSlot <= 0}
                 >
                   ←
                 </button>
 
                 <div className="mirror-controls__meta">
-                  {scope === "GM" ? (visibleSlot === 0 ? "Principal (slot 0)" : `Galeria (slot ${visibleSlot})`) : " "}
+                  {visibleSlot === 0 ? "Principal (slot 0)" : `Galeria (slot ${visibleSlot})`}
                 </div>
 
                 <button
-                  className="ui-btn ui-btn--ghost"
+                  className="ui-btn"
                   type="button"
                   onClick={() => setImgIndex((i) => clampInt(i + 1, 0, 9))}
-                  disabled={imgBusy || (scope !== "GM") || visibleSlot >= 9}
+                  disabled={imgBusy || visibleSlot >= 9}
                 >
                   →
                 </button>
@@ -832,7 +834,7 @@ export function CharacterScreen({
               {/* GM: UM botão “Adicionar/Substituir” (upload substitui o slot visível) */}
               {scope === "GM" ? (
                 <div className="mirror-controls__actions">
-                  <label className="ui-btn ui-btn--ghost mirror-controls__file">
+                  <label className="ui-btn mirror-controls__file">
                     Adicionar/Substituir
                     <input
                       type="file"
@@ -862,10 +864,8 @@ export function CharacterScreen({
                   </label>
                 </div>
               ) : null}
-            </div> : null}
+            </div>
           </section>
-
-
         ) : null}
 
       </div>
