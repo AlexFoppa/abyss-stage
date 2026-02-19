@@ -11,6 +11,7 @@ import { EditCharacterScreen } from "./screens/EditCharacterScreen";
 import { HomeGMScreen } from "./screens/HomeGMScreen";
 import { GMCharactersScreen } from "./screens/GMCharactersScreen";
 import { StoryListScreen } from "./screens/StoryListScreen";
+import { StoryEditorScreen } from "./screens/StoryEditorScreen";
 
 type View =
   | "LOGIN"
@@ -111,21 +112,28 @@ export function Routes() {
           }}
         />
       ) : view === "GM_STORY_EDITOR" ? (
-        <div className="lobby-wrap">
-          <div className="lobby-cabinet">
-            <p style={{ margin: "0 0 1rem", opacity: 0.9 }}>Editor de história – em construção</p>
-            <button
-              className="ui-btn ui-btn--ghost"
-              type="button"
-              onClick={() => {
-                setGmSubView("GM_STORIES");
-                setEditingStoryId(null);
-              }}
-            >
-              Voltar
-            </button>
+        editingStoryId ? (
+          <StoryEditorScreen
+            storyId={editingStoryId}
+            onBack={() => {
+              setGmSubView("GM_STORIES");
+              setEditingStoryId(null);
+            }}
+          />
+        ) : (
+          <div className="lobby-wrap">
+            <div className="lobby-cabinet">
+              <p style={{ margin: "0 0 1rem", opacity: 0.9 }}>Nenhuma história selecionada.</p>
+              <button
+                className="ui-btn ui-btn--ghost"
+                type="button"
+                onClick={() => setGmSubView("GM_STORIES")}
+              >
+                Voltar à lista
+              </button>
+            </div>
           </div>
-        </div>
+        )
       ) : view === "GM_CHARACTERS" ? (
         <GMCharactersScreen
           onBack={() => setGmSubView("GM_HOME")}

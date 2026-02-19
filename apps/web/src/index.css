@@ -6,6 +6,7 @@
 @import "./styles/screens/createCharacter.css";
 @import "./styles/screens/selectCharacter.css";
 @import "./styles/screens/gm-home.css";
+@import "./styles/screens/story-editor.css";
 
 
 html, body, #root {
