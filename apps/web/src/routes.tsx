@@ -17,6 +17,7 @@ type View =
   | "GM_HOME"
   | "GM_CHARACTERS"
   | "GM_STORIES"
+  | "GM_STORY_EDITOR"
   | "LOBBY"
   | "CREATE_CHARACTER"
   | "SELECT_CHARACTER"
@@ -35,7 +36,8 @@ export function Routes() {
     "LOBBY" | "CREATE_CHARACTER" | "SELECT_CHARACTER" | "EDIT_CHARACTER"
   >("LOBBY");
 
-  const [gmSubView, setGmSubView] = useState<"GM_HOME" | "GM_CHARACTERS" | "GM_STORIES">("GM_HOME");
+  const [gmSubView, setGmSubView] = useState<"GM_HOME" | "GM_CHARACTERS" | "GM_STORIES" | "GM_STORY_EDITOR">("GM_HOME");
+  const [editingStoryId, setEditingStoryId] = useState<string | null>(null);
   const [stageMode, setStageMode] = useState<"IDLE" | "ZOOM_IN">("IDLE");
   
   const [selectedCharacter, setSelectedCharacter] = useState<null | {
@@ -104,6 +106,22 @@ export function Routes() {
           <div className="lobby-cabinet">
             <p style={{ margin: "0 0 1rem", opacity: 0.9 }}>Roteiro – em construção</p>
             <button className="ui-btn ui-btn--ghost" type="button" onClick={() => setGmSubView("GM_HOME")}>
+              Voltar
+            </button>
+          </div>
+        </div>
+      ) : view === "GM_STORY_EDITOR" ? (
+        <div className="lobby-wrap">
+          <div className="lobby-cabinet">
+            <p style={{ margin: "0 0 1rem", opacity: 0.9 }}>Editor de história – em construção</p>
+            <button
+              className="ui-btn ui-btn--ghost"
+              type="button"
+              onClick={() => {
+                setGmSubView("GM_STORIES");
+                setEditingStoryId(null);
+              }}
+            >
               Voltar
             </button>
           </div>
