@@ -98,80 +98,106 @@
   position: relative;
   width: min(520px, 32vw);
   height: min(520px, 32vw);
-  display: grid;
-  place-items: center;
-
-  /* o fundo ficou no container (.create-col--preview) */
-  background: transparent;
-  border: none;
+  overflow: visible;
   border-radius: 14px;
-
-  /* evita a imagem “vazar” e cobrir botões */
-  overflow: hidden;
+  background: transparent;
 }
 
 .portrait{
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -50%);
-  transform-origin: center;
-  max-width: 95%;
-  max-height: 95%;
-  height: auto;
+  /* posição da imagem: translate(horizontal%, vertical%). vertical = segundo número do calc */
+  transform: translate(-30%, calc(-50% + 25%));
+  transform-origin: center center;
+  /* tamanho da imagem: aumente para zoom in, diminua para zoom out */
+  max-width: 120%;
+  max-height: 120%;
   width: auto;
+  height: auto;
   object-fit: contain;
   background: transparent;
   filter: drop-shadow(0 12px 28px rgba(0,0,0,.55));
-
-  /* não intercepta clique */
   pointer-events: none;
 }
 
 .mirror-empty{
-  height: 1px;
+  position: absolute;
+  left: 0;
+  top: 0;
   width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.mirror-controls__nav{
+.mirror-controls{
+  width: min(520px, 32vw);
+  margin-top: 0;
+  position: relative;
+  /* quem fica na frente: número maior = caixa na frente da imagem; menor = imagem na frente */
+  z-index: 10;
+}
+
+.mirror-cabinet{
+  /* distância da caixa de setas em relação ao espelho (aumente para descer a caixa) */
+  margin-top: 200px;
+  margin-left: 120px;
+  /* tamanho interno da caixa */
+  padding: 18px 16px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background:
+    radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,.05), rgba(0,0,0,0) 55%),
+    radial-gradient(140% 120% at 0% 30%, rgba(0,0,0,.35), transparent 55%),
+    linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%),
+    linear-gradient(rgba(20, 17, 14, 0.92), rgba(9, 7, 5, 0.95));
+  box-shadow: 0 28px 90px var(--shadow-strong);
+  border: 1px solid rgba(210,170,80,.25);
+  font-family: var(--font-display);
+}
+
+.mirror-cabinet .mirror-controls__nav{
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 10px;
 }
 
-.mirror-controls__nav .ui-btn{
+.mirror-cabinet .mirror-controls__nav .ui-btn{
   width: auto;
   min-width: 44px;
 }
 
+/* Cor de destaque nos botões do cabinet para sobressair ao fundo marrom */
+.mirror-cabinet .ui-btn{
+  color: var(--gold);
+}
+.mirror-cabinet .ui-btn:hover:not(:disabled){
+  color: #d4af37;
+}
+.mirror-cabinet .ui-btn:disabled{
+  color: rgba(201, 162, 77, 0.5);
+}
+
 .mirror-controls__meta{
   font-size: 12px;
-  opacity: 0.8;
+  color: var(--gold);
+  opacity: 0.9;
   min-width: 140px;
   text-align: center;
 }
 
-.mirror-controls__actions{
+.mirror-cabinet .mirror-controls__actions{
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.mirror-controls{
-  width: min(520px, 32vw);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
   margin-top: 12px;
-
-  position: relative;
-  z-index: 2;
 }
 
-.mirror-controls__file{
+.mirror-cabinet .mirror-controls__file{
   position: relative;
   overflow: hidden;
   z-index: 2;

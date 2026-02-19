@@ -804,43 +804,45 @@ export function CharacterScreen({
               })()}
             </div>
 
-            {/* GM: controles abaixo da imagem */}
+            {/* Controles logo abaixo do espelho, dentro da moldura tipo cabinet */}
             <div className="mirror-controls">
+              <div className="mirror-cabinet">
+                <div className="mirror-controls__nav">
+                  <button
+                    className="ui-btn"
+                    type="button"
+                    onClick={() => setImgIndex((i) => clampInt(i - 1, 0, 9))}
+                    disabled={imgBusy || visibleSlot <= 0}
+                    aria-label="Imagem anterior"
+                  >
+                    &#11164;
+                  </button>
 
-              <div className="mirror-controls__nav">
-                <button
-                  className="ui-btn"
-                  type="button"
-                  onClick={() => setImgIndex((i) => clampInt(i - 1, 0, 9))}
-                  disabled={imgBusy || visibleSlot <= 0}
-                >
-                  ←
-                </button>
+                  <div className="mirror-controls__meta">
+                    {visibleSlot === 0 ? "Principal (slot 0)" : `Galeria (slot ${visibleSlot})`}
+                  </div>
 
-                <div className="mirror-controls__meta">
-                  {visibleSlot === 0 ? "Principal (slot 0)" : `Galeria (slot ${visibleSlot})`}
+                  <button
+                    className="ui-btn"
+                    type="button"
+                    onClick={() => setImgIndex((i) => clampInt(i + 1, 0, 9))}
+                    disabled={imgBusy || visibleSlot >= 9}
+                    aria-label="Próxima imagem"
+                  >
+                    &#11166;
+                  </button>
                 </div>
-
-                <button
-                  className="ui-btn"
-                  type="button"
-                  onClick={() => setImgIndex((i) => clampInt(i + 1, 0, 9))}
-                  disabled={imgBusy || visibleSlot >= 9}
-                >
-                  →
-                </button>
-              </div>
 
               {/* GM: UM botão “Adicionar/Substituir” (upload substitui o slot visível) */}
               {scope === "GM" ? (
-                <div className="mirror-controls__actions">
-                  <label className="ui-btn mirror-controls__file">
-                    Adicionar/Substituir
-                    <input
-                      type="file"
-                      accept="image/*"
-                      disabled={imgBusy || !character?.id}
-                      onChange={async (ev) => {
+                  <div className="mirror-controls__actions">
+                    <label className="ui-btn mirror-controls__file">
+                      Adicionar/Substituir
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={imgBusy || !character?.id}
+                        onChange={async (ev) => {
                         const f = ev.target.files?.[0];
                         ev.target.value = "";
                         if (!f || !character?.id) return;
@@ -860,10 +862,11 @@ export function CharacterScreen({
                           setImgBusy(false);
                         }
                       }}
-                    />
-                  </label>
-                </div>
-              ) : null}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </section>
         ) : null}
