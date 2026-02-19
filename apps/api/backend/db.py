@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from sqlmodel import SQLModel, Session, create_engine
 from apps.api.backend.config import settings
-from apps.api.backend.models.user import User 
+from apps.api.backend.models.user import User
+from apps.api.backend.models.story import Story  # noqa: F401 - registra tabela para create_all
 
 # arquivo SQLite local (na raiz do repo). Pode mudar depois.
 DATABASE_URL = "sqlite:///./abyss.db"
