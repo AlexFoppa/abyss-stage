@@ -50,14 +50,16 @@
 
 .backstage{
   position:absolute;
+  left:0;
   right:0;
   bottom:0;
-  width:auto;
+  width:100%;
+  height:auto;
   z-index:2;
   pointer-events:none;
   max-height:80vh;
-  max-width:100%;
-  object-fit:contain;
+  object-fit:cover;
+  object-position:center bottom;
 
   animation: backstageRise 2000ms cubic-bezier(.2,.9,.2,1) both;
 }
