@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 export function ConfirmDialog({
   open,
@@ -29,7 +30,7 @@ export function ConfirmDialog({
 
   if (!open) return null;
 
-  return (
+  const dialog = (
     <div className="ui-modal" role="dialog" aria-modal="true" aria-label={title}>
       <button className="ui-modal__backdrop" onClick={onCancel} aria-label="Fechar" />
       <div className="ui-modal__card ui-card">
@@ -47,4 +48,6 @@ export function ConfirmDialog({
       </div>
     </div>
   );
+
+  return createPortal(dialog, document.body);
 }

@@ -74,7 +74,8 @@ textarea.ui-field{
 }
 
 
-.ui-modal{
+/* Tela centralizada (login, carregando, etc.) — fica no fluxo e é centralizada pelo .center--modal */
+.ui-screen{
   width:min(520px,92vw);
   padding:44px 46px 38px;
   background:
@@ -87,9 +88,10 @@ textarea.ui-field{
   box-shadow:0 28px 90px var(--shadow-strong);
   font-family: var(--font-display);
   position:relative;
+  box-sizing:border-box;
 }
 
-.ui-modal:before{
+.ui-screen:before{
   content:"";
   position:absolute;
   inset:14px;
@@ -130,13 +132,15 @@ textarea.ui-field{
 }
 .link:hover{ filter:brightness(1.15); }
 
+/* Overlay de diálogo (ConfirmDialog) — fullscreen, não usado pela tela de login */
 .ui-modal{
   position: fixed;
   inset: 0;
-  z-index: 999;
+  z-index: 9999;
   display: grid;
   place-items: center;
   padding: 16px;
+  box-sizing: border-box;
 }
 
 .ui-modal__backdrop{
