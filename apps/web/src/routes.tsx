@@ -10,6 +10,7 @@ import { SelectCharacterScreen } from "./screens/SelectCharacterScreen";
 import { EditCharacterScreen } from "./screens/EditCharacterScreen";
 import { HomeGMScreen } from "./screens/HomeGMScreen";
 import { GMCharactersScreen } from "./screens/GMCharactersScreen";
+import { StoryListScreen } from "./screens/StoryListScreen";
 
 type View =
   | "LOGIN"
@@ -102,14 +103,13 @@ export function Routes() {
           onLogout={() => logout()}
         />
       ) : view === "GM_STORIES" ? (
-        <div className="lobby-wrap">
-          <div className="lobby-cabinet">
-            <p style={{ margin: "0 0 1rem", opacity: 0.9 }}>Roteiro – em construção</p>
-            <button className="ui-btn ui-btn--ghost" type="button" onClick={() => setGmSubView("GM_HOME")}>
-              Voltar
-            </button>
-          </div>
-        </div>
+        <StoryListScreen
+          onBack={() => setGmSubView("GM_HOME")}
+          onOpenEditor={(storyId) => {
+            setEditingStoryId(storyId);
+            setGmSubView("GM_STORY_EDITOR");
+          }}
+        />
       ) : view === "GM_STORY_EDITOR" ? (
         <div className="lobby-wrap">
           <div className="lobby-cabinet">

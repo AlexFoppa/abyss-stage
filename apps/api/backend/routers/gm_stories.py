@@ -6,6 +6,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import OperationalError, IntegrityError
 
 from apps.api.backend.db import get_session
 from apps.api.backend.models.story import Story
@@ -55,9 +56,15 @@ def create_story(
         created_at=now,
         updated_at=now,
     )
-    session.add(story)
-    session.commit()
-    session.refresh(story)
+    try:
+        session.add(story)
+        session.commit()
+    except (OperationalError, IntegrityError) as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database error creating story. If you just added the Story feature, restart the API server so the story table is created: {e!s}",
+        )
     return StoryOut(id=story.id, name=story.name, created_at=story.created_at, updated_at=story.updated_at)
 
 
@@ -87,7 +94,6 @@ def update_story(
     story.updated_at = datetime.utcnow()
     session.add(story)
     session.commit()
-    session.refresh(story)
     return StoryOut(id=story.id, name=story.name, created_at=story.created_at, updated_at=story.updated_at)
 
 
