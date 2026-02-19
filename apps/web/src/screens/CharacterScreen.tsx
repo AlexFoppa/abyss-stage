@@ -21,6 +21,8 @@ export type Character = {
   backstory: string;
   notes: string;
   systems?: string[]; // ex: ["simplificado","candela_obscura"]
+  default_image_url?: string | null;
+  default_image_rev?: string | null;
 };
 
 type SystemOpt = { key: string; label: string };
@@ -196,10 +198,17 @@ export function CharacterScreen({
         .filter((r) => typeof (r as any)?.slot === "number" && typeof (r as any)?.storage_key === "string")
         .sort((a, b) => a.slot - b.slot);
 
-      setImages(norm);
-      setImgIndex((prev) => clampInt(prev, 0, 9));
-      setImgRevision((r) => r + 1);
+      const defaultUrl = character?.default_image_url || "";
+      const urlKey = defaultUrl.replace(/^.*\/api\/uploads\//i, "").split("?")[0].trim().replace(/^\/+/, "");
+      const defaultSlot =
+        norm.find((img) => {
+          const key = (img.storage_key || "").replace(/^\/+/, "");
+          return key && urlKey && key === urlKey;
+        })?.slot ?? 0;
 
+      setImages(norm);
+      setImgIndex(clampInt(defaultSlot, 0, 9));
+      setImgRevision((r) => r + 1);
     } catch (e: any) {
       // no GM, erros de imagem não devem bloquear a edição
     }
@@ -790,12 +799,17 @@ export function CharacterScreen({
           >
             <div className="mirror">
               {(() => {
+                const characterPortraitUrl =
+                  visibleImageUrl || (character?.default_image_url ?? "");
+
                 if (scope === "GM") {
-                  if (visibleImageUrl) return <img className="portrait" src={visibleImageUrl} alt="Personagem" />;
+                  if (characterPortraitUrl) return <img className="portrait" src={characterPortraitUrl} alt="Personagem" />;
                   return <div className="mirror-empty" />;
                 }
 
-                // PLAYER: vê apenas a imagem do sistema (Candela)
+                if (mode === "edit" && characterPortraitUrl) {
+                  return <img className="portrait" src={characterPortraitUrl} alt="Personagem" />;
+                }
                 const canShowSystemPortrait = Boolean(specialtyImgSrc) && selectedSystem === "candela_obscura";
                 if (canShowSystemPortrait) {
                   return <img className="portrait" src={specialtyImgSrc} alt="Personagem" />;
