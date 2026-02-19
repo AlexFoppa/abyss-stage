@@ -1,0 +1,10 @@
+.gm-home-actions .ui-btn {
+  height: 56px;
+  border-radius: 6px;
+  letter-spacing: 0.22em;
+}
+
+.gm-home-actions .ui-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}

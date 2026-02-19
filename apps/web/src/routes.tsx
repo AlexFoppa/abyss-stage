@@ -16,13 +16,14 @@ type View =
   | "RESET"
   | "GM_HOME"
   | "GM_CHARACTERS"
+  | "GM_STORIES"
   | "LOBBY"
   | "CREATE_CHARACTER"
   | "SELECT_CHARACTER"
   | "EDIT_CHARACTER";
 
 export function Routes() {
-  const { user, loading, viewMode } = useAuth();
+  const { user, loading, viewMode, logout } = useAuth();
   
   const logged = !!user && !user.must_reset_password;
   const isGM = user?.role === "GM";
@@ -34,7 +35,7 @@ export function Routes() {
     "LOBBY" | "CREATE_CHARACTER" | "SELECT_CHARACTER" | "EDIT_CHARACTER"
   >("LOBBY");
 
-  const [gmSubView, setGmSubView] = useState<"GM_HOME" | "GM_CHARACTERS">("GM_HOME");
+  const [gmSubView, setGmSubView] = useState<"GM_HOME" | "GM_CHARACTERS" | "GM_STORIES">("GM_HOME");
   const [stageMode, setStageMode] = useState<"IDLE" | "ZOOM_IN">("IDLE");
   
   const [selectedCharacter, setSelectedCharacter] = useState<null | {
@@ -93,7 +94,20 @@ export function Routes() {
       ) : view === "RESET" ? (
         <ForceResetScreen />
       ) : view === "GM_HOME" ? (
-        <HomeGMScreen onCharacters={() => setGmSubView("GM_CHARACTERS")} />
+        <HomeGMScreen
+          onRoteiro={() => setGmSubView("GM_STORIES")}
+          onFigurinos={() => setGmSubView("GM_CHARACTERS")}
+          onLogout={() => logout()}
+        />
+      ) : view === "GM_STORIES" ? (
+        <div className="lobby-wrap">
+          <div className="lobby-cabinet">
+            <p style={{ margin: "0 0 1rem", opacity: 0.9 }}>Roteiro – em construção</p>
+            <button className="ui-btn ui-btn--ghost" type="button" onClick={() => setGmSubView("GM_HOME")}>
+              Voltar
+            </button>
+          </div>
+        </div>
       ) : view === "GM_CHARACTERS" ? (
         <GMCharactersScreen
           onBack={() => setGmSubView("GM_HOME")}

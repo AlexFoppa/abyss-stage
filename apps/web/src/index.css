@@ -5,6 +5,7 @@
 @import "./styles/screens/lobby.css";
 @import "./styles/screens/createCharacter.css";
 @import "./styles/screens/selectCharacter.css";
+@import "./styles/screens/gm-home.css";
 
 
 html, body, #root {
