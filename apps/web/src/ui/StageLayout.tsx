@@ -7,6 +7,7 @@ export function StageLayout({
   showBackstage,
   stageMode = "IDLE",
   curtainsOpen = false,
+  hideValance = false,
   children,
 }: {
   logged: boolean;
@@ -14,6 +15,8 @@ export function StageLayout({
   showBackstage: boolean;
   stageMode?: "IDLE" | "ZOOM_IN";
   curtainsOpen?: boolean;
+  /** Quando true, a valance não é exibida (telas do GM). Visível apenas para o jogador. */
+  hideValance?: boolean;
   children: React.ReactNode;
 }) {
   const auth = useAuth();
@@ -25,9 +28,9 @@ export function StageLayout({
     <div
       className={`stage ${curtainsOpen ? "logged" : ""} ${
         stageMode === "ZOOM_IN" ? "stage--zoom-in" : ""
-      }`}
+      } ${hideValance ? "stage--no-valance" : ""}`}
     >
-      <img src="/valance.png" className="valance" alt="" />
+      {!hideValance && <img src="/valance.png" className="valance" alt="" />}
 
       <img src="/curtain_left.png" className="curtain left" alt="" />
       <img src="/curtain_right.png" className="curtain right" alt="" />

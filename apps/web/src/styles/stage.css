@@ -78,6 +78,11 @@
   box-sizing:border-box;
 }
 
+/* GM: sem valance — conteúdo em full bleed (sem margem topo/esquerda) */
+.stage--no-valance .center--app{
+  padding:0;
+}
+
 .stage--zoom-in .center--app{ padding-top:0; }
 
 .stage--zoom-in .backstage{

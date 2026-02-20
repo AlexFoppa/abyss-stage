@@ -158,6 +158,68 @@
   color: var(--text-input);
 }
 
+.story-editor__scene-body-edit {
+  min-height: 200px;
+  resize: vertical;
+}
+
+.story-editor__scene-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.story-editor__scene-actions .ui-btn {
+  width: auto;
+  padding: 0 1.25rem;
+}
+
+.story-editor__scene-characters {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--gold-soft);
+}
+
+.story-editor__scene-characters-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.story-editor__scene-characters-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.35rem 0;
+  font-size: 0.9rem;
+  color: var(--text-main);
+}
+
+.story-editor__scene-characters-item span {
+  flex: 1;
+  min-width: 0;
+}
+
+.story-editor__scene-characters-item .ui-btn {
+  width: auto;
+  padding: 0 6px;
+  font-size: 0.8rem;
+}
+
+.story-editor__scene-characters-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.story-editor__scene-characters-actions .ui-btn {
+  width: auto;
+  padding: 0 0.75rem;
+}
+
 .story-editor__characters {
   grid-area: characters;
   padding: 0.5rem 1rem;
@@ -174,4 +236,340 @@
   font-size: 0.9rem;
   color: var(--text-label);
   letter-spacing: 0.02em;
+}
+
+/* Painel de cenários: thumbs + botão gerenciar */
+.story-editor__scenarios-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.story-editor__scenario-thumbs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.story-editor__scenario-thumb {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(0,0,0,.3);
+  border: 1px solid var(--gold-soft);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: 0.8rem;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-editor__scenario-thumb:hover {
+  border-color: var(--gold-border);
+  background: var(--gold-soft);
+}
+
+.story-editor__scenario-thumb {
+  cursor: grab;
+}
+
+.story-editor__scenario-thumb:active {
+  cursor: grabbing;
+}
+
+.story-editor__scenario-thumb--dragging {
+  opacity: 0.6;
+}
+
+/* Zona de drop: cenário na cena */
+.story-editor__scene-drop {
+  min-height: 120px;
+  padding: 0.5rem 0;
+  border: 1px dashed transparent;
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.story-editor__scene-drop--over {
+  border-color: var(--gold);
+  background: var(--gold-glow);
+}
+
+.story-editor__scene-drop-hint,
+.story-editor__scene-scenario-label {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-label);
+}
+
+.story-editor__scene-scenario-label strong {
+  color: var(--gold);
+}
+
+.story-editor__scenarios-actions {
+  margin-left: auto;
+}
+
+.story-editor__scenarios-actions .ui-btn {
+  width: auto;
+  padding: 0 0.75rem;
+}
+
+/* Personagem arrastável (painel + drop na cena) */
+.story-editor__char-thumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.35rem 0.5rem;
+  background: rgba(0,0,0,.25);
+  border: 1px solid var(--gold-soft);
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  font-size: 0.85rem;
+}
+
+.story-editor__char-thumb:active {
+  cursor: grabbing;
+}
+
+.story-editor__char-thumb--dragging {
+  opacity: 0.6;
+}
+
+.story-editor__char-thumb-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.story-editor__scene-char-drop {
+  min-height: 0;
+  border-radius: var(--radius-sm);
+  transition: outline 0.15s, background 0.15s;
+}
+
+.story-editor__scene-char-drop--over {
+  outline: 2px dashed var(--gold);
+  outline-offset: 4px;
+  background: var(--gold-glow);
+}
+
+/* Modal Gerenciar cenários */
+.scenario-manager__error {
+  margin: 0 0 10px;
+  color: #c44;
+  font-size: 0.9rem;
+}
+
+.scenario-manager__toolbar {
+  margin-bottom: 12px;
+}
+
+.scenario-manager__toolbar .ui-btn {
+  width: auto;
+  padding: 0 1rem;
+}
+
+.scenario-manager__form {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--gold-soft);
+}
+
+.scenario-manager__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.scenario-manager__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--gold-soft);
+}
+
+.scenario-manager__item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.scenario-manager__item-desc {
+  font-size: 0.85rem;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scenario-manager__item-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Modal Personagens da história */
+.scene-chars-modal__toolbar {
+  margin-bottom: 12px;
+}
+
+.scene-chars-modal__toolbar .ui-btn {
+  width: auto;
+  padding: 0 1rem;
+}
+
+.scene-chars-modal__form {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--gold-soft);
+}
+
+.scene-chars-modal__columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 12px;
+}
+
+.scene-chars-modal__col-title {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+
+.scene-chars-modal__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scene-chars-modal__char {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.4rem 0.6rem;
+  background: rgba(0,0,0,.3);
+  border: 1px solid var(--gold-soft);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  text-align: left;
+  width: 100%;
+  color: var(--text-main);
+}
+
+.scene-chars-modal__char--clickable {
+  cursor: pointer;
+}
+
+.scene-chars-modal__char--clickable:hover {
+  background: rgba(0,0,0,.45);
+  border-color: var(--gold);
+}
+
+.scene-chars-modal__char-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.scene-chars-modal__in-story {
+  border-color: var(--gold);
+}
+
+/* Painel Personagens (direita) no editor */
+.story-editor__characters-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.story-editor__characters-section-title {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+
+.story-editor__characters-in-scene {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  border-bottom: 1px solid var(--gold-soft);
+  padding-bottom: 12px;
+}
+
+.story-editor__characters-in-scene-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.35rem 0;
+  font-size: 0.9rem;
+  color: var(--text-main);
+}
+
+.story-editor__characters-in-scene-item span {
+  flex: 1;
+  min-width: 0;
+}
+
+.story-editor__characters-in-scene-item .ui-btn {
+  width: auto;
+  padding: 0 6px;
+  font-size: 0.8rem;
+}
+
+.story-editor__characters-list {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.story-editor__characters-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--gold-soft);
+  font-size: 0.9rem;
+}
+
+.story-editor__characters-item .story-editor__char-thumb {
+  flex: 1;
+  min-width: 0;
+}
+
+.story-editor__characters-item button {
+  width: auto;
+  padding: 0 6px;
+  font-size: 0.8rem;
+}
+
+.story-editor__characters-actions {
+  flex-shrink: 0;
+  padding-top: 8px;
+}
+
+.story-editor__characters-actions .ui-btn {
+  width: 100%;
 }

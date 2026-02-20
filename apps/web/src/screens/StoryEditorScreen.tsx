@@ -1,5 +1,112 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  DndContext,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  rectIntersection,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { useDraggable } from "@dnd-kit/core";
+import { useDroppable } from "@dnd-kit/core";
 import { api } from "../api";
+import { ScenarioManagerModal, type Scenario } from "./ScenarioManagerModal";
+import { SceneCharactersModal, type GMCharacter } from "./SceneCharactersModal";
+
+const SCENARIO_DRAG_PREFIX = "scenario-";
+const SCENE_DROP_PREFIX = "scene-scenario-";
+const CHAR_DRAG_PREFIX = "char-";
+const SCENE_CHAR_DROP_PREFIX = "scene-char-";
+
+function characterPortraitUrl(c: GMCharacter): string {
+  const fallback = "/assets/jogador_default.png";
+  if (!c.default_image_url) return fallback;
+  if (c.default_image_rev) return `${c.default_image_url}?rev=${encodeURIComponent(c.default_image_rev)}`;
+  return c.default_image_url;
+}
+
+function DraggableScenarioThumb({ scenario }: { scenario: Scenario }) {
+  const id = SCENARIO_DRAG_PREFIX + scenario.id;
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
+  return (
+    <span
+      ref={setNodeRef}
+      className={"story-editor__scenario-thumb" + (isDragging ? " story-editor__scenario-thumb--dragging" : "")}
+      title={(scenario.description || scenario.name) + "\n\nArraste até a cena para associar."}
+      {...listeners}
+      {...attributes}
+    >
+      {scenario.name || "(sem nome)"}
+    </span>
+  );
+}
+
+function SceneScenarioDropZone({
+  sceneId,
+  currentScenarioId,
+  scenarioName,
+  children,
+}: {
+  sceneId: string;
+  currentScenarioId: string | null;
+  scenarioName: string | null;
+  children: React.ReactNode;
+}) {
+  const id = SCENE_DROP_PREFIX + sceneId;
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={"story-editor__scene-drop" + (isOver ? " story-editor__scene-drop--over" : "")}
+    >
+      {currentScenarioId && scenarioName ? (
+        <p className="story-editor__scene-scenario-label">
+          Cenário: <strong>{scenarioName}</strong> (arraste outro para trocar)
+        </p>
+      ) : (
+        <p className="story-editor__scene-drop-hint">Arraste um cenário aqui para associar à cena.</p>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function SceneCharacterDropZone({
+  sceneId,
+  children,
+}: {
+  sceneId: string;
+  children: React.ReactNode;
+}) {
+  const id = SCENE_CHAR_DROP_PREFIX + sceneId;
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={"story-editor__scene-char-drop" + (isOver ? " story-editor__scene-char-drop--over" : "")}
+    >
+      {children}
+    </div>
+  );
+}
+
+function DraggableCharacterThumb({ character }: { character: GMCharacter }) {
+  const id = CHAR_DRAG_PREFIX + character.id;
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={"story-editor__char-thumb" + (isDragging ? " story-editor__char-thumb--dragging" : "")}
+      title="Arraste até a cena para adicionar à cena."
+      {...listeners}
+      {...attributes}
+    >
+      <img src={characterPortraitUrl(character)} alt="" className="story-editor__char-thumb-avatar" />
+      <span>{character.name}</span>
+    </div>
+  );
+}
 
 export type StoryInfo = {
   id: string;
@@ -33,8 +140,58 @@ export function StoryEditorScreen({
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const [scenarioModalOpen, setScenarioModalOpen] = useState(false);
+  const [sceneSaving, setSceneSaving] = useState(false);
+  const [gmCharacters, setGmCharacters] = useState<GMCharacter[]>([]);
+  const [storyCharacterIds, setStoryCharacterIds] = useState<number[]>([]);
+  const [sceneCharacterIds, setSceneCharacterIds] = useState<number[]>([]);
+  const [characterModalOpen, setCharacterModalOpen] = useState(false);
 
   const activeScene = scenes.find((s) => s.id === activeSceneId) ?? null;
+
+  const loadScenarios = useCallback(async () => {
+    try {
+      const list = await api<Scenario[]>("/api/gm/scenarios");
+      setScenarios(Array.isArray(list) ? list : []);
+    } catch {
+      setScenarios([]);
+    }
+  }, []);
+
+  const loadGmCharacters = useCallback(async () => {
+    try {
+      const list = await api<GMCharacter[]>("/api/gm/characters");
+      setGmCharacters(Array.isArray(list) ? list : []);
+    } catch {
+      setGmCharacters([]);
+    }
+  }, []);
+
+  const loadStoryCharacters = useCallback(async () => {
+    try {
+      const res = await api<{ character_ids: number[] }>(
+        `/api/gm/stories/${storyId}/characters`
+      );
+      setStoryCharacterIds(res?.character_ids ?? []);
+    } catch {
+      setStoryCharacterIds([]);
+    }
+  }, [storyId]);
+
+  const loadSceneCharacters = useCallback(
+    async (sceneId: string) => {
+      try {
+        const res = await api<{ character_ids: number[] }>(
+          `/api/gm/stories/${storyId}/scenes/${sceneId}/characters`
+        );
+        setSceneCharacterIds(res?.character_ids ?? []);
+      } catch {
+        setSceneCharacterIds([]);
+      }
+    },
+    [storyId]
+  );
 
   const loadStory = useCallback(async () => {
     try {
@@ -76,12 +233,153 @@ export function StoryEditorScreen({
       await loadStory();
       if (cancelled) return;
       await loadScenes();
+      if (cancelled) return;
+      await loadScenarios();
+      if (cancelled) return;
+      await loadGmCharacters();
+      if (cancelled) return;
+      await loadStoryCharacters();
       if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [storyId, loadStory, loadScenes]);
+  }, [storyId, loadStory, loadScenes, loadScenarios, loadGmCharacters, loadStoryCharacters]);
+
+  useEffect(() => {
+    if (activeSceneId && activeScene && !activeScene.is_narrative) {
+      loadSceneCharacters(activeSceneId);
+    } else {
+      setSceneCharacterIds([]);
+    }
+  }, [activeSceneId, activeScene?.id, activeScene?.is_narrative, loadSceneCharacters]);
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const overId = String(over.id);
+    const activeId = String(active.id);
+
+    const isOverSceneArea =
+      overId.startsWith(SCENE_CHAR_DROP_PREFIX) || overId.startsWith(SCENE_DROP_PREFIX);
+    const sceneIdFromOver = overId.startsWith(SCENE_CHAR_DROP_PREFIX)
+      ? overId.slice(SCENE_CHAR_DROP_PREFIX.length)
+      : overId.slice(SCENE_DROP_PREFIX.length);
+
+    if (isOverSceneArea && activeId.startsWith(CHAR_DRAG_PREFIX)) {
+      const characterId = parseInt(activeId.slice(CHAR_DRAG_PREFIX.length), 10);
+      if (Number.isNaN(characterId)) return;
+      if (!activeSceneId || sceneIdFromOver !== activeSceneId) return;
+      const scene = scenes.find((s) => s.id === sceneIdFromOver);
+      if (scene?.is_narrative) return;
+      if (sceneCharacterIds.includes(characterId)) return;
+      setErr(null);
+      try {
+        const next = [...sceneCharacterIds, characterId];
+        await api(`/api/gm/stories/${storyId}/scenes/${sceneIdFromOver}/characters`, {
+          method: "PUT",
+          body: JSON.stringify({ character_ids: next }),
+        });
+        setSceneCharacterIds(next);
+      } catch (e: unknown) {
+        const msg =
+          e && typeof (e as { message?: string })?.message === "string"
+            ? (e as { message: string }).message
+            : "Falha ao adicionar personagem à cena";
+        setErr(msg);
+      }
+      return;
+    }
+
+    if (isOverSceneArea && activeId.startsWith(SCENARIO_DRAG_PREFIX)) {
+      const scenarioId = activeId.slice(SCENARIO_DRAG_PREFIX.length);
+      if (!activeSceneId || sceneIdFromOver !== activeSceneId) return;
+      const scene = scenes.find((s) => s.id === sceneIdFromOver);
+      if (scene?.is_narrative) return;
+      const scenario = scenarios.find((sc) => sc.id === scenarioId);
+      const activeSceneCurrent = scenes.find((s) => s.id === sceneIdFromOver);
+      const currentBody = activeSceneCurrent?.body?.trim() ?? "";
+      const scenarioDesc = scenario?.description?.trim() ?? "";
+      setErr(null);
+      try {
+        const payload: { scenario_id: string; body?: string } = { scenario_id: scenarioId };
+        if (scenarioDesc && !currentBody) payload.body = scenarioDesc;
+        const updated = await api<Scene>(`/api/gm/stories/${storyId}/scenes/${sceneIdFromOver}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        setScenes((prev) =>
+          prev.map((s) => (s.id === sceneIdFromOver ? { ...s, ...updated } : s))
+        );
+      } catch (e: unknown) {
+        const msg =
+          e && typeof (e as { message?: string })?.message === "string"
+            ? (e as { message: string }).message
+            : "Falha ao associar cenário";
+        setErr(msg);
+      }
+    }
+  }
+
+  async function handleUpdateScene(patch: {
+    title?: string;
+    body?: string;
+    is_narrative?: boolean;
+  }) {
+    if (!activeSceneId || !activeScene) return;
+    setErr(null);
+    setSceneSaving(true);
+    try {
+      const updated = await api<Scene>(`/api/gm/stories/${storyId}/scenes/${activeSceneId}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+      setScenes((prev) =>
+        prev.map((s) => (s.id === activeSceneId ? { ...s, ...updated } : s))
+      );
+    } catch (e: unknown) {
+      const msg =
+        e && typeof (e as { message?: string })?.message === "string"
+          ? (e as { message: string }).message
+          : "Falha ao salvar cena";
+      setErr(msg);
+    } finally {
+      setSceneSaving(false);
+    }
+  }
+
+  function handleSaveSceneClick() {
+    if (!activeScene) return;
+    handleUpdateScene({
+      title: activeScene.title.trim() || activeScene.title,
+      body: activeScene.body ?? "",
+      is_narrative: activeScene.is_narrative,
+    });
+  }
+
+  async function removeCharacterFromScene(characterId: number) {
+    if (!activeSceneId) return;
+    setErr(null);
+    try {
+      const next = sceneCharacterIds.filter((id) => id !== characterId);
+      await api(`/api/gm/stories/${storyId}/scenes/${activeSceneId}/characters`, {
+        method: "PUT",
+        body: JSON.stringify({ character_ids: next }),
+      });
+      setSceneCharacterIds(next);
+    } catch (e: unknown) {
+      const msg =
+        e && typeof (e as { message?: string })?.message === "string"
+          ? (e as { message: string }).message
+          : "Falha ao remover";
+      setErr(msg);
+    }
+  }
 
   async function handleCreateScene() {
     const title = window.prompt("Título da nova cena:", "Nova cena");
@@ -150,8 +448,38 @@ export function StoryEditorScreen({
       </div>
 
       <div className="story-editor__grid">
+        <ScenarioManagerModal
+          open={scenarioModalOpen}
+          onClose={() => setScenarioModalOpen(false)}
+          onSaved={loadScenarios}
+        />
+
+        <DndContext
+          sensors={sensors}
+          collisionDetection={rectIntersection}
+          onDragEnd={handleDragEnd}
+        >
         <section className="story-editor__scenarios" aria-label="Cenários">
-          <p className="story-editor__placeholder">Cenários (em breve)</p>
+          {activeScene?.is_narrative ? (
+            <p className="story-editor__placeholder">Cena narrativa — sem cenário.</p>
+          ) : (
+            <div className="story-editor__scenarios-inner">
+              <div className="story-editor__scenario-thumbs">
+                {scenarios.map((sc) => (
+                  <DraggableScenarioThumb key={sc.id} scenario={sc} />
+                ))}
+              </div>
+              <div className="story-editor__scenarios-actions">
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--ghost"
+                  onClick={() => setScenarioModalOpen(true)}
+                >
+                  Gerenciar cenários
+                </button>
+              </div>
+            </div>
+          )}
         </section>
 
         <aside className="story-editor__scenes" aria-label="Cenas">
@@ -182,10 +510,125 @@ export function StoryEditorScreen({
 
         <main className="story-editor__main" aria-label="Cena ativa">
           {activeScene ? (
-            <div className="story-editor__scene-content">
-              <h2 className="story-editor__scene-content-title">{activeScene.title}</h2>
-              <pre className="story-editor__scene-body">{activeScene.body || "(vazio)"}</pre>
-            </div>
+            <SceneScenarioDropZone
+              sceneId={activeScene.id}
+              currentScenarioId={activeScene.scenario_id}
+              scenarioName={
+                activeScene.scenario_id
+                  ? scenarios.find((sc) => sc.id === activeScene.scenario_id)?.name ?? null
+                  : null
+              }
+            >
+              <SceneCharacterDropZone sceneId={activeScene.id}>
+              <div
+                className="story-editor__scene-content"
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerMove={(e) => e.stopPropagation()}
+              >
+                <label className="ui-label">Título da cena</label>
+                <input
+                  type="text"
+                  className="ui-field"
+                  value={activeScene.title ?? ""}
+                  onChange={(e) =>
+                    setScenes((prev) =>
+                      prev.map((s) =>
+                        s.id === activeSceneId ? { ...s, title: e.target.value } : s
+                      )
+                    )
+                  }
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v !== (activeScene.title ?? "")) handleUpdateScene({ title: v });
+                  }}
+                  placeholder="Título"
+                />
+                <label className="ui-label" style={{ marginTop: 12 }}>
+                  Tipo da cena
+                </label>
+                <select
+                  className="ui-field"
+                  value={activeScene.is_narrative ? "narrative" : "normal"}
+                  onChange={(e) => {
+                    const isNarrative = e.target.value === "narrative";
+                    setScenes((prev) =>
+                      prev.map((s) =>
+                        s.id === activeSceneId ? { ...s, is_narrative: isNarrative } : s
+                      )
+                    );
+                    handleUpdateScene({ is_narrative: isNarrative });
+                  }}
+                >
+                  <option value="normal">Normal (cenário + personagens)</option>
+                  <option value="narrative">Narrativa (só texto/imagens)</option>
+                </select>
+                <label className="ui-label" style={{ marginTop: 12 }}>
+                  Descrição / corpo
+                </label>
+                <textarea
+                  className="ui-field story-editor__scene-body-edit"
+                  value={activeScene.body ?? ""}
+                  onChange={(e) =>
+                    setScenes((prev) =>
+                      prev.map((s) =>
+                        s.id === activeSceneId ? { ...s, body: e.target.value } : s
+                      )
+                    )
+                  }
+                  onBlur={(e) => {
+                    const v = e.target.value;
+                    if (v !== (activeScene.body ?? "")) handleUpdateScene({ body: v });
+                  }}
+                  placeholder="Texto da cena…"
+                  rows={12}
+                />
+                {!activeScene.is_narrative && (
+                  <div className="story-editor__scene-characters">
+                    <label className="ui-label" style={{ marginTop: 12 }}>
+                      Personagens nesta cena
+                    </label>
+                    {sceneCharacterIds.length === 0 ? (
+                      <p className="story-editor__placeholder">Nenhum personagem. Arraste da barra à direita para adicionar.</p>
+                    ) : (
+                      <ul className="story-editor__scene-characters-list">
+                        {sceneCharacterIds
+                          .map((id) => gmCharacters.find((c) => c.id === id))
+                          .filter(Boolean)
+                          .map((c) => (
+                            <li key={c!.id} className="story-editor__scene-characters-item">
+                              <img src={characterPortraitUrl(c!)} alt="" className="story-editor__char-thumb-avatar" />
+                              <span>{c!.name}</span>
+                              <button
+                                type="button"
+                                className="ui-btn ui-btn--ghost"
+                                onClick={() => removeCharacterFromScene(c!.id)}
+                              >
+                                Remover
+                              </button>
+                            </li>
+                          ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                <div className="story-editor__scene-actions">
+                  <button
+                    type="button"
+                    className="ui-btn"
+                    disabled={sceneSaving}
+                    onClick={handleSaveSceneClick}
+                  >
+                    {sceneSaving ? "Salvando…" : "Salvar cena"}
+                  </button>
+                  {sceneSaving && (
+                    <span className="story-editor__placeholder" style={{ marginLeft: 12 }}>
+                      Salvando…
+                    </span>
+                  )}
+                </div>
+              </div>
+              </SceneCharacterDropZone>
+            </SceneScenarioDropZone>
           ) : (
             <p className="story-editor__placeholder">
               {scenes.length === 0 ? "Crie uma cena para começar." : "Selecione uma cena."}
@@ -194,8 +637,56 @@ export function StoryEditorScreen({
         </main>
 
         <aside className="story-editor__characters" aria-label="Personagens">
-          <p className="story-editor__placeholder">Personagens (em breve)</p>
+          {activeScene?.is_narrative ? (
+            <p className="story-editor__placeholder">Cena narrativa — sem personagens.</p>
+          ) : activeScene ? (
+            <div className="story-editor__characters-inner">
+              <p className="story-editor__scene-drop-hint" style={{ marginBottom: 8 }}>
+                Personagens da história. Arraste para a cena para adicionar.
+              </p>
+              {storyCharacterIds.length === 0 ? (
+                <p className="story-editor__placeholder">
+                  Nenhum personagem na história. Clique em &quot;Gerir personagens&quot; para adicionar.
+                </p>
+              ) : (
+                <ul className="story-editor__characters-list">
+                  {storyCharacterIds
+                    .map((id) => gmCharacters.find((c) => c.id === id))
+                    .filter(Boolean)
+                    .map((c) => (
+                      <li key={c!.id} className="story-editor__characters-item">
+                        <DraggableCharacterThumb character={c!} />
+                      </li>
+                    ))}
+                </ul>
+              )}
+              <div className="story-editor__characters-actions">
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--ghost"
+                  onClick={() => setCharacterModalOpen(true)}
+                >
+                  Gerir personagens
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="story-editor__placeholder">Selecione uma cena.</p>
+          )}
         </aside>
+
+        <SceneCharactersModal
+          open={characterModalOpen}
+          onClose={() => setCharacterModalOpen(false)}
+          storyId={storyId}
+          gmCharacters={gmCharacters}
+          storyCharacterIds={storyCharacterIds}
+          onSaved={() => {
+            loadStoryCharacters();
+            loadGmCharacters();
+          }}
+        />
+        </DndContext>
       </div>
     </div>
   );

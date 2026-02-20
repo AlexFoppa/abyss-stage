@@ -82,6 +82,7 @@ export function Routes() {
   }
 
   const shouldOpenCurtains = isGM && !["LOBBY", "SELECT_CHARACTER", "CREATE_CHARACTER", "EDIT_CHARACTER"].includes(view);
+  const isGMView = isGM && ["GM_HOME", "GM_CHARACTERS", "GM_STORIES", "GM_STORY_EDITOR"].includes(view);
 
   return (
     <StageLayout
@@ -90,6 +91,7 @@ export function Routes() {
       showBackstage={showBackstage}
       stageMode={stageMode}
       curtainsOpen={shouldOpenCurtains}
+      hideValance={isGMView}
     >
       {loading ? (
         <Screen title="Carregando…" />

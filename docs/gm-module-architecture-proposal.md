@@ -159,45 +159,51 @@ Opcional / transversal:
 
 ## F) Backlog em fatias (5–10 itens) com critérios de aceite
 
+**Estado:** Itens 1–6 implementados. Itens 7–10 pendentes. Ajustes feitos: valance oculta nas telas GM; estilo marrom/dourado no editor; full bleed (sem margem); edição de cena (título, corpo, tipo Normal/Narrativa, botão Salvar); DnD cenário→cena com pré-preenchimento da descrição quando corpo vazio.
+
 1. **Home GM com 4 botões** ✅  
    - Criar `gm/screens/HomeGMScreen.tsx` com: Roteiro (→ GM_STORIES), Figurinos (→ GM_CHARACTERS), Espetáculo (desabilitado / “Em breve”), Se retirar (logout).  
    - **CA:** (1) Logado como GM, a home exibe os 4 botões. (2) Roteiro navega para Roteiro (placeholder ou lista). (3) Figurinos navega para GM_CHARACTERS. (4) Espetáculo não navega (botão desabilitado). (5) Se retirar chama logout.
 
-2. **Rotas e estado para Roteiro**  
+2. **Rotas e estado para Roteiro** ✅  
    - Em `routes.tsx`: adicionar `GM_STORIES` e `GM_STORY_EDITOR` ao tipo View; estender `gmSubView`; adicionar estado `editingStoryId` (ou similar); ramos de render para essas views usando placeholders (ex.: “Roteiro – em construção”).  
    - CA: A partir da home, “Roteiro” leva a uma tela que indica Roteiro; voltar retorna à home GM.
 
-3. **API e DTOs mínimos (backend)**  
+3. **API e DTOs mínimos (backend)** ✅  
    - Criar `routers/gm_stories.py` com `GET/POST /gm/stories`, `GET/PUT/DELETE /gm/stories/{id}`; DTOs Story (id, name, created_at, updated_at); tabela `story` no DB. Registrar router em `main.py`.  
    - CA: GM consegue listar e criar histórias via API (e via cliente no front se já houver tela); dados persistem no SQLite.
 
-4. **Tela lista de histórias**  
+4. **Tela lista de histórias** ✅  
    - Implementar `StoryListScreen`: lista de histórias (GET /gm/stories), layout tipo select-grid; “Nova história” pede nome (modal ou inline), POST e abre editor; selecionar item abre editor com história carregada.  
    - CA: Lista exibe histórias; nova história com nome abre editor; abrir história existente abre editor com dados da história.
 
-5. **Cenas no backend e no editor (container)**  
+5. **Cenas no backend e no editor (container)** ✅  
    - Backend: tabela `scene` (story_id, title, body, order_index, is_narrative, scenario_id); endpoints GET/POST/PATCH/DELETE cenas por story. Front: `StoryEditorScreen` com grid 5×5 (placeholders nos 4 quadrantes) e estado “cena ativa”; carregar cenas ao abrir história; sempre 1 cena ativa; criar/duplicar cena torna ela ativa.  
+   - **Implementado:** CRUD cenas; grid com lista de cenas, área central (cena ativa), cenários no topo, personagens (placeholder). Edição da cena: título, corpo, tipo (Normal/Narrativa), botão “Salvar cena”; save on blur também.  
    - CA: Abrir uma história no editor mostra as cenas; é possível criar/duplicar cena e ela fica ativa; layout 5×5 visível.
 
-6. **Cenários (thumbs + modal)**  
+6. **Cenários (thumbs + modal)** ✅  
    - Backend: CRUD cenários (nome, descrição, thumbnail opcional). Front: painel “Cenários” no topo do grid com thumbs; modal gerenciar/criar cenários; drag-and-drop como único jeito de associar cenário à cena (regra); descrição do cenário só pré-preenche.  
+   - **Implementado:** Backend `gm_scenarios.py` (GET/POST/PUT/DELETE); modal “Gerenciar cenários” (criar/editar nome e descrição, excluir); thumbs no topo; DnD (@dnd-kit) para associar cenário à cena; ao soltar cenário com descrição, corpo da cena é pré-preenchido se estiver vazio. **Pendente:** upload de imagem/thumb para cenário (campo `image_storage_key` existe no backend; falta UI e endpoint de upload).  
    - CA: Cenários globais listados no topo; modal permite criar/editar; associar à cena apenas por D&D; descrição pré-preenche campo da cena.
 
-7. **Personagens no editor (lista + modal)**  
+7. **Personagens no editor (lista + modal)** ✅  
    - Painel “Personagens” à direita: lista ordenada (vínculos da cena); modal gerenciar/criar usa personagens GM (Figurinos) existentes; associação apenas por D&D; cena narrativa não mostra cenário nem personagens.  
    - CA: Lista de personagens da cena à direita; modal abre lista de Figurinos; vincular/desvincular por D&D; modo narrativa oculta cenário e personagens.
 
-8. **Autosave por cena e aviso em falha**  
+8. **Autosave por cena e aviso em falha** ⬜  
    - Autosave ligado (padrão): debounce ao editar + salvar ao sair do editor ou ao trocar de cena ativa; desligado: trocar/sair sem salvar (aviso se houver alterações não salvas). PATCH da cena; em falha, exibir aviso.  
    - CA: Com autosave ligado, ao trocar de cena ou sair a cena é salva; com autosave desligado, trocar/sair não persiste; em falha de save o usuário vê aviso.
 
-9. **Popup Detalhes da cena + duplicar**  
+9. **Popup Detalhes da cena + duplicar** ⬜  
    - Na lista de cenas (esquerda): popup com detalhes da cena; botão “Duplicar” cria cópia e torna ativa.  
    - CA: Clicar em cena abre detalhes; duplicar cria nova cena e a seleciona.
 
-10. **Spellcheck transversal (escopo reduzido para esta etapa)**  
+10. **Spellcheck transversal (escopo reduzido para esta etapa)** ⬜  
     - Definir contrato do serviço (hook/context + opt-out + atraso ≤150ms + sugestões top5); implementar apenas um TextField/textarea de demonstração no editor (ex.: corpo da cena) com sublinhado e menu sugestões; dicionário pessoal/org e offline ficam para próxima fatia.  
     - CA: Em um campo do editor, pausa ≥150ms mostra sublinhado de erros e menu com até 5 sugestões; opt-out desativa.
+
+**Extras já feitos (fora da numeração):** Valance oculta nas telas GM (`hideValance`); conteúdo GM em full bleed (padding 0); estilo marrom/dourado no editor; correção de DnD (thumbs dentro do `DndContext`, `pointerWithin`).
 
 ---
 
@@ -217,4 +223,4 @@ Opcional / transversal:
 
 ---
 
-**Fim da proposta.** Nenhum código foi implementado; apenas planejamento e inventário com base no codebase existente.
+**Fim da proposta.** Itens 1–6 do backlog foram implementados; ver secção F) para estado atual e pendências.

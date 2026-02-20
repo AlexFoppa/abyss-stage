@@ -12,6 +12,8 @@ from sqlalchemy.exc import OperationalError, IntegrityError
 from apps.api.backend.db import get_session
 from apps.api.backend.models.story import Story
 from apps.api.backend.models.scene import Scene
+from apps.api.backend.models.scene_character import SceneCharacter
+from apps.api.backend.models.story_character import StoryCharacter
 from apps.api.backend.routers.auth import require_gm
 from apps.api.backend.models.user import User
 from sqlmodel import Session, select
@@ -164,6 +166,108 @@ def delete_scene(
     session.delete(scene)
     session.commit()
     return None
+
+
+# --- Scene characters (personagens vinculados à cena, ordenados) ---
+
+class SceneCharactersOut(BaseModel):
+    character_ids: list[int]
+
+
+class SceneCharactersPutIn(BaseModel):
+    character_ids: list[int] = Field(default_factory=list)
+
+
+@router.get("/{story_id}/scenes/{scene_id}/characters", response_model=SceneCharactersOut)
+def get_scene_characters(
+    story_id: str,
+    scene_id: str,
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    scene = session.get(Scene, scene_id)
+    if not scene or scene.story_id != story_id:
+        raise HTTPException(status_code=404, detail="Scene not found")
+    stmt = (
+        select(SceneCharacter.character_id)
+        .where(SceneCharacter.scene_id == scene_id)
+        .order_by(SceneCharacter.order_index.asc())
+    )
+    rows = session.exec(stmt).all()
+    return SceneCharactersOut(character_ids=list(rows))
+
+
+@router.put("/{story_id}/scenes/{scene_id}/characters", response_model=SceneCharactersOut)
+def put_scene_characters(
+    story_id: str,
+    scene_id: str,
+    data: SceneCharactersPutIn,
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    scene = session.get(Scene, scene_id)
+    if not scene or scene.story_id != story_id:
+        raise HTTPException(status_code=404, detail="Scene not found")
+    existing = session.exec(
+        select(SceneCharacter).where(SceneCharacter.scene_id == scene_id)
+    ).all()
+    for sc in existing:
+        session.delete(sc)
+    for i, cid in enumerate(data.character_ids or []):
+        session.add(SceneCharacter(scene_id=scene_id, character_id=cid, order_index=i))
+    session.commit()
+    stmt = (
+        select(SceneCharacter.character_id)
+        .where(SceneCharacter.scene_id == scene_id)
+        .order_by(SceneCharacter.order_index.asc())
+    )
+    rows = session.exec(stmt).all()
+    return SceneCharactersOut(character_ids=list(rows))
+
+
+# --- Story characters (elenco da história: quem faz parte da história) ---
+
+class StoryCharactersOut(BaseModel):
+    character_ids: list[int]
+
+
+class StoryCharactersPutIn(BaseModel):
+    character_ids: list[int] = Field(default_factory=list)
+
+
+@router.get("/{story_id}/characters", response_model=StoryCharactersOut)
+def get_story_characters(
+    story_id: str,
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    story = session.get(Story, story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+    stmt = select(StoryCharacter.character_id).where(StoryCharacter.story_id == story_id)
+    rows = session.exec(stmt).all()
+    return StoryCharactersOut(character_ids=list(rows))
+
+
+@router.put("/{story_id}/characters", response_model=StoryCharactersOut)
+def put_story_characters(
+    story_id: str,
+    data: StoryCharactersPutIn,
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    story = session.get(Story, story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+    existing = session.exec(select(StoryCharacter).where(StoryCharacter.story_id == story_id)).all()
+    for sc in existing:
+        session.delete(sc)
+    for cid in data.character_ids or []:
+        session.add(StoryCharacter(story_id=story_id, character_id=cid))
+    session.commit()
+    stmt = select(StoryCharacter.character_id).where(StoryCharacter.story_id == story_id)
+    rows = session.exec(stmt).all()
+    return StoryCharactersOut(character_ids=list(rows))
 
 
 @router.get("", response_model=list[StoryOut])

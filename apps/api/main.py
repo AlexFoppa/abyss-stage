@@ -12,6 +12,7 @@ from apps.api.backend.routers.auth import router as auth_router
 from apps.api.backend.config import validate_settings
 from apps.api.backend.routers.characters import router as characters_router, gm_router as gm_characters_router
 from apps.api.backend.routers.gm_stories import router as gm_stories_router
+from apps.api.backend.routers.gm_scenarios import router as gm_scenarios_router
 from apps.api.backend.routers.catalog import router as catalog_router
 
 
@@ -45,3 +46,4 @@ app.include_router(catalog_router)
 app.include_router(characters_router)
 app.include_router(gm_characters_router)
 app.include_router(gm_stories_router)
+app.include_router(gm_scenarios_router)
