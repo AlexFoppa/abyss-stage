@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   DndContext,
@@ -205,9 +205,41 @@ export function StoryEditorScreen({
   const [sceneDetailsSceneId, setSceneDetailsSceneId] = useState<string | null>(null);
   const [sceneDetailsCharacterIds, setSceneDetailsCharacterIds] = useState<number[]>([]);
   const [duplicating, setDuplicating] = useState(false);
+  const [autosaveEnabled, setAutosaveEnabled] = useState(true);
+  const [lastSavedState, setLastSavedState] = useState<{
+    sceneId: string;
+    title: string;
+    body: string;
+    is_narrative: boolean;
+  } | null>(null);
 
   const activeScene = scenes.find((s) => s.id === activeSceneId) ?? null;
   const sceneDetailsScene = sceneDetailsSceneId ? scenes.find((s) => s.id === sceneDetailsSceneId) ?? null : null;
+
+  const isDirty = Boolean(
+    activeScene &&
+    activeSceneId &&
+    lastSavedState?.sceneId === activeSceneId &&
+    (lastSavedState.title !== (activeScene.title ?? "") ||
+      lastSavedState.body !== (activeScene.body ?? "") ||
+      lastSavedState.is_narrative !== activeScene.is_narrative)
+  );
+
+  const sceneSnapshotRef = useRef<{ sceneId: string; title: string; body: string; is_narrative: boolean } | null>(null);
+  const activeSceneIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeSceneIdRef.current = activeSceneId;
+  }, [activeSceneId]);
+  useEffect(() => {
+    if (activeSceneId && activeScene) {
+      sceneSnapshotRef.current = {
+        sceneId: activeSceneId,
+        title: activeScene.title ?? "",
+        body: activeScene.body ?? "",
+        is_narrative: activeScene.is_narrative,
+      };
+    }
+  }, [activeSceneId, activeScene?.title, activeScene?.body, activeScene?.is_narrative]);
 
   const loadScenarios = useCallback(async () => {
     try {
@@ -312,6 +344,31 @@ export function StoryEditorScreen({
       setSceneCharacterIds([]);
     }
   }, [activeSceneId, activeScene?.id, activeScene?.is_narrative, loadSceneCharacters]);
+
+  useEffect(() => {
+    if (activeSceneId && activeScene) {
+      setLastSavedState({
+        sceneId: activeSceneId,
+        title: activeScene.title ?? "",
+        body: activeScene.body ?? "",
+        is_narrative: activeScene.is_narrative,
+      });
+    }
+  }, [activeSceneId]);
+
+  useEffect(() => {
+    if (!autosaveEnabled || !isDirty) return;
+    const t = setTimeout(() => {
+      const snap = sceneSnapshotRef.current;
+      if (!snap || snap.sceneId !== activeSceneIdRef.current) return;
+      handleUpdateScene({
+        title: snap.title,
+        body: snap.body,
+        is_narrative: snap.is_narrative,
+      });
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [autosaveEnabled, isDirty, activeScene?.title, activeScene?.body, activeScene?.is_narrative, activeSceneId]);
 
   useEffect(() => {
     if (!sceneDetailsSceneId) {
@@ -447,8 +504,8 @@ export function StoryEditorScreen({
     title?: string;
     body?: string;
     is_narrative?: boolean;
-  }) {
-    if (!activeSceneId || !activeScene) return;
+  }): Promise<boolean> {
+    if (!activeSceneId || !activeScene) return false;
     setErr(null);
     setSceneSaving(true);
     try {
@@ -459,12 +516,20 @@ export function StoryEditorScreen({
       setScenes((prev) =>
         prev.map((s) => (s.id === activeSceneId ? { ...s, ...updated } : s))
       );
+      setLastSavedState({
+        sceneId: activeSceneId,
+        title: updated.title ?? "",
+        body: updated.body ?? "",
+        is_narrative: updated.is_narrative,
+      });
+      return true;
     } catch (e: unknown) {
       const msg =
         e && typeof (e as { message?: string })?.message === "string"
           ? (e as { message: string }).message
           : "Falha ao salvar cena";
       setErr(msg);
+      return false;
     } finally {
       setSceneSaving(false);
     }
@@ -477,6 +542,39 @@ export function StoryEditorScreen({
       body: activeScene.body ?? "",
       is_narrative: activeScene.is_narrative,
     });
+  }
+
+  async function trySwitchScene(nextSceneId: string) {
+    if (nextSceneId === activeSceneId) return;
+    if (autosaveEnabled && activeScene) {
+      const ok = await handleUpdateScene({
+        title: activeScene.title ?? "",
+        body: activeScene.body ?? "",
+        is_narrative: activeScene.is_narrative,
+      });
+      if (ok) setActiveSceneId(nextSceneId);
+    } else if (!autosaveEnabled && isDirty) {
+      if (!window.confirm("Há alterações não salvas. Trocar de cena sem salvar?")) return;
+      setActiveSceneId(nextSceneId);
+    } else {
+      setActiveSceneId(nextSceneId);
+    }
+  }
+
+  async function handleBack() {
+    if (autosaveEnabled && activeScene) {
+      const ok = await handleUpdateScene({
+        title: activeScene.title ?? "",
+        body: activeScene.body ?? "",
+        is_narrative: activeScene.is_narrative,
+      });
+      if (ok) onBack();
+    } else if (!autosaveEnabled && isDirty) {
+      if (!window.confirm("Há alterações não salvas. Sair do editor sem salvar?")) return;
+      onBack();
+    } else {
+      onBack();
+    }
   }
 
   async function removeCharacterFromScene(characterId: number) {
@@ -593,11 +691,24 @@ export function StoryEditorScreen({
   return (
     <div className="story-editor">
       <div className="story-editor__header">
-        <button type="button" className="ui-btn ui-btn--ghost" onClick={onBack}>
+        <button type="button" className="ui-btn ui-btn--ghost" onClick={handleBack}>
           Voltar
         </button>
         <h1 className="story-editor__title">{story?.name ?? storyId}</h1>
+        <label className="story-editor__autosave-toggle">
+          <input
+            type="checkbox"
+            checked={autosaveEnabled}
+            onChange={(e) => setAutosaveEnabled(e.target.checked)}
+          />
+          <span>Autosave</span>
+        </label>
       </div>
+      {err && (
+        <p className="story-editor__error story-editor__error--inline" role="alert">
+          {err}
+        </p>
+      )}
 
       <div className="story-editor__grid">
         <ScenarioManagerModal
@@ -651,7 +762,7 @@ export function StoryEditorScreen({
                 key={s.id}
                 scene={s}
                 isActive={s.id === activeSceneId}
-                onSelect={() => setActiveSceneId(s.id)}
+                onSelect={() => trySwitchScene(s.id)}
                 onOpenDetails={(e) => {
                   e.stopPropagation();
                   setSceneDetailsSceneId(s.id);

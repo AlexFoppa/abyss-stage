@@ -34,12 +34,35 @@
   font-weight: 600;
   letter-spacing: var(--ls-ui);
   color: var(--text-main);
+  flex: 1;
+  min-width: 0;
+}
+
+.story-editor__autosave-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-label);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.story-editor__autosave-toggle input {
+  margin: 0;
 }
 
 .story-editor__error {
   padding: 1rem;
   color: #c44;
   font-size: 0.9rem;
+}
+
+.story-editor__error--inline {
+  margin: 0 1rem;
+  padding: 0.5rem 0;
+  font-size: 0.9rem;
+  border-bottom: 1px solid var(--gold-soft);
 }
 
 .story-editor__grid {
