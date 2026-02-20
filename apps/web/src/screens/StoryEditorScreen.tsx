@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   MouseSensor,
@@ -18,6 +19,7 @@ const SCENARIO_DRAG_PREFIX = "scenario-";
 const SCENE_DROP_PREFIX = "scene-scenario-";
 const CHAR_DRAG_PREFIX = "char-";
 const SCENE_CHAR_DROP_PREFIX = "scene-char-";
+const SCENE_REORDER_PREFIX = "scene-reorder-";
 
 function characterPortraitUrl(c: GMCharacter): string {
   const fallback = "/assets/jogador_default.png";
@@ -108,6 +110,59 @@ function DraggableCharacterThumb({ character }: { character: GMCharacter }) {
   );
 }
 
+function SortableSceneItem({
+  scene,
+  isActive,
+  onSelect,
+  onOpenDetails,
+}: {
+  scene: Scene;
+  isActive: boolean;
+  onSelect: () => void;
+  onOpenDetails: (e: React.MouseEvent) => void;
+}) {
+  const id = SCENE_REORDER_PREFIX + scene.id;
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id });
+  return (
+    <li
+      ref={setDropRef}
+      className={
+        "story-editor__scene-item-wrap" +
+        (isActive ? " story-editor__scene-item-wrap--active" : "") +
+        (isDragging ? " story-editor__scene-item-wrap--dragging" : "") +
+        (isOver ? " story-editor__scene-item-wrap--over" : "")
+      }
+    >
+      <span
+        ref={setDragRef}
+        className="story-editor__scene-item-handle"
+        title="Arraste para reordenar"
+        {...listeners}
+        {...attributes}
+      >
+        ≡
+      </span>
+      <button
+        type="button"
+        className={"story-editor__scene-item " + (isActive ? "story-editor__scene-item--active" : "")}
+        onClick={onSelect}
+      >
+        {scene.title || "(sem título)"}
+      </button>
+      <button
+        type="button"
+        className="story-editor__scene-item-duplicate"
+        onClick={onOpenDetails}
+        title="Detalhes e duplicar"
+        aria-label="Detalhes e duplicar"
+      >
+        ⧉
+      </button>
+    </li>
+  );
+}
+
 export type StoryInfo = {
   id: string;
   name: string;
@@ -147,8 +202,12 @@ export function StoryEditorScreen({
   const [storyCharacterIds, setStoryCharacterIds] = useState<number[]>([]);
   const [sceneCharacterIds, setSceneCharacterIds] = useState<number[]>([]);
   const [characterModalOpen, setCharacterModalOpen] = useState(false);
+  const [sceneDetailsSceneId, setSceneDetailsSceneId] = useState<string | null>(null);
+  const [sceneDetailsCharacterIds, setSceneDetailsCharacterIds] = useState<number[]>([]);
+  const [duplicating, setDuplicating] = useState(false);
 
   const activeScene = scenes.find((s) => s.id === activeSceneId) ?? null;
+  const sceneDetailsScene = sceneDetailsSceneId ? scenes.find((s) => s.id === sceneDetailsSceneId) ?? null : null;
 
   const loadScenarios = useCallback(async () => {
     try {
@@ -254,6 +313,34 @@ export function StoryEditorScreen({
     }
   }, [activeSceneId, activeScene?.id, activeScene?.is_narrative, loadSceneCharacters]);
 
+  useEffect(() => {
+    if (!sceneDetailsSceneId) {
+      setSceneDetailsCharacterIds([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api<{ character_ids: number[] }>(
+          `/api/gm/stories/${storyId}/scenes/${sceneDetailsSceneId}/characters`
+        );
+        if (!cancelled) setSceneDetailsCharacterIds(res?.character_ids ?? []);
+      } catch {
+        if (!cancelled) setSceneDetailsCharacterIds([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [storyId, sceneDetailsSceneId]);
+
+  useEffect(() => {
+    if (!sceneDetailsSceneId) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setSceneDetailsSceneId(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [sceneDetailsSceneId]);
+
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { distance: 8 } })
@@ -321,6 +408,36 @@ export function StoryEditorScreen({
           e && typeof (e as { message?: string })?.message === "string"
             ? (e as { message: string }).message
             : "Falha ao associar cenário";
+        setErr(msg);
+      }
+    }
+
+    if (activeId.startsWith(SCENE_REORDER_PREFIX) && overId.startsWith(SCENE_REORDER_PREFIX)) {
+      const fromId = activeId.slice(SCENE_REORDER_PREFIX.length);
+      const toId = overId.slice(SCENE_REORDER_PREFIX.length);
+      if (fromId === toId) return;
+      const fromIndex = scenes.findIndex((s) => s.id === fromId);
+      const toIndex = scenes.findIndex((s) => s.id === toId);
+      if (fromIndex === -1 || toIndex === -1) return;
+      const newOrder = [...scenes];
+      const [removed] = newOrder.splice(fromIndex, 1);
+      newOrder.splice(toIndex, 0, removed);
+      setErr(null);
+      try {
+        await Promise.all(
+          newOrder.map((s, index) =>
+            api<Scene>(`/api/gm/stories/${storyId}/scenes/${s.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ order_index: index }),
+            })
+          )
+        );
+        setScenes(newOrder);
+      } catch (e: unknown) {
+        const msg =
+          e && typeof (e as { message?: string })?.message === "string"
+            ? (e as { message: string }).message
+            : "Falha ao reordenar cenas";
         setErr(msg);
       }
     }
@@ -410,6 +527,41 @@ export function StoryEditorScreen({
     }
   }
 
+  async function handleDuplicateScene() {
+    if (!sceneDetailsScene) return;
+    setErr(null);
+    setDuplicating(true);
+    try {
+      const created = await api<Scene>(`/api/gm/stories/${storyId}/scenes`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Cópia de " + (sceneDetailsScene.title?.trim() || "Cena"),
+          body: sceneDetailsScene.body ?? "",
+          order_index: scenes.length,
+          is_narrative: sceneDetailsScene.is_narrative,
+          scenario_id: sceneDetailsScene.scenario_id,
+        }),
+      });
+      if (sceneDetailsCharacterIds.length > 0) {
+        await api(`/api/gm/stories/${storyId}/scenes/${created.id}/characters`, {
+          method: "PUT",
+          body: JSON.stringify({ character_ids: sceneDetailsCharacterIds }),
+        });
+      }
+      await loadScenes();
+      setActiveSceneId(created.id);
+      setSceneDetailsSceneId(null);
+    } catch (e: unknown) {
+      const msg =
+        e && typeof (e as { message?: string })?.message === "string"
+          ? (e as { message: string }).message
+          : "Falha ao duplicar cena";
+      setErr(msg);
+    } finally {
+      setDuplicating(false);
+    }
+  }
+
   if (loading && !story) {
     return (
       <div className="story-editor">
@@ -495,18 +647,73 @@ export function StoryEditorScreen({
           </div>
           <ul className="story-editor__scene-list">
             {scenes.map((s) => (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  className={"story-editor__scene-item " + (s.id === activeSceneId ? "story-editor__scene-item--active" : "")}
-                  onClick={() => setActiveSceneId(s.id)}
-                >
-                  {s.title || "(sem título)"}
-                </button>
-              </li>
+              <SortableSceneItem
+                key={s.id}
+                scene={s}
+                isActive={s.id === activeSceneId}
+                onSelect={() => setActiveSceneId(s.id)}
+                onOpenDetails={(e) => {
+                  e.stopPropagation();
+                  setSceneDetailsSceneId(s.id);
+                }}
+              />
             ))}
           </ul>
         </aside>
+
+        {sceneDetailsScene && createPortal(
+          <div
+            className="ui-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Detalhes da cena"
+          >
+            <button
+              className="ui-modal__backdrop"
+              onClick={() => setSceneDetailsSceneId(null)}
+              aria-label="Fechar"
+            />
+            <div className="ui-modal__card ui-card scene-details-modal">
+              <h3 className="ui-modal__title">{sceneDetailsScene.title || "(sem título)"}</h3>
+              {err && <p className="scenario-manager__error">{err}</p>}
+              <dl className="scene-details-modal__meta">
+                <dt>Tipo</dt>
+                <dd>{sceneDetailsScene.is_narrative ? "Narrativa" : "Normal"}</dd>
+                {!sceneDetailsScene.is_narrative && sceneDetailsScene.scenario_id && (
+                  <>
+                    <dt>Cenário</dt>
+                    <dd>{scenarios.find((sc) => sc.id === sceneDetailsScene.scenario_id)?.name ?? sceneDetailsScene.scenario_id}</dd>
+                  </>
+                )}
+                <dt>Personagens na cena</dt>
+                <dd>{sceneDetailsCharacterIds.length}</dd>
+                <dt>Corpo</dt>
+                <dd className="scene-details-modal__body-preview">
+                  {(sceneDetailsScene.body?.trim() || "(vazio)").slice(0, 200)}
+                  {(sceneDetailsScene.body?.trim().length ?? 0) > 200 ? "…" : ""}
+                </dd>
+              </dl>
+              <div className="ui-actions ui-modal__actions" style={{ marginTop: 16 }}>
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--primary"
+                  onClick={handleDuplicateScene}
+                  disabled={duplicating}
+                >
+                  {duplicating ? "Duplicando…" : "Duplicar"}
+                </button>
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--ghost"
+                  onClick={() => setSceneDetailsSceneId(null)}
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
         <main className="story-editor__main" aria-label="Cena ativa">
           {activeScene ? (
