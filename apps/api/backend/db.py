@@ -40,6 +40,15 @@ def init_db() -> None:
         if r is not None and r == 0:
             conn.execute(text("DROP TABLE IF EXISTS scenario"))
             conn.commit()
+        # scene_character: migration had scene_id INTEGER and no order_index; model needs scene_id TEXT (UUID) and order_index
+        try:
+            info = conn.execute(text("SELECT name, type FROM pragma_table_info('scene_character')")).fetchall()
+            cols = {(row[0] or "").lower(): (row[1] or "").upper() for row in info} if info else {}
+            if cols.get("scene_id") == "INTEGER" or "order_index" not in cols:
+                conn.execute(text("DROP TABLE IF EXISTS scene_character"))
+                conn.commit()
+        except Exception:
+            pass
     SQLModel.metadata.create_all(engine)
     # scene_character: criada por create_all; sem checagem de schema antigo
 
