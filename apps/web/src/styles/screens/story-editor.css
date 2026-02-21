@@ -873,7 +873,7 @@
   border-color: var(--gold);
 }
 
-/* Tooltip inline (fallback) */
+/* Tooltip: estilos base (conteúdo visível). Inline: escondido até hover no wrap. */
 .scene-chars-modal__polaroid-tooltip,
 .scenario-manager__polaroid-tooltip {
   position: absolute;
@@ -894,16 +894,20 @@
   box-shadow: 0 8px 24px rgba(0,0,0,.5);
   z-index: 10001;
   pointer-events: none;
-  opacity: 0;
-  visibility: hidden;
   transition: opacity 0.15s, visibility 0.15s;
-  /* Expandir o necessário; scroll só se passar da tela */
   max-height: min(85vh, 800px);
   overflow-x: hidden;
   overflow-y: auto;
 }
 
-/* Tooltip renderizado em portal: position fixed, sempre visível quando renderizado */
+/* Só esconder quando for tooltip inline (dentro do wrap); no portal o conteúdo fica visível */
+.scene-chars-modal__polaroid-info-wrap .scene-chars-modal__polaroid-tooltip,
+.scenario-manager__polaroid-info-wrap .scenario-manager__polaroid-tooltip {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* Tooltip renderizado em portal: wrapper fixo; o conteúdo usa __body para ficar no fluxo */
 .scene-chars-modal__polaroid-tooltip.scene-chars-modal__polaroid-tooltip--portal,
 .scenario-manager__polaroid-tooltip.scenario-manager__polaroid-tooltip--portal {
   position: fixed;
@@ -917,6 +921,54 @@
   opacity: 1;
   visibility: visible;
   z-index: 100002;
+}
+
+/* Conteúdo do tooltip no portal: no fluxo (sem position absolute) para o texto aparecer */
+.scene-chars-modal__polaroid-tooltip__body,
+.scenario-manager__polaroid-tooltip__body {
+  position: static;
+  left: auto;
+  top: auto;
+  transform: none;
+  min-width: 280px;
+  padding: 16px 18px;
+  background: var(--bg-ink);
+  border: 1px solid var(--gold-border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  font-size: 0.95rem;
+  color: var(--text-main);
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  max-height: min(85vh, 800px);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.scene-chars-modal__polaroid-tooltip__body .scene-chars-tooltip__row,
+.scenario-manager__polaroid-tooltip__body .scene-chars-tooltip__row {
+  margin-top: 10px;
+}
+
+.scene-chars-modal__polaroid-tooltip__body .scene-chars-tooltip__row:first-child,
+.scenario-manager__polaroid-tooltip__body .scene-chars-tooltip__row:first-child {
+  margin-top: 0;
+}
+
+.scene-chars-modal__polaroid-tooltip__body .scene-chars-tooltip__label,
+.scenario-manager__polaroid-tooltip__body .scene-chars-tooltip__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-label);
+  margin-bottom: 4px;
+}
+
+.scene-chars-modal__polaroid-tooltip__body .scene-chars-tooltip__value,
+.scenario-manager__polaroid-tooltip__body .scene-chars-tooltip__value {
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .scene-chars-modal__polaroid-info-wrap:hover .scene-chars-modal__polaroid-tooltip,

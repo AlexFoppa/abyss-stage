@@ -362,7 +362,7 @@ export function SceneCharactersModal({
                   className="scene-chars-modal__polaroid-tooltip scene-chars-modal__polaroid-tooltip--portal"
                   style={{ position: "fixed", left: tooltip.x, top: tooltip.y, zIndex: 100002 }}
                 >
-                  <CharacterTooltipContent character={tooltip.character} />
+                  <CharacterTooltipContent character={tooltip.character} className="scene-chars-modal__polaroid-tooltip__body" />
                 </div>,
                 document.body
               )}

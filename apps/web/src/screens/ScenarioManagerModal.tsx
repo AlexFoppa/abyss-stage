@@ -524,7 +524,7 @@ export function ScenarioManagerModal({
                   className="scenario-manager__polaroid-tooltip scenario-manager__polaroid-tooltip--portal"
                   style={{ position: "fixed", left: tooltip.x, top: tooltip.y, zIndex: 100002 }}
                 >
-                  <ScenarioTooltipContent scenario={tooltip.scenario} />
+                  <ScenarioTooltipContent scenario={tooltip.scenario} className="scenario-manager__polaroid-tooltip__body" />
                 </div>,
                 document.body
               )}
