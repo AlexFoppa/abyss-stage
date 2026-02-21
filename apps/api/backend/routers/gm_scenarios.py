@@ -1,11 +1,13 @@
 # apps/api/backend/routers/gm_scenarios.py
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import OperationalError, IntegrityError
 
@@ -151,3 +153,48 @@ def delete_scenario(
     session.delete(scenario)
     session.commit()
     return None
+
+
+def _scenario_upload_dir(scenario_id: str) -> str:
+    base = os.path.join("uploads", "scenarios", scenario_id)
+    os.makedirs(base, exist_ok=True)
+    return base
+
+
+@router.post("/{scenario_id}/image", response_model=ScenarioOut)
+def upload_scenario_image(
+    scenario_id: str,
+    file: UploadFile = File(...),
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    scenario = session.get(Scenario, scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
+    raw = file.file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+    ext = Path(file.filename).suffix.lower() or ".jpg"
+    if len(ext) > 10:
+        ext = ".jpg"
+    fname = f"image{ext}"
+    folder = _scenario_upload_dir(scenario_id)
+    abs_path = os.path.join(folder, fname)
+    with open(abs_path, "wb") as f:
+        f.write(raw)
+    storage_key = f"scenarios/{scenario_id}/{fname}"
+    scenario.image_storage_key = storage_key
+    scenario.updated_at = datetime.utcnow()
+    session.add(scenario)
+    session.commit()
+    session.refresh(scenario)
+    return ScenarioOut(
+        id=scenario.id,
+        name=scenario.name,
+        description=scenario.description or "",
+        image_storage_key=scenario.image_storage_key,
+        created_at=scenario.created_at,
+        updated_at=scenario.updated_at,
+    )

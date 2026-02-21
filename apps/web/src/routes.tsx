@@ -10,6 +10,7 @@ import { SelectCharacterScreen } from "./screens/SelectCharacterScreen";
 import { EditCharacterScreen } from "./screens/EditCharacterScreen";
 import { HomeGMScreen } from "./screens/HomeGMScreen";
 import { GMCharactersScreen } from "./screens/GMCharactersScreen";
+import { GMScenariosScreen } from "./screens/GMScenariosScreen";
 import { StoryListScreen } from "./screens/StoryListScreen";
 import { StoryEditorScreen } from "./screens/StoryEditorScreen";
 
@@ -18,6 +19,7 @@ type View =
   | "RESET"
   | "GM_HOME"
   | "GM_CHARACTERS"
+  | "GM_SCENARIOS"
   | "GM_STORIES"
   | "GM_STORY_EDITOR"
   | "LOBBY"
@@ -38,7 +40,7 @@ export function Routes() {
     "LOBBY" | "CREATE_CHARACTER" | "SELECT_CHARACTER" | "EDIT_CHARACTER"
   >("LOBBY");
 
-  const [gmSubView, setGmSubView] = useState<"GM_HOME" | "GM_CHARACTERS" | "GM_STORIES" | "GM_STORY_EDITOR">("GM_HOME");
+  const [gmSubView, setGmSubView] = useState<"GM_HOME" | "GM_CHARACTERS" | "GM_SCENARIOS" | "GM_STORIES" | "GM_STORY_EDITOR">("GM_HOME");
   const [editingStoryId, setEditingStoryId] = useState<string | null>(null);
   const [stageMode, setStageMode] = useState<"IDLE" | "ZOOM_IN">("IDLE");
   
@@ -83,7 +85,7 @@ export function Routes() {
   }
 
   const shouldOpenCurtains = isGM && !["LOBBY", "SELECT_CHARACTER", "CREATE_CHARACTER", "EDIT_CHARACTER"].includes(view);
-  const isGMView = isGM && ["GM_HOME", "GM_CHARACTERS", "GM_STORIES", "GM_STORY_EDITOR"].includes(view);
+  const isGMView = isGM && ["GM_HOME", "GM_CHARACTERS", "GM_SCENARIOS", "GM_STORIES", "GM_STORY_EDITOR"].includes(view);
 
   return (
     <StageLayout
@@ -104,6 +106,7 @@ export function Routes() {
         <HomeGMScreen
           onRoteiro={() => setGmSubView("GM_STORIES")}
           onFigurinos={() => setGmSubView("GM_CHARACTERS")}
+          onCenarios={() => setGmSubView("GM_SCENARIOS")}
           onLogout={() => logout()}
         />
       ) : view === "GM_STORIES" ? (
@@ -143,6 +146,8 @@ export function Routes() {
             </div>
           </div>
         )
+      ) : view === "GM_SCENARIOS" ? (
+        <GMScenariosScreen onBack={() => setGmSubView("GM_HOME")} />
       ) : view === "GM_CHARACTERS" ? (
         <GMCharactersScreen
           onBack={() => setGmSubView("GM_HOME")}

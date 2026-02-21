@@ -1,0 +1,51 @@
+/* Tela Cenários (GM): imagem em cores, proporção panorâmica */
+
+.gm-scenarios-screen .scenario-detail__image-wrap {
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--gold-soft);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.gm-scenarios-screen .scenario-detail__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: none;
+  opacity: 1;
+}
+
+.gm-scenarios-screen .scenario-detail__placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-label);
+  font-size: 0.9rem;
+}
+
+/* No formulário de edição: imagem entre nome e descrição, centralizada e maior */
+.gm-scenarios-screen .scenario-form__image-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.gm-scenarios-screen .scenario-form__image {
+  width: 100%;
+  max-width: 1100px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+  border-radius: 8px;
+  border: 1px solid var(--gold-soft);
+  filter: none;
+  opacity: 1;
+}

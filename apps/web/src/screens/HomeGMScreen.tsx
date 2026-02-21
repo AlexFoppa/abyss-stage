@@ -1,10 +1,12 @@
 export function HomeGMScreen({
   onRoteiro,
   onFigurinos,
+  onCenarios,
   onLogout,
 }: {
   onRoteiro: () => void;
   onFigurinos: () => void;
+  onCenarios: () => void;
   onLogout: () => void;
 }) {
   return (
@@ -16,6 +18,9 @@ export function HomeGMScreen({
           </button>
           <button className="ui-btn" type="button" onClick={onFigurinos}>
             Figurinos
+          </button>
+          <button className="ui-btn" type="button" onClick={onCenarios}>
+            Cenários
           </button>
           <button className="ui-btn ui-btn--ghost" type="button" disabled title="Em breve">
             Espetáculo

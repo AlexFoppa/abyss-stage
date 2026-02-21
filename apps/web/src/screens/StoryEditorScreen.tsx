@@ -28,18 +28,31 @@ function characterPortraitUrl(c: GMCharacter): string {
   return c.default_image_url;
 }
 
+function scenarioImageUrl(scenario: Scenario): string | null {
+  if (!scenario.image_storage_key) return null;
+  return `/uploads/${scenario.image_storage_key}`;
+}
+
 function DraggableScenarioThumb({ scenario }: { scenario: Scenario }) {
   const id = SCENARIO_DRAG_PREFIX + scenario.id;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
+  const imgUrl = scenarioImageUrl(scenario);
   return (
     <span
       ref={setNodeRef}
-      className={"story-editor__scenario-thumb" + (isDragging ? " story-editor__scenario-thumb--dragging" : "")}
+      className={"story-editor__scenario-thumb story-editor__scenario-thumb--polaroid" + (isDragging ? " story-editor__scenario-thumb--dragging" : "")}
       title={(scenario.description || scenario.name) + "\n\nArraste até a cena para associar."}
       {...listeners}
       {...attributes}
     >
-      {scenario.name || "(sem nome)"}
+      <span className="story-editor__scenario-thumb-img-wrap">
+        {imgUrl ? (
+          <img src={imgUrl} alt="" className="story-editor__scenario-thumb-img" />
+        ) : (
+          <span className="story-editor__scenario-thumb-placeholder">Sem imagem</span>
+        )}
+      </span>
+      <span className="story-editor__scenario-thumb-name">{scenario.name || "(sem nome)"}</span>
     </span>
   );
 }
