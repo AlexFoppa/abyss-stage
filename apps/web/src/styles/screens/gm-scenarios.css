@@ -49,3 +49,38 @@
   filter: none;
   opacity: 1;
 }
+
+/* Vista de detalhe (sem edição): mesmo layout que o formulário */
+.gm-scenarios-screen .scenario-detail-view {
+  margin-top: 12px;
+}
+
+.gm-scenarios-screen .scenario-detail-view__name {
+  font-size: 1rem;
+  font-family: var(--font-ui);
+  color: var(--text-main);
+  margin-bottom: 12px;
+}
+
+.gm-scenarios-screen .scenario-detail-view__description {
+  margin-top: 8px;
+  padding: 10px var(--field-pad-x);
+  min-height: 80px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--gold-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-input);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.gm-scenarios-screen .scenario-detail-view__placeholder {
+  width: 100%;
+  max-width: 1100px;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  border: 1px solid var(--gold-soft);
+  box-sizing: border-box;
+}

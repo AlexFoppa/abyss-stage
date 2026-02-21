@@ -80,24 +80,26 @@
 .create-col--preview{
   display: grid;
   align-content: start;
+  justify-items: center;
   width: 100%;
   justify-self: stretch;
   padding: 16px;
   box-sizing: border-box;
-  background: transparent;
+  background: var(--bg-ink);
   border: 0;
   border-radius: 14px;
 }
 
 .create-col--preview--gm{
-  background: rgba(30, 18, 8, .28);
+  background: var(--bg-ink);
   border: 1px solid rgba(210,170,80,.35);
 }
 
 .mirror{
   position: relative;
-  width: min(520px, 32vw);
-  height: min(520px, 32vw);
+  width: 100%;
+  max-width: min(520px, 40vw);
+  aspect-ratio: 1;
   overflow: visible;
   border-radius: 14px;
   background: transparent;
@@ -107,8 +109,8 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  /* posição da imagem: translate(horizontal%, vertical%). vertical = segundo número do calc */
-  transform: translate(-30%, calc(-50% + 25%));
+  /* centralizado horizontalmente; vertical com leve ajuste */
+  transform: translate(-50%, calc(-50% + 25%));
   transform-origin: center center;
   /* tamanho da imagem: aumente para zoom in, diminua para zoom out */
   max-width: 120%;
@@ -132,20 +134,18 @@
 }
 
 .mirror-controls{
-  width: min(520px, 32vw);
+  width: 100%;
   margin-top: 0;
   position: relative;
-  /* quem fica na frente: número maior = caixa na frente da imagem; menor = imagem na frente */
   z-index: 10;
 }
 
 .mirror-cabinet{
-  /* distância da caixa de setas em relação ao espelho (aumente para descer a caixa) */
   margin-top: 200px;
-  margin-left: 120px;
-  /* tamanho interno da caixa */
-  padding: 18px 16px;
+  margin-left: 0;
+  width: 100%;
   box-sizing: border-box;
+  padding: 18px 16px;
   border-radius: 12px;
   background:
     radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,.05), rgba(0,0,0,0) 55%),
@@ -201,6 +201,9 @@
   position: relative;
   overflow: hidden;
   z-index: 2;
+  display: block;
+  width: 100%;
+  text-align: center;
 }
 
 .mirror-controls__file input[type="file"]{

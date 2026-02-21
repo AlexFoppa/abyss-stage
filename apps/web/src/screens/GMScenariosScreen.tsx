@@ -285,50 +285,39 @@ export function GMScenariosScreen({
           ) : !active ? (
             <div className="select-muted">Selecione um cenário.</div>
           ) : (
-            <div className="book">
-              <div className="book-page">
-                <div className="scenario-detail__image-wrap">
-                  {scenarioImageUrl(active) ? (
-                    <img
-                      className="scenario-detail__img"
-                      src={scenarioImageUrl(active)!}
-                      alt=""
-                    />
-                  ) : (
-                    <div className="scenario-detail__placeholder">
-                      Sem imagem
-                    </div>
-                  )}
-                </div>
-
-                <div className="book-content" style={{ marginTop: 16 }}>
-                  <div className="book-row">
-                    <div className="book-label">Nome</div>
-                    <div className="book-value">{active.name || "—"}</div>
+            <div className="scenario-detail-view">
+              <div className="scenario-detail-view__name">{active.name || "—"}</div>
+              <div className="scenario-form__image-wrap">
+                {scenarioImageUrl(active) ? (
+                  <img
+                    className="scenario-form__image"
+                    src={scenarioImageUrl(active)!}
+                    alt=""
+                  />
+                ) : (
+                  <div className="scenario-detail__placeholder scenario-detail-view__placeholder">
+                    Sem imagem
                   </div>
-                  <div className="book-row">
-                    <div className="book-label">Descrição</div>
-                    <div className="book-value book-multiline">{active.description || "—"}</div>
-                  </div>
-                </div>
-
-                <div className="select-actions" style={{ display: "flex", gap: 10, marginTop: 16 }}>
-                  <button
-                    className="ui-btn ui-btn--ghost"
-                    onClick={() => startEdit(active)}
-                    type="button"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    className="ui-btn ui-btn--ghost"
-                    onClick={() => handleDelete(active)}
-                    disabled={deletingId === active.id}
-                    type="button"
-                  >
-                    {deletingId === active.id ? "Excluindo…" : "Excluir"}
-                  </button>
-                </div>
+                )}
+              </div>
+              <label className="ui-label" style={{ marginTop: 12 }}>Descrição (pré-preenche a cena)</label>
+              <div className="scenario-detail-view__description">{active.description || "—"}</div>
+              <div className="select-actions" style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                <button
+                  className="ui-btn"
+                  onClick={() => startEdit(active)}
+                  type="button"
+                >
+                  Editar
+                </button>
+                <button
+                  className="ui-btn ui-btn--ghost"
+                  onClick={() => handleDelete(active)}
+                  disabled={deletingId === active.id}
+                  type="button"
+                >
+                  {deletingId === active.id ? "Excluindo…" : "Excluir"}
+                </button>
               </div>
             </div>
           )}

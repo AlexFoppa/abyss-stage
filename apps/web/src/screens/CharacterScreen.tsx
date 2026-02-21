@@ -123,10 +123,25 @@ export function CharacterScreen({
   const [imgRevision, setImgRevision] = useState(0); // força reload da URL após refresh
 
   const SLOT_MIN = 0;
-
   const SLOT_MAX = 9;
 
+  /** Número exibido e rótulo por slot interno: antigo 0→1 Padrão, … antigo 9→0 Off */
+  const SLOT_LABELS: Record<number, string> = {
+    0: "Off",
+    1: "Padrão",
+    2: "Assustado",
+    3: "Rindo",
+    4: "Furioso",
+    5: "Ferido / com dor",
+    6: "Personalizado 1",
+    7: "Personalizado 2",
+    8: "Personalizado 3",
+    9: "Atordoado/Incapacitado",
+  };
+
   const visibleSlot = useMemo(() => clampInt(imgIndex, SLOT_MIN, SLOT_MAX), [imgIndex]);
+  const slotDisplayNum = (visibleSlot + 1) % 10;
+  const slotLabel = SLOT_LABELS[slotDisplayNum] ?? String(visibleSlot);
 
   const imageBySlot = useMemo(() => {
     const m = new Map<number, CharacterImage>();
@@ -833,7 +848,7 @@ export function CharacterScreen({
                   </button>
 
                   <div className="mirror-controls__meta">
-                    {visibleSlot === 0 ? "Principal (slot 0)" : `Galeria (slot ${visibleSlot})`}
+                    {slotDisplayNum} – {slotLabel}
                   </div>
 
                   <button
