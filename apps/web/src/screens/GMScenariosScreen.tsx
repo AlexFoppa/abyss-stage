@@ -31,6 +31,7 @@ export function GMScenariosScreen({
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const active = scenarios.find((s) => s.id === activeId) ?? null;
@@ -87,6 +88,7 @@ export function GMScenariosScreen({
     setEditingId(null);
     setName("");
     setDescription("");
+    setPendingImageFile(null);
     setFormOpen(true);
   }
 
@@ -115,6 +117,27 @@ export function GMScenariosScreen({
         });
         setScenarios((prev) => [created, ...prev]);
         setActiveId(created.id);
+        if (pendingImageFile) {
+          setUploading(true);
+          try {
+            const form = new FormData();
+            form.append("file", pendingImageFile);
+            const updated = await api<GMScenario>(`/api/gm/scenarios/${created.id}/image`, {
+              method: "POST",
+              body: form,
+            });
+            setScenarios((prev) => prev.map((s) => (s.id === created.id ? updated : s)));
+          } catch (e: unknown) {
+            const msg =
+              e && typeof (e as { message?: string })?.message === "string"
+                ? (e as { message: string }).message
+                : "Falha ao enviar imagem";
+            setErr(msg);
+          } finally {
+            setUploading(false);
+          }
+          setPendingImageFile(null);
+        }
       }
       setFormOpen(false);
       setEditingId(null);
@@ -133,27 +156,32 @@ export function GMScenariosScreen({
 
   async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !activeId) return;
-    setErr(null);
-    setUploading(true);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const updated = await api<GMScenario>(`/api/gm/scenarios/${activeId}/image`, {
-        method: "POST",
-        body: form,
-      });
-      setScenarios((prev) => prev.map((s) => (s.id === activeId ? updated : s)));
-    } catch (e: unknown) {
-      const msg =
-        e && typeof (e as { message?: string })?.message === "string"
-          ? (e as { message: string }).message
-          : "Falha ao enviar imagem";
-      setErr(msg);
-    } finally {
-      setUploading(false);
-      e.target.value = "";
+    if (!file) return;
+    if (editingId) {
+      setErr(null);
+      setUploading(true);
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const updated = await api<GMScenario>(`/api/gm/scenarios/${editingId}/image`, {
+          method: "POST",
+          body: form,
+        });
+        setScenarios((prev) => prev.map((s) => (s.id === editingId ? updated : s)));
+      } catch (e: unknown) {
+        const msg =
+          e && typeof (e as { message?: string })?.message === "string"
+            ? (e as { message: string }).message
+            : "Falha ao enviar imagem";
+        setErr(msg);
+      } finally {
+        setUploading(false);
+        e.target.value = "";
+      }
+    } else {
+      setPendingImageFile(file);
     }
+    e.target.value = "";
   }
 
   return (
@@ -219,43 +247,46 @@ export function GMScenariosScreen({
                 required
                 autoFocus
               />
-              {editingId && (
-                <>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="ui-field"
-                    style={{ display: "none" }}
-                    onChange={handleImageChange}
-                  />
-                  <div className="scenario-form__image-wrap">
-                    {active && scenarioImageUrl(active) ? (
-                      <>
-                        <img src={scenarioImageUrl(active)!} alt="" className="scenario-form__image" />
-                        <button
-                          type="button"
-                          className="ui-btn ui-btn--ghost"
-                          onClick={() => fileInputRef.current?.click()}
-                          disabled={uploading}
-                          style={{ marginTop: 8 }}
-                        >
-                          {uploading ? "Enviando…" : "Trocar imagem"}
-                        </button>
-                      </>
-                    ) : (
+              <label className="ui-label" style={{ marginTop: 10 }}>Imagem</label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="ui-field"
+                style={{ display: "none" }}
+                onChange={handleImageChange}
+              />
+              <div className="scenario-form__image-wrap">
+                {(editingId && (() => {
+                  const editingScenario = scenarios.find((s) => s.id === editingId);
+                  const imgUrl = editingScenario ? scenarioImageUrl(editingScenario) : null;
+                  return imgUrl ? (
+                    <>
+                      <img src={imgUrl} alt="" className="scenario-form__image" />
                       <button
                         type="button"
                         className="ui-btn ui-btn--ghost"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploading}
+                        style={{ marginTop: 8 }}
                       >
-                        {uploading ? "Enviando…" : "Adicionar imagem"}
+                        {uploading ? "Enviando…" : "Trocar imagem"}
                       </button>
-                    )}
-                  </div>
-                </>
-              )}
+                    </>
+                  ) : null;
+                })()) ?? (
+                  <button
+                    type="button"
+                    className="ui-btn ui-btn--ghost"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                  >
+                    {editingId
+                      ? (uploading ? "Enviando…" : "Adicionar imagem")
+                      : (pendingImageFile ? `${pendingImageFile.name} (clique para trocar)` : "Adicionar imagem (opcional)")}
+                  </button>
+                )}
+              </div>
               <label className="ui-label" style={{ marginTop: 12 }}>
                 Descrição (pré-preenche a cena)
               </label>
@@ -267,8 +298,8 @@ export function GMScenariosScreen({
                 rows={3}
               />
               <div className="ui-actions" style={{ marginTop: 12 }}>
-                <button type="submit" className="ui-btn" disabled={saving}>
-                  {saving ? "Salvando…" : editingId ? "Salvar" : "Criar"}
+                <button type="submit" className="ui-btn" disabled={saving || uploading}>
+                  {saving ? "Salvando…" : uploading ? "Enviando…" : editingId ? "Salvar" : "Criar"}
                 </button>
                 <button
                   type="button"

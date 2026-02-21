@@ -42,6 +42,7 @@ export function Routes() {
 
   const [gmSubView, setGmSubView] = useState<"GM_HOME" | "GM_CHARACTERS" | "GM_SCENARIOS" | "GM_STORIES" | "GM_STORY_EDITOR">("GM_HOME");
   const [editingStoryId, setEditingStoryId] = useState<string | null>(null);
+  const [returnToStoryId, setReturnToStoryId] = useState<string | null>(null);
   const [stageMode, setStageMode] = useState<"IDLE" | "ZOOM_IN">("IDLE");
   
   const [selectedCharacter, setSelectedCharacter] = useState<null | {
@@ -125,11 +126,14 @@ export function Routes() {
               setGmSubView("GM_STORIES");
               setEditingStoryId(null);
             }}
-            onEditCharacter={(c) => {
+            onNavigateToCreateCharacter={() => {
               setEditingReturnGmView("GM_STORY_EDITOR");
               setEditingFromGM(true);
-              setEditingCharacter(c as any);
-              setSubView("EDIT_CHARACTER");
+              setSubView("CREATE_CHARACTER");
+            }}
+            onNavigateToCreateScenario={() => {
+              setReturnToStoryId(editingStoryId);
+              setGmSubView("GM_SCENARIOS");
             }}
           />
         ) : (
@@ -147,7 +151,17 @@ export function Routes() {
           </div>
         )
       ) : view === "GM_SCENARIOS" ? (
-        <GMScenariosScreen onBack={() => setGmSubView("GM_HOME")} />
+        <GMScenariosScreen
+          onBack={() => {
+            if (returnToStoryId != null) {
+              setEditingStoryId(returnToStoryId);
+              setGmSubView("GM_STORY_EDITOR");
+              setReturnToStoryId(null);
+            } else {
+              setGmSubView("GM_HOME");
+            }
+          }}
+        />
       ) : view === "GM_CHARACTERS" ? (
         <GMCharactersScreen
           onBack={() => setGmSubView("GM_HOME")}
@@ -168,7 +182,8 @@ export function Routes() {
           onBack={() => {
             if (editingFromGM) {
               setSubView("LOBBY");
-              setGmSubView("GM_CHARACTERS");
+              setGmSubView(editingReturnGmView ?? "GM_CHARACTERS");
+              setEditingReturnGmView(null);
               setEditingFromGM(false);
               return;
             }
@@ -177,7 +192,8 @@ export function Routes() {
           onCreated={() => {
             if (editingFromGM) {
               setSubView("LOBBY");
-              setGmSubView("GM_CHARACTERS");
+              setGmSubView(editingReturnGmView ?? "GM_CHARACTERS");
+              setEditingReturnGmView(null);
               setEditingFromGM(false);
             }
           }}

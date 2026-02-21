@@ -14,6 +14,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { api } from "../api";
 import { ScenarioManagerModal, type Scenario } from "./ScenarioManagerModal";
 import { SceneCharactersModal, type GMCharacter } from "./SceneCharactersModal";
+import { EditCharacterScreen } from "./EditCharacterScreen";
 
 const SCENARIO_DRAG_PREFIX = "scenario-";
 const SCENE_DROP_PREFIX = "scene-scenario-";
@@ -198,11 +199,15 @@ export type Scene = {
 export function StoryEditorScreen({
   storyId,
   onBack,
-  onEditCharacter,
+  onNavigateToCreateCharacter,
+  onNavigateToCreateScenario,
 }: {
   storyId: string;
   onBack: () => void;
-  onEditCharacter?: (c: GMCharacter) => void;
+  /** Fecha modais e navega para criação de personagem (telas padrão); ao voltar, retorna ao editor. */
+  onNavigateToCreateCharacter?: () => void;
+  /** Fecha modais e navega para cenários (criar novo); ao voltar, retorna ao editor. */
+  onNavigateToCreateScenario?: () => void;
 }) {
   const [story, setStory] = useState<StoryInfo | null>(null);
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -217,6 +222,7 @@ export function StoryEditorScreen({
   const [storyCharacterIds, setStoryCharacterIds] = useState<number[]>([]);
   const [sceneCharacterIds, setSceneCharacterIds] = useState<number[]>([]);
   const [characterModalOpen, setCharacterModalOpen] = useState(false);
+  const [editingCharacterId, setEditingCharacterId] = useState<number | null>(null);
   const [sceneDetailsSceneId, setSceneDetailsSceneId] = useState<string | null>(null);
   const [sceneDetailsCharacterIds, setSceneDetailsCharacterIds] = useState<number[]>([]);
   const [duplicating, setDuplicating] = useState(false);
@@ -230,6 +236,14 @@ export function StoryEditorScreen({
 
   const activeScene = scenes.find((s) => s.id === activeSceneId) ?? null;
   const sceneDetailsScene = sceneDetailsSceneId ? scenes.find((s) => s.id === sceneDetailsSceneId) ?? null : null;
+
+  /** IDs de cenários na história: usados em cenas ou adicionados à história (sem cena ainda). */
+  const [addedToStoryScenarioIds, setAddedToStoryScenarioIds] = useState<string[]>([]);
+  const scenarioIdsInStory = new Set([
+    ...scenes.map((s) => s.scenario_id).filter(Boolean),
+    ...addedToStoryScenarioIds,
+  ]);
+  const scenariosInStory = scenarios.filter((sc) => scenarioIdsInStory.has(sc.id));
 
   const isDirty = Boolean(
     activeScene &&
@@ -332,6 +346,10 @@ export function StoryEditorScreen({
   }, [storyId]);
 
   useEffect(() => {
+    setAddedToStoryScenarioIds([]);
+  }, [storyId]);
+
+  useEffect(() => {
     let cancelled = false;
     setErr(null);
     setLoading(true);
@@ -351,6 +369,25 @@ export function StoryEditorScreen({
       cancelled = true;
     };
   }, [storyId, loadStory, loadScenes, loadScenarios, loadGmCharacters, loadStoryCharacters]);
+
+  const addScenarioToStory = useCallback((scenarioId: string) => {
+    setAddedToStoryScenarioIds((prev) => (prev.includes(scenarioId) ? prev : [...prev, scenarioId]));
+  }, []);
+
+  const removeScenarioFromStory = useCallback(
+    async (scenarioId: string) => {
+      const toUpdate = scenes.filter((s) => s.scenario_id === scenarioId);
+      for (const scene of toUpdate) {
+        await api(`/api/gm/stories/${storyId}/scenes/${scene.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ scenario_id: null }),
+        });
+      }
+      await loadScenes();
+      setAddedToStoryScenarioIds((prev) => prev.filter((id) => id !== scenarioId));
+    },
+    [storyId, scenes, loadScenes]
+  );
 
   useEffect(() => {
     if (activeSceneId && activeScene && !activeScene.is_narrative) {
@@ -730,6 +767,10 @@ export function StoryEditorScreen({
           open={scenarioModalOpen}
           onClose={() => setScenarioModalOpen(false)}
           onSaved={loadScenarios}
+          onRequestCreateScenario={onNavigateToCreateScenario}
+          usedInStoryScenarioIds={[...scenarioIdsInStory] as string[]}
+          onAddScenarioToStory={addScenarioToStory}
+          onRemoveScenarioFromStory={removeScenarioFromStory}
         />
 
         <DndContext
@@ -743,7 +784,7 @@ export function StoryEditorScreen({
           ) : (
             <div className="story-editor__scenarios-inner">
               <div className="story-editor__scenario-thumbs">
-                {scenarios.map((sc) => (
+                {scenariosInStory.map((sc) => (
                   <DraggableScenarioThumb key={sc.id} scenario={sc} />
                 ))}
               </div>
@@ -985,7 +1026,7 @@ export function StoryEditorScreen({
               </p>
               {storyCharacterIds.length === 0 ? (
                 <p className="story-editor__placeholder">
-                  Nenhum personagem na história. Clique em &quot;Gerir personagens&quot; para adicionar.
+                  Nenhum personagem na história. Clique em &quot;Gerenciar personagens&quot; para adicionar.
                 </p>
               ) : (
                 <ul className="story-editor__characters-list">
@@ -995,18 +1036,6 @@ export function StoryEditorScreen({
                     .map((c) => (
                       <li key={c!.id} className="story-editor__characters-item">
                         <DraggableCharacterThumb character={c!} />
-                        <button
-                          type="button"
-                          className="story-editor__char-edit"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onEditCharacter?.(c!);
-                          }}
-                          title="Editar personagem"
-                          aria-label="Editar personagem"
-                        >
-                          ✎
-                        </button>
                       </li>
                     ))}
                 </ul>
@@ -1017,7 +1046,7 @@ export function StoryEditorScreen({
                   className="ui-btn ui-btn--ghost"
                   onClick={() => setCharacterModalOpen(true)}
                 >
-                  Gerir personagens
+                  Gerenciar personagens
                 </button>
               </div>
             </div>
@@ -1036,7 +1065,28 @@ export function StoryEditorScreen({
             loadStoryCharacters();
             loadGmCharacters();
           }}
+          onEditCharacter={(c) => {
+            setCharacterModalOpen(false);
+            setEditingCharacterId(c.id);
+          }}
+          onRequestCreateCharacter={onNavigateToCreateCharacter}
         />
+
+        {editingCharacterId != null && createPortal(
+          <div className="story-editor__edit-char-overlay" role="dialog" aria-modal="true" aria-label="Editar personagem">
+            <div className="story-editor__edit-char-overlay-inner">
+              <EditCharacterScreen
+                scope="GM"
+                character={gmCharacters.find((c) => c.id === editingCharacterId) ?? null}
+                onBack={() => {
+                  setEditingCharacterId(null);
+                  loadGmCharacters();
+                }}
+              />
+            </div>
+          </div>,
+          document.body
+        )}
         </DndContext>
       </div>
     </div>

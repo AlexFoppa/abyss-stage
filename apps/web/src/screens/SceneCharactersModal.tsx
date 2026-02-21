@@ -7,6 +7,9 @@ export type GMCharacter = {
   name: string;
   concept?: string;
   system?: string;
+  backstory?: string;
+  notes?: string;
+  systems?: string[];
   owner_email?: string;
   default_image_url?: string | null;
   default_image_rev?: string | null;
@@ -19,6 +22,54 @@ function characterPortraitUrl(c: GMCharacter): string {
   return c.default_image_url;
 }
 
+function systemLabel(sys: string) {
+  if (sys === "candela_obscura") return "Candela Obscura";
+  if (sys === "simplificado") return "Simplificado";
+  return sys || "—";
+}
+
+function systemsLabel(c: GMCharacter) {
+  const list = (c.systems || (c.system ? [c.system] : [])).filter(Boolean);
+  if (!list.length) return "—";
+  return list.map(systemLabel).join(", ");
+}
+
+function EditPencilIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M18 5L5 18M5 18l3 3" />
+      <line x1="3" y1="22" x2="15" y2="22" />
+    </svg>
+  );
+}
+
+function CharacterTooltipContent({ character, className }: { character: GMCharacter; className?: string }) {
+  return (
+    <div className={className ?? "scene-chars-modal__polaroid-tooltip"}>
+      <div className="scene-chars-tooltip__row">
+        <div className="scene-chars-tooltip__label">Nome</div>
+        <div className="scene-chars-tooltip__value">{character.name || "—"}</div>
+      </div>
+      <div className="scene-chars-tooltip__row">
+        <div className="scene-chars-tooltip__label">Conceito</div>
+        <div className="scene-chars-tooltip__value">{character.concept || "—"}</div>
+      </div>
+      <div className="scene-chars-tooltip__row">
+        <div className="scene-chars-tooltip__label">Backstory</div>
+        <div className="scene-chars-tooltip__value">{character.backstory || "—"}</div>
+      </div>
+      <div className="scene-chars-tooltip__row">
+        <div className="scene-chars-tooltip__label">Notas</div>
+        <div className="scene-chars-tooltip__value">{character.notes || "—"}</div>
+      </div>
+      <div className="scene-chars-tooltip__row">
+        <div className="scene-chars-tooltip__label">Sistemas</div>
+        <div className="scene-chars-tooltip__value">{systemsLabel(character)}</div>
+      </div>
+    </div>
+  );
+}
+
 export function SceneCharactersModal({
   open,
   onClose,
@@ -26,6 +77,8 @@ export function SceneCharactersModal({
   gmCharacters,
   storyCharacterIds,
   onSaved,
+  onEditCharacter,
+  onRequestCreateCharacter,
 }: {
   open: boolean;
   onClose: () => void;
@@ -33,6 +86,10 @@ export function SceneCharactersModal({
   gmCharacters: GMCharacter[];
   storyCharacterIds: number[];
   onSaved: () => void;
+  /** Ao clicar em Editar, o parent abre a edição no pop up (não sai do editor). */
+  onEditCharacter?: (c: GMCharacter) => void;
+  /** Se definido, "Novo personagem" fecha o modal e chama isto (tela de criação padrão). */
+  onRequestCreateCharacter?: () => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -41,9 +98,11 @@ export function SceneCharactersModal({
   const [newName, setNewName] = useState("");
   const [newConcept, setNewConcept] = useState("");
   const [creating, setCreating] = useState(false);
+  const [tooltip, setTooltip] = useState<{ character: GMCharacter; x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (open) setLocalIds(storyCharacterIds);
+    else setTooltip(null);
   }, [open, storyCharacterIds]);
 
   useEffect(() => {
@@ -130,24 +189,14 @@ export function SceneCharactersModal({
   const dialog = (
     <div className="ui-modal" role="dialog" aria-modal="true" aria-label="Personagens da história">
       <button className="ui-modal__backdrop" onClick={onClose} aria-label="Fechar" />
-      <div className="ui-modal__card ui-card scene-chars-modal">
-        <h3 className="ui-modal__title">Personagens da história</h3>
+      <div className="ui-modal__card ui-card scene-chars-modal scene-chars-modal--polaroid">
+        <h3 className="ui-modal__title">Gerenciar personagens</h3>
         {err && <p className="scenario-manager__error">{err}</p>}
-        <p className="story-editor__placeholder">
-          Clique em um Figurino para adicionar ou remover da história.
+        <p className="story-editor__placeholder" style={{ marginBottom: 8 }}>
+          Clique na polaroide para adicionar ou remover da história. Botões: adicionar/remover e editar.
         </p>
 
-        <div className="scene-chars-modal__toolbar">
-          <button
-            type="button"
-            className="ui-btn ui-btn--primary"
-            onClick={() => setFormOpen(true)}
-          >
-            Novo personagem
-          </button>
-        </div>
-
-        {formOpen && (
+        {formOpen && !onRequestCreateCharacter && (
           <form className="scene-chars-modal__form" onSubmit={handleCreateCharacter}>
             <p className="ui-label">Novo personagem</p>
             <input
@@ -182,60 +231,175 @@ export function SceneCharactersModal({
           </form>
         )}
 
-        <div className="scene-chars-modal__columns">
-          <div className="scene-chars-modal__col">
-            <h4 className="scene-chars-modal__col-title">Figurinos (clique para adicionar à história)</h4>
-            <div className="scene-chars-modal__list">
-              {notInStory.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  className="scene-chars-modal__char scene-chars-modal__char--clickable"
-                  onClick={() => toggleInStory(c.id)}
-                  disabled={saving}
-                >
-                  <img
-                    src={characterPortraitUrl(c)}
-                    alt=""
-                    className="scene-chars-modal__char-avatar"
-                  />
-                  <span>{c.name}</span>
-                </button>
-              ))}
+        {(!formOpen || onRequestCreateCharacter) && (
+          <>
+            <div className="scene-chars-modal__scroll">
+            <div className="scene-chars-modal__columns">
+              <div className="scene-chars-modal__col">
+                <h4 className="scene-chars-modal__col-title">Fora da história (clique para adicionar)</h4>
+                <div className="scene-chars-modal__list">
+                  {notInStory.length === 0 ? (
+                    <p className="story-editor__placeholder">Nenhum figurino disponível.</p>
+                  ) : (
+                    notInStory.map((c) => (
+                      <div key={c.id} className="scene-chars-modal__polaroid-wrap">
+                        <button
+                          type="button"
+                          className="polaroid-card polaroid-card--character scene-chars-modal__polaroid-btn"
+                          onClick={() => toggleInStory(c.id)}
+                          disabled={saving}
+                        >
+                          <div className="polaroid-card__img-wrap">
+                            <img
+                              src={characterPortraitUrl(c)}
+                              alt=""
+                              className="polaroid-card__img"
+                            />
+                          </div>
+                          <span className="polaroid-card__name">{c.name}</span>
+                        </button>
+                        <div className="scene-chars-modal__polaroid-actions">
+                          <button
+                            type="button"
+                            className="ui-btn scene-chars-modal__btn-icon"
+                            onClick={(e) => { e.stopPropagation(); toggleInStory(c.id); }}
+                            disabled={saving}
+                            title="Adicionar à história"
+                            aria-label="Adicionar à história"
+                          >
+                            +
+                          </button>
+                          <button
+                            type="button"
+                            className="ui-btn scene-chars-modal__btn-icon"
+                            onClick={(e) => { e.stopPropagation(); onEditCharacter?.(c); }}
+                            title="Editar personagem"
+                            aria-label="Editar personagem"
+                          >
+                            <EditPencilIcon />
+                          </button>
+                          <div
+                            className="scene-chars-modal__polaroid-info-wrap"
+                            onMouseEnter={(e) => {
+                              const r = e.currentTarget.getBoundingClientRect();
+                              setTooltip({ character: c, x: Math.min(r.left, window.innerWidth - 320), y: r.bottom + 4 });
+                            }}
+                            onMouseLeave={() => setTooltip(null)}
+                          >
+                            <span className="scene-chars-modal__polaroid-info-trigger" aria-label="Ver ficha" title={`${c.name || ""}\n${c.concept || ""}\n${c.backstory || ""}`}>?</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="scene-chars-modal__col">
+                <h4 className="scene-chars-modal__col-title">Na história (clique para remover)</h4>
+                <div className="scene-chars-modal__list">
+                  {inStory.length === 0 ? (
+                    <p className="story-editor__placeholder">Nenhum. Clique em um à esquerda para adicionar.</p>
+                  ) : (
+                    inStory.map((c) => (
+                      <div key={c.id} className="scene-chars-modal__polaroid-wrap">
+                        <button
+                          type="button"
+                          className="polaroid-card polaroid-card--character scene-chars-modal__polaroid-btn scene-chars-modal__in-story"
+                          onClick={() => toggleInStory(c.id)}
+                          disabled={saving}
+                        >
+                          <div className="polaroid-card__img-wrap">
+                            <img
+                              src={characterPortraitUrl(c)}
+                              alt=""
+                              className="polaroid-card__img"
+                            />
+                          </div>
+                          <span className="polaroid-card__name">{c.name}</span>
+                        </button>
+                        <div className="scene-chars-modal__polaroid-actions">
+                          <button
+                            type="button"
+                            className="ui-btn scene-chars-modal__btn-icon"
+                            onClick={(e) => { e.stopPropagation(); toggleInStory(c.id); }}
+                            disabled={saving}
+                            title="Remover da história"
+                            aria-label="Remover da história"
+                          >
+                            ✕
+                          </button>
+                          <button
+                            type="button"
+                            className="ui-btn scene-chars-modal__btn-icon"
+                            onClick={(e) => { e.stopPropagation(); onEditCharacter?.(c); }}
+                            title="Editar personagem"
+                            aria-label="Editar personagem"
+                          >
+                            <EditPencilIcon />
+                          </button>
+                          <div
+                            className="scene-chars-modal__polaroid-info-wrap"
+                            onMouseEnter={(e) => {
+                              const r = e.currentTarget.getBoundingClientRect();
+                              setTooltip({ character: c, x: Math.min(r.left, window.innerWidth - 320), y: r.bottom + 4 });
+                            }}
+                            onMouseLeave={() => setTooltip(null)}
+                          >
+                            <span className="scene-chars-modal__polaroid-info-trigger" aria-label="Ver ficha" title={`${c.name || ""}\n${c.concept || ""}\n${c.backstory || ""}`}>?</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="scene-chars-modal__col">
-            <h4 className="scene-chars-modal__col-title">Na história (clique para remover)</h4>
-            <div className="scene-chars-modal__list">
-              {inStory.length === 0 ? (
-                <p className="story-editor__placeholder">Nenhum. Clique em um Figurino à esquerda.</p>
-              ) : (
-                inStory.map((c) => (
+            </div>
+
+            {tooltip &&
+              createPortal(
+                <div
+                  className="scene-chars-modal__polaroid-tooltip scene-chars-modal__polaroid-tooltip--portal"
+                  style={{ position: "fixed", left: tooltip.x, top: tooltip.y, zIndex: 100002 }}
+                >
+                  <CharacterTooltipContent character={tooltip.character} />
+                </div>,
+                document.body
+              )}
+
+            <div className="ui-actions ui-modal__actions" style={{ marginTop: 20 }}>
+              {onRequestCreateCharacter ? (
+                <>
                   <button
-                    key={c.id}
                     type="button"
-                    className="scene-chars-modal__char scene-chars-modal__char--clickable scene-chars-modal__in-story"
-                    onClick={() => toggleInStory(c.id)}
-                    disabled={saving}
+                    className="ui-btn"
+                    onClick={() => { onClose(); onRequestCreateCharacter(); }}
                   >
-                    <img
-                      src={characterPortraitUrl(c)}
-                      alt=""
-                      className="scene-chars-modal__char-avatar"
-                    />
-                    <span>{c.name}</span>
+                    Novo personagem
                   </button>
-                ))
+                  <button type="button" className="ui-btn ui-btn--ghost" onClick={onClose}>
+                    Fechar
+                  </button>
+                </>
+              ) : (
+                <>
+                  {!formOpen && (
+                    <button
+                      type="button"
+                      className="ui-btn"
+                      onClick={() => setFormOpen(true)}
+                    >
+                      Novo personagem
+                    </button>
+                  )}
+                  <button type="button" className="ui-btn ui-btn--ghost" onClick={onClose}>
+                    Fechar
+                  </button>
+                </>
               )}
             </div>
-          </div>
-        </div>
-
-        <div className="ui-actions ui-modal__actions" style={{ marginTop: 16 }}>
-          <button type="button" className="ui-btn ui-btn--ghost" onClick={onClose}>
-            Fechar
-          </button>
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

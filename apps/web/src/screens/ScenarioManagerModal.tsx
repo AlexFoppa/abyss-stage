@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api";
 
@@ -11,14 +11,55 @@ export type Scenario = {
   updated_at: string;
 };
 
+function scenarioImageUrl(s: Scenario): string | null {
+  if (!s.image_storage_key) return null;
+  return `/uploads/${s.image_storage_key}`;
+}
+
+function ScenarioTooltipContent({ scenario, className }: { scenario: Scenario; className?: string }) {
+  return (
+    <div className={className ?? "scenario-manager__polaroid-tooltip"}>
+      <div className="scene-chars-tooltip__row">
+        <div className="scene-chars-tooltip__label">Nome</div>
+        <div className="scene-chars-tooltip__value">{scenario.name || "—"}</div>
+      </div>
+      <div className="scene-chars-tooltip__row">
+        <div className="scene-chars-tooltip__label">Descrição</div>
+        <div className="scene-chars-tooltip__value">{scenario.description || "—"}</div>
+      </div>
+    </div>
+  );
+}
+
+function EditPencilIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M18 5L5 18M5 18l3 3" />
+      <line x1="3" y1="22" x2="15" y2="22" />
+    </svg>
+  );
+}
+
 export function ScenarioManagerModal({
   open,
   onClose,
   onSaved,
+  onRequestCreateScenario,
+  usedInStoryScenarioIds,
+  onAddScenarioToStory,
+  onRemoveScenarioFromStory,
 }: {
   open: boolean;
   onClose: () => void;
   onSaved?: () => void;
+  /** Se definido, "Novo cenário" fecha o modal e chama isto (telas de criação padrão). */
+  onRequestCreateScenario?: () => void;
+  /** IDs de cenários na história (usados em cenas ou adicionados). */
+  usedInStoryScenarioIds?: string[];
+  /** No roteiro: adicionar cenário à história (sem exclusão). */
+  onAddScenarioToStory?: (scenarioId: string) => void;
+  /** No roteiro: remover cenário da história (desvincula das cenas, sem exclusão). */
+  onRemoveScenarioFromStory?: (scenarioId: string) => Promise<void>;
 }) {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [loading, setLoading] = useState(false);
@@ -29,14 +70,27 @@ export function ScenarioManagerModal({
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [tooltip, setTooltip] = useState<{ scenario: Scenario; x: number; y: number } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const isStoryEditor = Boolean(onAddScenarioToStory && onRemoveScenarioFromStory);
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const usedSet = new Set(usedInStoryScenarioIds ?? []);
+  const inStory = scenarios.filter((s) => usedSet.has(s.id));
+  const notInStory = scenarios.filter((s) => !usedSet.has(s.id));
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setTooltip(null);
+      return;
+    }
     setErr(null);
     setFormOpen(false);
     setEditingId(null);
     setName("");
     setDescription("");
+    setPendingImageFile(null);
     (async () => {
       setLoading(true);
       try {
@@ -68,6 +122,36 @@ export function ScenarioManagerModal({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, formOpen, onClose]);
 
+  async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (editingId) {
+      setErr(null);
+      setUploading(true);
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const updated = await api<Scenario>(`/api/gm/scenarios/${editingId}/image`, {
+          method: "POST",
+          body: form,
+        });
+        setScenarios((prev) => prev.map((s) => (s.id === editingId ? updated : s)));
+      } catch (e: unknown) {
+        const msg =
+          e && typeof (e as { message?: string })?.message === "string"
+            ? (e as { message: string }).message
+            : "Falha ao enviar imagem";
+        setErr(msg);
+      } finally {
+        setUploading(false);
+        e.target.value = "";
+      }
+    } else {
+      setPendingImageFile(file);
+    }
+    e.target.value = "";
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
@@ -92,6 +176,27 @@ export function ScenarioManagerModal({
           body: JSON.stringify({ name: name.trim(), description: description.trim() }),
         });
         setScenarios((prev) => [created, ...prev]);
+        if (pendingImageFile) {
+          setUploading(true);
+          try {
+            const form = new FormData();
+            form.append("file", pendingImageFile);
+            const updated = await api<Scenario>(`/api/gm/scenarios/${created.id}/image`, {
+              method: "POST",
+              body: form,
+            });
+            setScenarios((prev) => prev.map((s) => (s.id === created.id ? updated : s)));
+          } catch (e: unknown) {
+            const msg =
+              e && typeof (e as { message?: string })?.message === "string"
+                ? (e as { message: string }).message
+                : "Falha ao enviar imagem";
+            setErr(msg);
+          } finally {
+            setUploading(false);
+          }
+          setPendingImageFile(null);
+        }
       }
       setFormOpen(false);
       setEditingId(null);
@@ -123,8 +228,26 @@ export function ScenarioManagerModal({
     setFormOpen(true);
   }
 
+  async function handleRemoveFromStory(id: string) {
+    if (!onRemoveScenarioFromStory) return;
+    setRemovingId(id);
+    setErr(null);
+    try {
+      await onRemoveScenarioFromStory(id);
+      onSaved?.();
+    } catch (e: unknown) {
+      const msg =
+        e && typeof (e as { message?: string })?.message === "string"
+          ? (e as { message: string }).message
+          : "Falha ao remover da história";
+      setErr(msg);
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
   async function handleDelete(id: string) {
-    if (!window.confirm("Excluir este cenário? Cenas que o usam ficarão sem cenário.")) return;
+    if (!window.confirm("Excluir permanentemente este cenário? Esta ação não pode ser desfeita.")) return;
     setDeletingId(id);
     setErr(null);
     try {
@@ -132,11 +255,16 @@ export function ScenarioManagerModal({
       setScenarios((prev) => prev.filter((s) => s.id !== id));
       onSaved?.();
     } catch (e: unknown) {
+      const status = (e as { status?: number })?.status;
       const msg =
         e && typeof (e as { message?: string })?.message === "string"
           ? (e as { message: string }).message
           : "Falha ao excluir";
       setErr(msg);
+      if (status === 404) {
+        setScenarios((prev) => prev.filter((s) => s.id !== id));
+        onSaved?.();
+      }
     } finally {
       setDeletingId(null);
     }
@@ -147,16 +275,10 @@ export function ScenarioManagerModal({
   const dialog = (
     <div className="ui-modal" role="dialog" aria-modal="true" aria-label="Gerenciar cenários">
       <button className="ui-modal__backdrop" onClick={onClose} aria-label="Fechar" />
-      <div className="ui-modal__card ui-card scenario-manager">
-        <h3 className="ui-modal__title">Cenários</h3>
+      <div className="ui-modal__card ui-card scenario-manager scenario-manager--polaroid">
+        <h3 className="ui-modal__title">Gerenciar cenários</h3>
 
         {err && <p className="scenario-manager__error">{err}</p>}
-
-        <div className="scenario-manager__toolbar">
-          <button type="button" className="ui-btn ui-btn--primary" onClick={startCreate}>
-            Novo cenário
-          </button>
-        </div>
 
         {formOpen && (
           <form className="scenario-manager__form" onSubmit={handleSubmit}>
@@ -171,6 +293,56 @@ export function ScenarioManagerModal({
               autoFocus
             />
             <label className="ui-label" style={{ marginTop: 10 }}>
+              Imagem
+            </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="ui-field"
+              style={{ display: "none" }}
+              onChange={handleImageChange}
+            />
+            <div className="scenario-manager__form-image">
+              {editingId ? (
+                (() => {
+                  const scenario = scenarios.find((s) => s.id === editingId);
+                  const imgUrl = scenario ? scenarioImageUrl(scenario) : null;
+                  return imgUrl ? (
+                    <>
+                      <img src={imgUrl} alt="" className="scenario-manager__form-img" />
+                      <button
+                        type="button"
+                        className="ui-btn ui-btn--ghost"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                        style={{ marginTop: 8 }}
+                      >
+                        {uploading ? "Enviando…" : "Trocar imagem"}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn--ghost"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                    >
+                      {uploading ? "Enviando…" : "Adicionar imagem"}
+                    </button>
+                  );
+                })()
+              ) : (
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--ghost"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {pendingImageFile ? `${pendingImageFile.name} (clique para trocar)` : "Adicionar imagem (opcional)"}
+                </button>
+              )}
+            </div>
+            <label className="ui-label" style={{ marginTop: 10 }}>
               Descrição (pré-preenche a cena)
             </label>
             <textarea
@@ -181,13 +353,13 @@ export function ScenarioManagerModal({
               rows={3}
             />
             <div className="ui-actions" style={{ marginTop: 12 }}>
-              <button type="submit" className="ui-btn" disabled={saving}>
-                {saving ? "Salvando…" : editingId ? "Salvar" : "Criar"}
+              <button type="submit" className="ui-btn" disabled={saving || uploading}>
+                {saving ? "Salvando…" : uploading ? "Enviando…" : editingId ? "Salvar" : "Criar"}
               </button>
               <button
                 type="button"
                 className="ui-btn ui-btn--ghost"
-                onClick={() => { setFormOpen(false); setEditingId(null); }}
+                onClick={() => { setFormOpen(false); setEditingId(null); setPendingImageFile(null); }}
               >
                 Cancelar
               </button>
@@ -195,51 +367,200 @@ export function ScenarioManagerModal({
           </form>
         )}
 
-        {loading ? (
-          <p className="story-editor__placeholder">Carregando cenários…</p>
-        ) : (
-          <ul className="scenario-manager__list">
-            {scenarios.map((s) => (
-              <li key={s.id} className="scenario-manager__item">
-                <div className="scenario-manager__item-body">
-                  <strong>{s.name || "(sem nome)"}</strong>
-                  {s.description ? (
-                    <span className="scenario-manager__item-desc">{s.description.slice(0, 80)}{s.description.length > 80 ? "…" : ""}</span>
-                  ) : null}
+        {!formOpen && (
+          <>
+            <div className="scenario-manager__scroll">
+            {loading ? (
+              <p className="story-editor__placeholder">Carregando cenários…</p>
+            ) : (
+              <div className="scenario-manager__columns">
+                <div className="scenario-manager__col">
+                  <h4 className="scenario-manager__col-title">Fora da história</h4>
+                  <div className="scenario-manager__list">
+                    {notInStory.length === 0 ? (
+                      <p className="story-editor__placeholder">Nenhum cenário disponível.</p>
+                    ) : (
+                      notInStory.map((s) => {
+                        const imgUrl = scenarioImageUrl(s);
+                        return (
+                          <div key={s.id} className="scenario-manager__polaroid-wrap">
+                            <div className="polaroid-card polaroid-card--scenario">
+                              <div className="polaroid-card__img-wrap">
+                                {imgUrl ? (
+                                  <img src={imgUrl} alt="" className="polaroid-card__img" />
+                                ) : (
+                                  <span className="polaroid-card__placeholder">Sem imagem</span>
+                                )}
+                              </div>
+                              <span className="polaroid-card__name">{s.name || "(sem nome)"}</span>
+                            </div>
+                            <div className="scenario-manager__polaroid-actions">
+                              {isStoryEditor && onAddScenarioToStory && (
+                                <button
+                                  type="button"
+                                  className="ui-btn scenario-manager__btn-icon"
+                                  onClick={() => onAddScenarioToStory(s.id)}
+                                  title="Adicionar à história"
+                                  aria-label="Adicionar à história"
+                                >
+                                  +
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="ui-btn scenario-manager__btn-icon"
+                                onClick={() => startEdit(s)}
+                                title="Editar cenário"
+                                aria-label="Editar cenário"
+                              >
+                                <EditPencilIcon />
+                              </button>
+                              {!isStoryEditor && (
+                                <button
+                                  type="button"
+                                  className="ui-btn scenario-manager__btn-icon"
+                                  onClick={() => handleDelete(s.id)}
+                                  disabled={deletingId === s.id}
+                                  title="Excluir cenário"
+                                  aria-label="Excluir cenário"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                              <div
+                                className="scenario-manager__polaroid-info-wrap"
+                                onMouseEnter={(e) => {
+                                  const r = e.currentTarget.getBoundingClientRect();
+                                  setTooltip({ scenario: s, x: Math.min(r.left, window.innerWidth - 320), y: r.bottom + 4 });
+                                }}
+                                onMouseLeave={() => setTooltip(null)}
+                              >
+                                <span className="scenario-manager__polaroid-info-trigger" aria-label="Ver detalhes" title={`${s.name || ""}\n${s.description || ""}`}>?</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
-                <div className="scenario-manager__item-actions">
+                <div className="scenario-manager__col">
+                  <h4 className="scenario-manager__col-title">Na história</h4>
+                  <div className="scenario-manager__list">
+                    {inStory.length === 0 ? (
+                      <p className="story-editor__placeholder">Nenhum. Cenários usados em cenas aparecem aqui.</p>
+                    ) : (
+                      inStory.map((s) => {
+                        const imgUrl = scenarioImageUrl(s);
+                        return (
+                          <div key={s.id} className="scenario-manager__polaroid-wrap">
+                            <div className="polaroid-card polaroid-card--scenario scenario-manager__in-story">
+                              <div className="polaroid-card__img-wrap">
+                                {imgUrl ? (
+                                  <img src={imgUrl} alt="" className="polaroid-card__img" />
+                                ) : (
+                                  <span className="polaroid-card__placeholder">Sem imagem</span>
+                                )}
+                              </div>
+                              <span className="polaroid-card__name">{s.name || "(sem nome)"}</span>
+                            </div>
+                            <div className="scenario-manager__polaroid-actions">
+                              {isStoryEditor && onRemoveScenarioFromStory && (
+                                <button
+                                  type="button"
+                                  className="ui-btn scenario-manager__btn-icon"
+                                  onClick={() => handleRemoveFromStory(s.id)}
+                                  disabled={removingId === s.id}
+                                  title="Remover da história"
+                                  aria-label="Remover da história"
+                                >
+                                  ↶
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="ui-btn scenario-manager__btn-icon"
+                                onClick={() => startEdit(s)}
+                                title="Editar cenário"
+                                aria-label="Editar cenário"
+                              >
+                                <EditPencilIcon />
+                              </button>
+                              {!isStoryEditor && (
+                                <button
+                                  type="button"
+                                  className="ui-btn scenario-manager__btn-icon"
+                                  onClick={() => handleDelete(s.id)}
+                                  disabled={deletingId === s.id}
+                                  title="Excluir cenário"
+                                  aria-label="Excluir cenário"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                              <div
+                                className="scenario-manager__polaroid-info-wrap"
+                                onMouseEnter={(e) => {
+                                  const r = e.currentTarget.getBoundingClientRect();
+                                  setTooltip({ scenario: s, x: Math.min(r.left, window.innerWidth - 320), y: r.bottom + 4 });
+                                }}
+                                onMouseLeave={() => setTooltip(null)}
+                              >
+                                <span className="scenario-manager__polaroid-info-trigger" aria-label="Ver detalhes" title={`${s.name || ""}\n${s.description || ""}`}>?</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {tooltip &&
+              createPortal(
+                <div
+                  className="scenario-manager__polaroid-tooltip scenario-manager__polaroid-tooltip--portal"
+                  style={{ position: "fixed", left: tooltip.x, top: tooltip.y, zIndex: 100002 }}
+                >
+                  <ScenarioTooltipContent scenario={tooltip.scenario} />
+                </div>,
+                document.body
+              )}
+
+            {!loading && scenarios.length === 0 && (
+              <p className="story-editor__placeholder">Nenhum cenário. Use &quot;Novo cenário&quot; abaixo para criar.</p>
+            )}
+            </div>
+
+            <div className="ui-actions ui-modal__actions" style={{ marginTop: 20 }}>
+              {onRequestCreateScenario ? (
+                <>
                   <button
                     type="button"
-                    className="ui-btn ui-btn--ghost"
-                    onClick={() => startEdit(s)}
-                    style={{ width: "auto", padding: "0 10px" }}
+                    className="ui-btn"
+                    onClick={() => { onClose(); onRequestCreateScenario(); }}
                   >
-                    Editar
+                    Novo cenário
                   </button>
-                  <button
-                    type="button"
-                    className="ui-btn ui-btn--ghost"
-                    onClick={() => handleDelete(s.id)}
-                    disabled={deletingId === s.id}
-                    style={{ width: "auto", padding: "0 10px" }}
-                  >
-                    {deletingId === s.id ? "Excluindo…" : "Excluir"}
+                  <button type="button" className="ui-btn ui-btn--ghost" onClick={onClose}>
+                    Fechar
                   </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="ui-btn" onClick={startCreate}>
+                    Novo cenário
+                  </button>
+                  <button type="button" className="ui-btn ui-btn--ghost" onClick={onClose}>
+                    Fechar
+                  </button>
+                </>
+              )}
+            </div>
+          </>
         )}
-
-        {!loading && scenarios.length === 0 && !formOpen && (
-          <p className="story-editor__placeholder">Nenhum cenário. Clique em &quot;Novo cenário&quot;.</p>
-        )}
-
-        <div className="ui-actions ui-modal__actions" style={{ marginTop: 16 }}>
-          <button type="button" className="ui-btn ui-btn--ghost" onClick={onClose}>
-            Fechar
-          </button>
-        </div>
       </div>
     </div>
   );
