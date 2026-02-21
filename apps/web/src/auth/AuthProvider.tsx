@@ -26,8 +26,6 @@ type AuthCtx = {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
-const GM_VIEW_KEY = "gm_view_mode";
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const VIEW_MODE_KEY = "gm_view_mode";
@@ -47,11 +45,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const [loading, setLoading] = useState(true);
-
-  const [gmView, setGmView] = useState<"GM" | "PLAYER">(() => {
-    const v = localStorage.getItem(GM_VIEW_KEY);
-    return v === "PLAYER" ? "PLAYER" : "GM";
-  });
 
   async function refreshMe() {
     try {

@@ -60,7 +60,8 @@ export function Routes() {
   }>(null);
 
   const [editingFromGM, setEditingFromGM] = useState(false);
-  
+  const [editingReturnGmView, setEditingReturnGmView] = useState<"GM_CHARACTERS" | "GM_STORY_EDITOR" | null>(null);
+
   const view: View = useMemo(() => {
     if (loading) return "LOGIN";
     if (!user) return "LOGIN";
@@ -121,6 +122,12 @@ export function Routes() {
               setGmSubView("GM_STORIES");
               setEditingStoryId(null);
             }}
+            onEditCharacter={(c) => {
+              setEditingReturnGmView("GM_STORY_EDITOR");
+              setEditingFromGM(true);
+              setEditingCharacter(c as any);
+              setSubView("EDIT_CHARACTER");
+            }}
           />
         ) : (
           <div className="lobby-wrap">
@@ -140,6 +147,7 @@ export function Routes() {
         <GMCharactersScreen
           onBack={() => setGmSubView("GM_HOME")}
           onEdit={(c) => {
+            setEditingReturnGmView("GM_CHARACTERS");
             setEditingFromGM(true);
             setEditingCharacter(c);
             setSubView("EDIT_CHARACTER");
@@ -193,9 +201,10 @@ export function Routes() {
           onBack={() => {
             setEditingCharacter(null);
             if (editingFromGM) {
-              setSubView("LOBBY");
-              setGmSubView("GM_CHARACTERS");
+              setGmSubView(editingReturnGmView ?? "GM_CHARACTERS");
+              setEditingReturnGmView(null);
               setEditingFromGM(false);
+              setSubView("LOBBY");
               return;
             }
             setSubView("SELECT_CHARACTER");

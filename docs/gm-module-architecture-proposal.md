@@ -159,7 +159,7 @@ Opcional / transversal:
 
 ## F) Backlog em fatias (5–10 itens) com critérios de aceite
 
-**Estado:** Itens 1–6 implementados. Itens 7–10 pendentes. Ajustes feitos: valance oculta nas telas GM; estilo marrom/dourado no editor; full bleed (sem margem); edição de cena (título, corpo, tipo Normal/Narrativa, botão Salvar); DnD cenário→cena com pré-preenchimento da descrição quando corpo vazio.
+**Estado:** Itens 1–9 implementados. Item 10 (spellcheck) desistido por enquanto. Ajustes feitos: valance oculta nas telas GM; estilo marrom/dourado no editor; full bleed (sem margem); edição de cena (título, corpo, tipo Normal/Narrativa, botão Salvar); DnD cenário→cena com pré-preenchimento da descrição quando corpo vazio.
 
 1. **Home GM com 4 botões** ✅  
    - Criar `gm/screens/HomeGMScreen.tsx` com: Roteiro (→ GM_STORIES), Figurinos (→ GM_CHARACTERS), Espetáculo (desabilitado / “Em breve”), Se retirar (logout).  
@@ -191,17 +191,17 @@ Opcional / transversal:
    - Painel “Personagens” à direita: lista ordenada (vínculos da cena); modal gerenciar/criar usa personagens GM (Figurinos) existentes; associação apenas por D&D; cena narrativa não mostra cenário nem personagens.  
    - CA: Lista de personagens da cena à direita; modal abre lista de Figurinos; vincular/desvincular por D&D; modo narrativa oculta cenário e personagens.
 
-8. **Autosave por cena e aviso em falha** ⬜  
+8. **Autosave por cena e aviso em falha** ✅  
    - Autosave ligado (padrão): debounce ao editar + salvar ao sair do editor ou ao trocar de cena ativa; desligado: trocar/sair sem salvar (aviso se houver alterações não salvas). PATCH da cena; em falha, exibir aviso.  
    - CA: Com autosave ligado, ao trocar de cena ou sair a cena é salva; com autosave desligado, trocar/sair não persiste; em falha de save o usuário vê aviso.
 
-9. **Popup Detalhes da cena + duplicar** ⬜  
+9. **Popup Detalhes da cena + duplicar** ✅  
    - Na lista de cenas (esquerda): popup com detalhes da cena; botão “Duplicar” cria cópia e torna ativa.  
    - CA: Clicar em cena abre detalhes; duplicar cria nova cena e a seleciona.
 
-10. **Spellcheck transversal (escopo reduzido para esta etapa)** ⬜  
-    - Definir contrato do serviço (hook/context + opt-out + atraso ≤150ms + sugestões top5); implementar apenas um TextField/textarea de demonstração no editor (ex.: corpo da cena) com sublinhado e menu sugestões; dicionário pessoal/org e offline ficam para próxima fatia.  
-    - CA: Em um campo do editor, pausa ≥150ms mostra sublinhado de erros e menu com até 5 sugestões; opt-out desativa.
+10. **Spellcheck transversal (escopo reduzido para esta etapa)** — *Desistido por enquanto.*  
+    - (Era: contrato do serviço + textarea no editor com sublinhado e sugestões; dicionário PT nspell/carregamento sob demanda.)  
+    - CA: Suspenso.
 
 **Extras já feitos (fora da numeração):** Valance oculta nas telas GM (`hideValance`); conteúdo GM em full bleed (padding 0); estilo marrom/dourado no editor; correção de DnD (thumbs dentro do `DndContext`, `pointerWithin`).
 
@@ -223,4 +223,4 @@ Opcional / transversal:
 
 ---
 
-**Fim da proposta.** Itens 1–6 do backlog foram implementados; ver secção F) para estado atual e pendências.
+**Fim da proposta.** Itens 1–9 do backlog foram implementados; item 10 (spellcheck) desistido. Ver secção F) para estado atual.

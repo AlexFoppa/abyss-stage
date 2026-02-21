@@ -3,7 +3,7 @@ import { useAuth } from "../auth/AuthProvider";
 
 export function StageLayout({
   logged,
-  isGM,
+  isGM: _isGM,
   showBackstage,
   stageMode = "IDLE",
   curtainsOpen = false,

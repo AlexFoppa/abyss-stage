@@ -185,9 +185,11 @@ export type Scene = {
 export function StoryEditorScreen({
   storyId,
   onBack,
+  onEditCharacter,
 }: {
   storyId: string;
   onBack: () => void;
+  onEditCharacter?: (c: GMCharacter) => void;
 }) {
   const [story, setStory] = useState<StoryInfo | null>(null);
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -828,6 +830,7 @@ export function StoryEditorScreen({
 
         <main className="story-editor__main" aria-label="Cena ativa">
           {activeScene ? (
+            <>
             <SceneScenarioDropZone
               sceneId={activeScene.id}
               currentScenarioId={activeScene.scenario_id}
@@ -947,8 +950,13 @@ export function StoryEditorScreen({
               </div>
               </SceneCharacterDropZone>
             </SceneScenarioDropZone>
+            <div className="story-editor__preview">
+              <h2 className="story-editor__preview-title">Preview</h2>
+              <div className="story-editor__preview-placeholder" aria-hidden />
+            </div>
+            </>
           ) : (
-            <p className="story-editor__placeholder">
+            <p className="story-editor__placeholder story-editor__main-placeholder">
               {scenes.length === 0 ? "Crie uma cena para começar." : "Selecione uma cena."}
             </p>
           )}
@@ -974,6 +982,18 @@ export function StoryEditorScreen({
                     .map((c) => (
                       <li key={c!.id} className="story-editor__characters-item">
                         <DraggableCharacterThumb character={c!} />
+                        <button
+                          type="button"
+                          className="story-editor__char-edit"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditCharacter?.(c!);
+                          }}
+                          title="Editar personagem"
+                          aria-label="Editar personagem"
+                        >
+                          ✎
+                        </button>
                       </li>
                     ))}
                 </ul>
