@@ -11,10 +11,12 @@ import {
 } from "@dnd-kit/core";
 import { useDraggable } from "@dnd-kit/core";
 import { useDroppable } from "@dnd-kit/core";
+import { useAuth } from "../auth/AuthProvider";
 import { api } from "../api";
 import { ScenarioManagerModal, type Scenario } from "./ScenarioManagerModal";
 import { SceneCharactersModal, type GMCharacter } from "./SceneCharactersModal";
 import { EditCharacterScreen } from "./EditCharacterScreen";
+import type { Character } from "./CharacterScreen";
 
 const SCENARIO_DRAG_PREFIX = "scenario-";
 const SCENE_DROP_PREFIX = "scene-scenario-";
@@ -27,6 +29,22 @@ function characterPortraitUrl(c: GMCharacter): string {
   if (!c.default_image_url) return fallback;
   if (c.default_image_rev) return `${c.default_image_url}?rev=${encodeURIComponent(c.default_image_rev)}`;
   return c.default_image_url;
+}
+
+/** Converte GMCharacter (campos opcionais) para Character (campos obrigatórios) para EditCharacterScreen. */
+function gmCharToCharacter(c: GMCharacter | null): Character | null {
+  if (!c) return null;
+  return {
+    id: c.id,
+    name: c.name,
+    concept: c.concept ?? "",
+    system: c.system ?? "simplificado",
+    backstory: c.backstory ?? "",
+    notes: c.notes ?? "",
+    systems: c.systems,
+    default_image_url: c.default_image_url,
+    default_image_rev: c.default_image_rev,
+  };
 }
 
 function scenarioImageUrl(scenario: Scenario): string | null {
@@ -196,6 +214,79 @@ export type Scene = {
   updated_at: string;
 };
 
+function ScenePreview({
+  isNormalScene,
+  scenario,
+  sceneCharacterIds,
+  gmCharacters,
+  gmEmail,
+}: {
+  isNormalScene: boolean;
+  scenario: Scenario | null;
+  sceneCharacterIds: number[];
+  gmCharacters: GMCharacter[];
+  gmEmail?: string;
+}) {
+  const sceneChars = sceneCharacterIds
+    .map((id) => gmCharacters.find((c) => c.id === id))
+    .filter((c): c is GMCharacter => c != null);
+
+  const masterChars: GMCharacter[] = [];
+  const playerChars: GMCharacter[] = [];
+  if (gmEmail) {
+    sceneChars.forEach((c) => {
+      if (c.owner_email === gmEmail) masterChars.push(c);
+      else playerChars.push(c);
+    });
+  } else {
+    const half = Math.ceil(sceneChars.length / 2);
+    sceneChars.forEach((c, i) => (i < half ? masterChars.push(c) : playerChars.push(c)));
+  }
+
+  const scenarioBg = scenario ? scenarioImageUrl(scenario) : null;
+
+  if (!isNormalScene) {
+    return (
+      <div className="story-editor__preview">
+        <h2 className="story-editor__preview-title">Preview</h2>
+        <div className="story-editor__preview-stage story-editor__preview-stage--narrative">
+          <p className="story-editor__placeholder">Cena narrativa — sem preview.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="story-editor__preview">
+      <h2 className="story-editor__preview-title">Preview da cena</h2>
+      <div
+        className="story-editor__preview-stage"
+        style={
+          scenarioBg
+            ? { backgroundImage: `url(${scenarioBg})` }
+            : undefined
+        }
+      >
+        <div className="story-editor__preview-stage__chars story-editor__preview-stage__chars--left">
+          {masterChars.map((c) => (
+            <div key={c.id} className="story-editor__preview-char">
+              <img src={characterPortraitUrl(c)} alt={c.name} className="story-editor__preview-char__img" />
+            </div>
+          ))}
+        </div>
+        <div className="story-editor__preview-stage__slot story-editor__preview-stage__slot--center" aria-hidden="true" />
+        <div className="story-editor__preview-stage__chars story-editor__preview-stage__chars--right">
+          {playerChars.map((c) => (
+            <div key={c.id} className="story-editor__preview-char">
+              <img src={characterPortraitUrl(c)} alt={c.name} className="story-editor__preview-char__img" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function StoryEditorScreen({
   storyId,
   onBack,
@@ -209,6 +300,7 @@ export function StoryEditorScreen({
   /** Fecha modais e navega para cenários (criar novo); ao voltar, retorna ao editor. */
   onNavigateToCreateScenario?: () => void;
 }) {
+  const { user } = useAuth();
   const [story, setStory] = useState<StoryInfo | null>(null);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
@@ -955,37 +1047,8 @@ export function StoryEditorScreen({
                     if (v !== (activeScene.body ?? "")) handleUpdateScene({ body: v });
                   }}
                   placeholder="Texto da cena…"
-                  rows={12}
+                  rows={24}
                 />
-                {!activeScene.is_narrative && (
-                  <div className="story-editor__scene-characters">
-                    <label className="ui-label" style={{ marginTop: 12 }}>
-                      Personagens nesta cena
-                    </label>
-                    {sceneCharacterIds.length === 0 ? (
-                      <p className="story-editor__placeholder">Nenhum personagem. Arraste da barra à direita para adicionar.</p>
-                    ) : (
-                      <ul className="story-editor__scene-characters-list">
-                        {sceneCharacterIds
-                          .map((id) => gmCharacters.find((c) => c.id === id))
-                          .filter(Boolean)
-                          .map((c) => (
-                            <li key={c!.id} className="story-editor__scene-characters-item">
-                              <img src={characterPortraitUrl(c!)} alt="" className="story-editor__char-thumb-avatar" />
-                              <span>{c!.name}</span>
-                              <button
-                                type="button"
-                                className="ui-btn ui-btn--ghost"
-                                onClick={() => removeCharacterFromScene(c!.id)}
-                              >
-                                Remover
-                              </button>
-                            </li>
-                          ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
                 <div className="story-editor__scene-actions">
                   <button
                     type="button"
@@ -1002,12 +1065,46 @@ export function StoryEditorScreen({
                   )}
                 </div>
               </div>
+            <div className="story-editor__scene-col-preview">
+              <ScenePreview
+                isNormalScene={!activeScene.is_narrative}
+                scenario={activeScene.scenario_id ? scenarios.find((sc) => sc.id === activeScene.scenario_id) ?? null : null}
+                sceneCharacterIds={sceneCharacterIds}
+                gmCharacters={gmCharacters}
+                gmEmail={user?.email}
+              />
+              {!activeScene.is_narrative && (
+                <div className="story-editor__scene-characters">
+                  <label className="ui-label" style={{ marginTop: 12 }}>
+                    Personagens nesta cena
+                  </label>
+                  {sceneCharacterIds.length === 0 ? (
+                    <p className="story-editor__placeholder">Nenhum personagem. Arraste da barra à direita ou para o preview para adicionar.</p>
+                  ) : (
+                    <ul className="story-editor__scene-characters-list">
+                      {sceneCharacterIds
+                        .map((id) => gmCharacters.find((c) => c.id === id))
+                        .filter(Boolean)
+                        .map((c) => (
+                          <li key={c!.id} className="story-editor__scene-characters-item">
+                            <img src={characterPortraitUrl(c!)} alt="" className="story-editor__char-thumb-avatar" />
+                            <span>{c!.name}</span>
+                            <button
+                              type="button"
+                              className="ui-btn ui-btn--ghost"
+                              onClick={() => removeCharacterFromScene(c!.id)}
+                            >
+                              Remover
+                            </button>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
               </SceneCharacterDropZone>
             </SceneScenarioDropZone>
-            <div className="story-editor__preview">
-              <h2 className="story-editor__preview-title">Preview</h2>
-              <div className="story-editor__preview-placeholder" aria-hidden />
-            </div>
             </>
           ) : (
             <p className="story-editor__placeholder story-editor__main-placeholder">
@@ -1077,7 +1174,7 @@ export function StoryEditorScreen({
             <div className="story-editor__edit-char-overlay-inner">
               <EditCharacterScreen
                 scope="GM"
-                character={gmCharacters.find((c) => c.id === editingCharacterId) ?? null}
+                character={gmCharToCharacter(gmCharacters.find((c) => c.id === editingCharacterId) ?? null)}
                 onBack={() => {
                   setEditingCharacterId(null);
                   loadGmCharacters();
