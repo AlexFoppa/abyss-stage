@@ -602,7 +602,16 @@ export function StoryEditorScreen({
           body: JSON.stringify(payload),
         });
         setScenes((prev) =>
-          prev.map((s) => (s.id === sceneIdFromOver ? { ...s, ...updated } : s))
+          prev.map((s) =>
+            s.id === sceneIdFromOver
+              ? {
+                  ...s,
+                  ...updated,
+                  // Garantir que o body pré-preenchido pelo cenário fique no estado
+                  ...(payload.body !== undefined ? { body: payload.body } : {}),
+                }
+              : s
+          )
         );
       } catch (e: unknown) {
         const msg =
