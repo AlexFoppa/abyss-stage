@@ -2,34 +2,44 @@
 # abyss-stage
 
 Monorepo com dois apps:
-- API (FastAPI / Python): apps/api
-- Web (React + Vite): apps/web
+- **API** (FastAPI / Python): `apps/api`
+- **Web** (React + Vite): `apps/web`
+
+Áudio em tempo real no Lobby usa **LiveKit** (microfone compartilhado entre mestre e jogadores). Recomendado: **LiveKit Cloud** + script único (ver abaixo).
+
+================================================================================
+SUBIR TUDO DE UMA VEZ (RECOMENDADO — MESTRE + JOGADOR)
+================================================================================
+
+1) Criar `.env` na raiz (use `.env.example` como modelo):
+   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET (do projeto em cloud.livekit.io) e AUTH_JWT_SECRET.
+
+2) Rodar o script (sobe API, frontend e túnel; carrega .env):
+   ./scripts/start-lobby-tunnels.sh
+
+3) Abrir no navegador a URL que o script mostrar (https://xxx.trycloudflare.com).
+   Mestre e jogador usam a mesma URL; o áudio conecta via LiveKit Cloud.
+
+Documentação: docs/audio-livekit-cloud.md e docs/passo-a-passo-mestre-jogador.md
 
 ================================================================================
 RODAR A API (FASTAPI)
 ================================================================================
 
 1) Ativar o ambiente virtual
-source apps/api/.venv/bin/activate
+   source apps/api/.venv/bin/activate
 
-2) Definir variáveis de ambiente (OBRIGATÓRIAS)
-Nenhum segredo fica no código. A API depende dessas variáveis.
+2) Variáveis de ambiente (OBRIGATÓRIAS)
+   A API carrega `.env` da raiz ao iniciar. Ou exporte manualmente:
+   export LIVEKIT_API_KEY="..." LIVEKIT_API_SECRET="..." AUTH_JWT_SECRET="segredo_longo_e_aleatorio"
+   Para LiveKit Cloud: LIVEKIT_URL ou LIVEKIT_WS_URL (ex.: wss://seu-projeto.livekit.cloud).
 
-export LIVEKIT_API_KEY="lk_dev_..."
-export LIVEKIT_API_SECRET="segredo_do_livekit"
-export AUTH_JWT_SECRET="segredo_longo_e_aleatorio"
-
-Variáveis opcionais (com defaults):
-export AUTH_JWT_ISSUER="abyss-stage"
-export AUTH_JWT_TTL_SECONDS="3600"
-export AUTH_COOKIE_NAME="abyss_session"
-export AUTH_COOKIE_SECURE="0"
+   Opcionais: AUTH_JWT_ISSUER="abyss-stage", AUTH_JWT_TTL_SECONDS="3600",
+   AUTH_COOKIE_NAME="abyss_session", AUTH_COOKIE_SECURE="0"
 
 3) Subir a API
-uvicorn apps.api.main:app --reload --port 8000
-
-API disponível em:
-http://127.0.0.1:8000
+   uvicorn apps.api.main:app --reload --port 8000
+   API em: http://127.0.0.1:8000
 
 ================================================================================
 RODAR O WEB (REACT + VITE)
@@ -38,9 +48,7 @@ RODAR O WEB (REACT + VITE)
 cd apps/web
 npm install
 npm run dev
-
-Web disponível em:
-http://localhost:5173
+Web em: http://localhost:5173
 
 ================================================================================
 AUTENTICAÇÃO – VISÃO GERAL
@@ -112,11 +120,25 @@ curl -i -b /tmp/player_cookies.txt -X POST http://127.0.0.1:8000/auth/change-pas
 TOKEN DO LIVEKIT (ROTA PROTEGIDA)
 ================================================================================
 
-- Requer usuário autenticado
-- Se must_reset_password=true → retorna 403
-- Usa o ID do usuário autenticado como sub
+- Requer usuário autenticado. Se must_reset_password=true → 403.
+- Resposta: { "token": "...", "url": "wss://..." }. O frontend usa url para conectar.
+- Identidade no room: GM → "gm", jogador → "player-{id}" (indicador de voz no Lobby).
+- URL do LiveKit: LIVEKIT_WS_URL ou LIVEKIT_URL no .env (default: ws://127.0.0.1:7880).
 
-curl -i -b /tmp/player_cookies.txt "http://127.0.0.1:8000/token?room=test"
+curl -i -b /tmp/player_cookies.txt "http://127.0.0.1:8000/token?room=lobby"
+
+================================================================================
+MESTRE E JOGADOR EM DUAS MÁQUINAS (REDE)
+================================================================================
+
+Recomendado: **LiveKit Cloud** + script `./scripts/start-lobby-tunnels.sh` (um túnel
+para o app; áudio via LiveKit Cloud). Ver docs/audio-livekit-cloud.md.
+
+Alternativas (docs/passo-a-passo-mestre-jogador.md):
+- **Mesma rede (LAN):** LIVEKIT_WS_URL="ws://192.168.x.x:7880"; jogador acessa
+  o IP do Linux (ex.: http://192.168.x.x:5173). Liberar portas 7880, 7881, 7882.
+- **Redes diferentes:** servidor com wss:// ou LiveKit Cloud. A URL do LiveKit
+  vem do backend (campo url na resposta do token).
 
 ================================================================================
 OBSERVAÇÕES DE SEGURANÇA
@@ -125,15 +147,13 @@ OBSERVAÇÕES DE SEGURANÇA
 - Nenhum segredo versionado
 - Todos os secrets vêm de variáveis de ambiente
 - Cookies são HttpOnly
-- Em produção, usar:
-export AUTH_COOKIE_SECURE="1"
-```
-Comandos para rodar a aplicação
+- Em produção: export AUTH_COOKIE_SECURE="1"
 
-# Backend (terminal 1) — sobe a API com env vars mínimas (dummy) só pra dev/teste local
-cd ~/abyss-stage && source apps/api/.venv/bin/activate
-LIVEKIT_API_KEY=dummy LIVEKIT_API_SECRET=dummy AUTH_JWT_SECRET=dummy \
-python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000 --reload
+Comandos rápidos (dev local):
+  # Backend
+  cd ~/abyss-stage && source apps/api/.venv/bin/activate
+  LIVEKIT_API_KEY=dummy LIVEKIT_API_SECRET=dummy AUTH_JWT_SECRET=dummy \
+  uvicorn apps.api.main:app --host 127.0.0.1 --port 8000 --reload
 
-# Frontend (terminal 2)
-cd ~/abyss-stage/apps/web && npm run dev -- --host
+  # Frontend (outro terminal)
+  cd ~/abyss-stage/apps/web && npm run dev -- --host
