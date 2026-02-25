@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { RoomEvent, Track, type Room, type Participant } from "livekit-client";
 import { useAuth } from "./auth/AuthProvider";
 import { StageLayout } from "./ui/StageLayout";
 import { Screen } from "./ui/Screen";
@@ -28,7 +29,7 @@ type View =
   | "EDIT_CHARACTER";
 
 export function Routes() {
-  const { user, loading, viewMode, logout } = useAuth();
+  const { user, loading, viewMode, setViewMode, logout } = useAuth();
   
   const logged = !!user && !user.must_reset_password;
   const isGM = user?.role === "GM";
@@ -65,6 +66,9 @@ export function Routes() {
   const [editingFromGM, setEditingFromGM] = useState(false);
   const [editingReturnGmView, setEditingReturnGmView] = useState<"GM_CHARACTERS" | "GM_STORY_EDITOR" | null>(null);
 
+  const [liveKitRoom, setLiveKitRoom] = useState<Room | null>(null);
+  const [activeSpeakers, setActiveSpeakers] = useState<Participant[]>([]);
+
   const view: View = useMemo(() => {
     if (loading) return "LOGIN";
     if (!user) return "LOGIN";
@@ -78,6 +82,50 @@ export function Routes() {
   useEffect(() => {
     setStageMode(view === "CREATE_CHARACTER" || view === "EDIT_CHARACTER" ? "ZOOM_IN" : "IDLE");
   }, [view]);
+
+  useEffect(() => {
+    if (!liveKitRoom) return;
+    const handler = (speakers: Participant[]) => setActiveSpeakers([...speakers]);
+    liveKitRoom.on(RoomEvent.ActiveSpeakersChanged, handler);
+    setActiveSpeakers(liveKitRoom.activeSpeakers ?? []);
+
+    const attachRemoteAudio = (track: import("livekit-client").RemoteTrack) => {
+      if (track.kind !== Track.Kind.Audio) return;
+      const el = track.attach();
+      el.setAttribute("aria-hidden", "true");
+      el.style.position = "absolute";
+      el.style.left = "-9999px";
+      el.style.width = "0";
+      el.style.height = "0";
+      document.body.appendChild(el);
+    };
+    const onTrackSubscribed = (
+      track: import("livekit-client").RemoteTrack,
+      _publication: import("livekit-client").RemoteTrackPublication,
+      _participant: import("livekit-client").RemoteParticipant
+    ) => attachRemoteAudio(track);
+    liveKitRoom.on(RoomEvent.TrackSubscribed, onTrackSubscribed);
+    liveKitRoom.remoteParticipants.forEach((p) => {
+      p.audioTrackPublications.forEach((pub) => {
+        if (pub.track) attachRemoteAudio(pub.track);
+      });
+    });
+
+    return () => {
+      liveKitRoom.off(RoomEvent.ActiveSpeakersChanged, handler);
+      liveKitRoom.off(RoomEvent.TrackSubscribed, onTrackSubscribed);
+    };
+  }, [liveKitRoom]);
+
+  useEffect(() => {
+    if (!logged && liveKitRoom) {
+      liveKitRoom.disconnect();
+      setLiveKitRoom(null);
+    }
+  }, [logged, liveKitRoom]);
+
+  const masterSpeaking = activeSpeakers.some((p) => p.identity === "gm");
+  const localSpeaking = !!liveKitRoom && activeSpeakers.some((p) => p.identity === liveKitRoom.localParticipant.identity);
 
   function getPortraitUrl(c: any) {
     if (!c.default_image_url) return "/assets/jogador_default.png";
@@ -108,6 +156,7 @@ export function Routes() {
           onRoteiro={() => setGmSubView("GM_STORIES")}
           onFigurinos={() => setGmSubView("GM_CHARACTERS")}
           onCenarios={() => setGmSubView("GM_SCENARIOS")}
+          onLobby={() => setViewMode("PLAYER")}
           onLogout={() => logout()}
         />
       ) : view === "GM_STORIES" ? (
@@ -233,9 +282,15 @@ export function Routes() {
         />
       ) : (
         <>
+          <img
+            className={"lobby-master" + (masterSpeaking ? " lobby-master--speaking" : "")}
+            src="/assets/jogador_default.png"
+            alt="Mestre"
+            aria-label="Mestre"
+          />
           {selectedCharacter && (
             <img
-              className="lobby-actor"
+              className={"lobby-actor" + (localSpeaking ? " lobby-actor--speaking" : "")}
               src={selectedCharacter.imageUrl || "/assets/jogador_default.png"}
               alt={selectedCharacter.name}
             />
@@ -248,6 +303,7 @@ export function Routes() {
               setStageMode("ZOOM_IN");
               setSubView("CREATE_CHARACTER");
             }}
+            onRoomConnected={setLiveKitRoom}
           />
         </>
       )}

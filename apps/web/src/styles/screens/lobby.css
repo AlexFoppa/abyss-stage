@@ -84,19 +84,100 @@
   to{ opacity:1; transform:translateY(0); }
 }
 
+.lobby-arrow{
+  display: block;
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 6px 0;
+  border: none;
+  background: transparent;
+  color: rgba(215,178,92,.85);
+  font-size: 14px;
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+.lobby-arrow:hover{
+  color: var(--gold);
+}
+.lobby-arrow:active{
+  transform: scale(0.97);
+}
+
+.lobby-drawer{
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.35s ease-out, opacity 0.25s ease-out;
+}
+.lobby-drawer--open{
+  max-height: 520px;
+  opacity: 1;
+  transition: max-height 0.4s ease-in, opacity 0.25s ease-in;
+}
+
+.lobby-permission-hint{
+  font-size: 11px;
+  line-height: 1.3;
+  color: rgba(215,178,92,.9);
+  margin: -4px 0 8px;
+  padding: 6px 8px;
+  background: rgba(0,0,0,.25);
+  border-radius: 4px;
+}
+
 .lobby-actions{ margin-top:auto; padding-bottom:0; }
 
-.lobby-error{
+.lobby-error-wrap{
   position:absolute;
   left:18px;
   right:18px;
   bottom:10px;
   margin:0;
   padding:0;
-  color:crimson;
-  font-size:12px;
-  line-height:1.2;
 }
+
+.lobby-error{
+  margin:0 0 6px;
+  padding:0;
+  color: #e88;
+  font-size:12px;
+  line-height:1.3;
+}
+
+.lobby-error-url{
+  margin:0;
+  padding:6px 0 0;
+  font-size:11px;
+  line-height:1.4;
+  color: rgba(255,255,255,.7);
+}
+.lobby-error-url code{
+  font-size:10px;
+  word-break: break-all;
+  color: rgba(215,178,92,.9);
+}
+.lobby-error-hint{
+  display:block;
+  margin-top:6px;
+  font-size:10px;
+  color: rgba(255,255,255,.55);
+}
+
+.lobby-diagnostic{
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(0,0,0,.3);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.lobby-diagnostic strong{ display:block; margin-bottom: 6px; }
+.lobby-diagnostic ul{ margin: 0; padding-left: 18px; }
+.lobby-diagnostic li{ margin-bottom: 4px; }
+.lobby-diagnostic--ok{ color: #8c8; }
+.lobby-diagnostic--fail{ color: #e88; }
+.lobby-diagnostic-detail{ font-size: 11px; opacity: .95; }
 
 .lobby-cabinet .ui-btn{
   white-space:normal;
@@ -118,6 +199,26 @@
   pointer-events:none;
 }
 
+/* Mestre — avatar à esquerda (espelho do ator) */
+.lobby-master{
+  position:absolute;
+  left: 6vw;
+  bottom: -10vh;
+  height: 60vh;
+  width: auto;
+  z-index: 2;
+  pointer-events:none;
+  object-fit: contain;
+  filter: drop-shadow(0 22px 40px rgba(0,0,0,.60));
+  transform: scale(0.95);
+  opacity: 0.9;
+  transition: transform 0.2s ease, opacity 0.2s ease, filter 0.2s ease;
+}
+.lobby-master--speaking{
+  transform: scale(1);
+  opacity: 1;
+}
+
 /* Ator (personagem selecionado) — fora do armário */
 .lobby-actor{
   position:absolute;
@@ -129,6 +230,13 @@
   pointer-events:none;
   object-fit: contain;
   filter: drop-shadow(0 22px 40px rgba(0,0,0,.60));
+  transform: scale(0.95);
+  opacity: 0.9;
+  transition: transform 0.2s ease, opacity 0.2s ease, filter 0.2s ease;
+}
+.lobby-actor--speaking{
+  transform: scale(1);
+  opacity: 1;
 }
 
 /* Poster na parede (levitando) — relativo ao .lobby-wrap */

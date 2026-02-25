@@ -1,3 +1,13 @@
+# Carregar .env da raiz do repositório antes de importar config (para LIVEKIT_*, AUTH_*, etc.)
+from pathlib import Path
+_env_path = Path(__file__).resolve().parents[2] / ".env"
+if _env_path.exists():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_env_path)
+    except ImportError:
+        pass
+
 from contextlib import asynccontextmanager
 import os
 

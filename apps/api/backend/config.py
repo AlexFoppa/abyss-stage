@@ -7,9 +7,11 @@ class Settings:
     # Web
     cors_allow_origins: tuple[str, ...] = ("http://localhost:5173",)
 
-    # LiveKit (temporário; depois vira env)
+    # LiveKit
     livekit_api_key: str = os.getenv("LIVEKIT_API_KEY", "")
     livekit_api_secret: str = os.getenv("LIVEKIT_API_SECRET", "")
+    # URL do servidor LiveKit (WS). Aceita LIVEKIT_WS_URL ou LIVEKIT_URL (ex.: LiveKit Cloud).
+    livekit_ws_url: str = os.getenv("LIVEKIT_WS_URL") or os.getenv("LIVEKIT_URL", "ws://127.0.0.1:7880")
 
     # Auth (vamos usar já já)
     auth_jwt_secret: str = os.getenv("AUTH_JWT_SECRET", "")    
