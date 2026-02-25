@@ -562,8 +562,9 @@ export function CandelaObscuraForm({
               <div className="select-muted" style={{ fontWeight: 600 }}>
                 {capFirst(grp.key)}
               </div>
-              <div className="select-muted" style={{ textAlign: "right" }}>
-                Motivação: {groupDriveMax(grp.key)} • Resistência: {groupResist(grp.key)}
+              <div className="select-muted candela-group-stats" style={{ textAlign: "right" }}>
+                <div>Motivação: {groupDriveMax(grp.key)}</div>
+                <div>Resistência: {groupResist(grp.key)}</div>
               </div>
             </div>
 

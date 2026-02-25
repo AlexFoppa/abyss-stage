@@ -69,13 +69,19 @@
 }
 
 
-.center--modal{ display:grid; place-items:center; }
+.center--modal{
+  display: grid;
+  place-items: center;
+  z-index: 4; /* à frente da valance (z-index 3) para o menu de login ficar visível */
+}
 .center--app{
   position:relative;
   height:100%;
   padding-top:220px;
   padding-left:28px;
   box-sizing:border-box;
+  grid-template-rows: 1fr;
+  min-height: 0;
 }
 
 /* GM: sem valance — conteúdo em full bleed (sem margem topo/esquerda) */

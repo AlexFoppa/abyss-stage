@@ -3,8 +3,9 @@
   inset: 16px;                 /* top/right/bottom/left */
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: 1fr;
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
   margin: 0;
   width: auto;
   max-width: none;
@@ -33,6 +34,7 @@
   height: fit-content;
   padding-bottom: 32px;
   justify-self: start;
+  align-self: start;
   width: 100%;
   min-width: 0;
 }
@@ -67,6 +69,7 @@
 .create-col--system{
   min-height: 240px;
   justify-self: start;
+  align-self: start;
   width: 100%;
 
   /* permite rolar o form até o fim */
@@ -85,9 +88,16 @@
   justify-self: stretch;
   padding: 16px;
   box-sizing: border-box;
-  background: var(--bg-ink);
   border: 0;
   border-radius: 14px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.create-col--preview--player{
+  background: transparent;
 }
 
 .create-col--preview--gm{
@@ -155,6 +165,12 @@
   box-shadow: 0 28px 90px var(--shadow-strong);
   border: 1px solid rgba(210,170,80,.25);
   font-family: var(--font-display);
+}
+
+.create-col--preview--player .mirror-cabinet{
+  background: transparent;
+  box-shadow: none;
+  border-color: transparent;
 }
 
 .mirror-cabinet .mirror-controls__nav{
@@ -273,12 +289,14 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+  min-width: 0;
 }
 
 .candela-action-group{
   border: 1px solid rgba(255,255,255,0.10);
   border-radius: 10px;
   padding: 12px;
+  min-width: 0;
 }
 
 .candela-group-header{
@@ -295,6 +313,8 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   opacity: 0.9;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .candela-group-metrics{
@@ -302,6 +322,8 @@
   gap: 12px;
   justify-content: flex-end;
   text-align: right;
+  min-width: 0;
+  flex-shrink: 0;
 }
 
 .candela-metric-label{
@@ -352,6 +374,8 @@
 .candela-action-name{
   font-size: 12px;
   opacity: 0.85;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .candela-dots{
@@ -392,27 +416,64 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+  min-width: 0;
 }
 
 .candela-group-card{
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   padding: 12px;
+  min-width: 0;
 }
 
+/* Cabeçalho: título e "Motivação • Resistência" quebram em duas linhas quando não há espaço */
 .candela-group-head{
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 8px 10px;
   margin-bottom: 10px;
+  min-width: 0;
 }
 
+.candela-group-head .select-muted:first-child{
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.candela-group-head .select-muted:last-child{
+  flex: 0 1 auto;
+}
+
+.candela-group-stats{
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-end;
+}
+
+/* Linha de ação: checkbox + nome + círculos; círculos podem ir para a linha de baixo se faltar espaço */
 .candela-action-row{
-  display: grid;
-  grid-template-columns: 18px 1fr auto;
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 10px;
   padding: 6px 0;
+  min-width: 0;
+}
+
+.candela-action-row input[type="checkbox"]{
+  flex-shrink: 0;
+}
+
+.candela-action-row .select-muted{
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.candela-action-row .candela-dots{
+  flex-shrink: 0;
 }
 
 .candela-drive-edit{

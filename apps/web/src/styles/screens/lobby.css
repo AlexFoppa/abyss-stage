@@ -3,7 +3,7 @@
   position:absolute;
   left:0;
   bottom:0;
-  width: min(500px, 42vw);
+  width: min(320px, 38vw);
   pointer-events:none;
   z-index: 10;
 }
@@ -128,6 +128,8 @@
 
 .lobby-actions{ margin-top:auto; padding-bottom:0; }
 
+.lobby-actions-secondary{ display:none; }
+
 .lobby-error-wrap{
   position:absolute;
   left:18px;
@@ -199,23 +201,25 @@
   pointer-events:none;
 }
 
-/* Mestre — avatar à esquerda (espelho do ator) */
+/* Mestre — à frente do armário, deslocado à direita para ficar visível, virado para a direita */
 .lobby-master{
-  position:absolute;
-  left: 6vw;
-  bottom: -10vh;
+  position: absolute;
+  left: 30vw;
+  bottom: 0;
   height: 60vh;
+  max-height: 85vh;
   width: auto;
-  z-index: 2;
-  pointer-events:none;
+  z-index: 3;
+  pointer-events: none;
   object-fit: contain;
+  object-position: left bottom;
   filter: drop-shadow(0 22px 40px rgba(0,0,0,.60));
-  transform: scale(0.95);
+  transform: scale(0.95) scaleX(-1);
   opacity: 0.9;
   transition: transform 0.2s ease, opacity 0.2s ease, filter 0.2s ease;
 }
 .lobby-master--speaking{
-  transform: scale(1);
+  transform: scale(1) scaleX(-1);
   opacity: 1;
 }
 

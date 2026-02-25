@@ -242,33 +242,35 @@ export function LobbyScreen({
               </p>
             )}
 
-            <button
-              type="button"
-              className="ui-btn ui-btn--ghost"
-              disabled={diagnosticRunning}
-              onClick={runDiagnostic}
-              title="Identifica se o problema é URL/túnel ou rede (WebRTC/NAT)"
-            >
-              {diagnosticRunning ? "Diagnosticando…" : "Diagnosticar conexão de áudio"}
-            </button>
+            <div className="lobby-actions-secondary">
+              <button
+                type="button"
+                className="ui-btn ui-btn--ghost"
+                disabled={diagnosticRunning}
+                onClick={runDiagnostic}
+                title="Identifica se o problema é URL/túnel ou rede (WebRTC/NAT)"
+              >
+                {diagnosticRunning ? "Diagnosticando…" : "Diagnosticar conexão de áudio"}
+              </button>
 
-            {diagnosticSteps && diagnosticSteps.length > 0 && (
-              <div className="lobby-diagnostic" role="status">
-                <strong>Diagnóstico:</strong>
-                <ul>
-                  {diagnosticSteps.map((s) => (
-                    <li key={s.step} className={s.ok ? "lobby-diagnostic--ok" : "lobby-diagnostic--fail"}>
-                      {s.step}. {s.label}
-                      {s.detail && <span className="lobby-diagnostic-detail"> — {s.detail}</span>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              {diagnosticSteps && diagnosticSteps.length > 0 && (
+                <div className="lobby-diagnostic" role="status">
+                  <strong>Diagnóstico:</strong>
+                  <ul>
+                    {diagnosticSteps.map((s) => (
+                      <li key={s.step} className={s.ok ? "lobby-diagnostic--ok" : "lobby-diagnostic--fail"}>
+                        {s.step}. {s.label}
+                        {s.detail && <span className="lobby-diagnostic-detail"> — {s.detail}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-            <button className="ui-btn" disabled title="Em breve">
-              Informações do jogador
-            </button>
+              <button className="ui-btn" disabled title="Em breve">
+                Informações do jogador
+              </button>
+            </div>
 
             <button className="ui-btn ui-btn--ghost" onClick={logout} title="Encerrar sessão">
               Se retirar
