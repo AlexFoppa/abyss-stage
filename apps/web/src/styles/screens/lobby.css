@@ -201,46 +201,46 @@
   pointer-events:none;
 }
 
-/* Mestre — à frente do armário, deslocado à direita para ficar visível, virado para a direita */
+/* Mestre — à frente do armário. Tamanho: height + scale (silêncio 0.95, falando 1) */
 .lobby-master{
   position: absolute;
   left: 30vw;
   bottom: 0;
-  height: 60vh;
+  height: 60vh;              /* tamanho base da imagem */
   max-height: 85vh;
   width: auto;
   z-index: 3;
   pointer-events: none;
   object-fit: contain;
   object-position: left bottom;
-  filter: drop-shadow(0 22px 40px rgba(0,0,0,.60));
-  transform: scale(0.95) scaleX(-1);
-  opacity: 0.9;
-  transition: transform 0.2s ease, opacity 0.2s ease, filter 0.2s ease;
+  filter: drop-shadow(0 22px 40px rgba(0,0,0,.60)) brightness(0.65) contrast(0.92);
+  transform: scale(0.90) scaleX(-1);   /* em silêncio: 0.95 = 5% menor */
+  opacity: 1;
+  transition: transform 0.04s ease-out, filter 0.04s ease-out;
 }
 .lobby-master--speaking{
-  transform: scale(1) scaleX(-1);
-  opacity: 1;
+  transform: scale(1) scaleX(-1);        /* falando: tamanho 100% */
+  filter: drop-shadow(0 22px 40px rgba(0,0,0,.60)) brightness(1) contrast(1);
 }
 
-/* Ator (personagem selecionado) — fora do armário */
+/* Ator (personagem selecionado). Tamanho: height + scale (silêncio 0.95, falando 1) */
 .lobby-actor{
   position:absolute;
   right: 6vw;
-  bottom: -10vh;            /* “corta” pra ficar só acima das canelas */
-  height: 60vh;             /* 1/3 da tela */
+  bottom: -10vh;
+  height: 60vh;             /* tamanho base da imagem */
   width: auto;
   z-index: 2;               /* abaixo da valance (z=3), acima do fundo */
   pointer-events:none;
   object-fit: contain;
-  filter: drop-shadow(0 22px 40px rgba(0,0,0,.60));
-  transform: scale(0.95);
-  opacity: 0.9;
-  transition: transform 0.2s ease, opacity 0.2s ease, filter 0.2s ease;
+  filter: drop-shadow(0 22px 40px rgba(0,0,0,.60)) brightness(0.65) contrast(0.92);
+  transform: scale(0.90);
+  opacity: 1;
+  transition: transform 0.04s ease-out, filter 0.04s ease-out;
 }
 .lobby-actor--speaking{
   transform: scale(1);
-  opacity: 1;
+  filter: drop-shadow(0 22px 40px rgba(0,0,0,.60)) brightness(1) contrast(1);
 }
 
 /* Poster na parede (levitando) — relativo ao .lobby-wrap */
