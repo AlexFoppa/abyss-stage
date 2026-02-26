@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { RoomEvent, Track, type Room, type Participant } from "livekit-client";
+import { RoomEvent, ParticipantEvent, Track, type Room, type Participant } from "livekit-client";
 import { useAuth } from "./auth/AuthProvider";
 import { StageLayout } from "./ui/StageLayout";
 import { Screen } from "./ui/Screen";
@@ -67,7 +67,8 @@ export function Routes() {
   const [editingReturnGmView, setEditingReturnGmView] = useState<"GM_CHARACTERS" | "GM_STORY_EDITOR" | null>(null);
 
   const [liveKitRoom, setLiveKitRoom] = useState<Room | null>(null);
-  const [activeSpeakers, setActiveSpeakers] = useState<Participant[]>([]);
+  const [masterSpeaking, setMasterSpeaking] = useState(false);
+  const [localSpeaking, setLocalSpeaking] = useState(false);
 
   const view: View = useMemo(() => {
     if (loading) return "LOGIN";
@@ -85,9 +86,6 @@ export function Routes() {
 
   useEffect(() => {
     if (!liveKitRoom) return;
-    const handler = (speakers: Participant[]) => setActiveSpeakers([...speakers]);
-    liveKitRoom.on(RoomEvent.ActiveSpeakersChanged, handler);
-    setActiveSpeakers(liveKitRoom.activeSpeakers ?? []);
 
     const attachRemoteAudio = (track: import("livekit-client").RemoteTrack) => {
       if (track.kind !== Track.Kind.Audio) return;
@@ -111,9 +109,38 @@ export function Routes() {
       });
     });
 
+    const onLocalSpeaking = () => setLocalSpeaking(liveKitRoom.localParticipant.isSpeaking);
+    liveKitRoom.localParticipant.on(ParticipantEvent.IsSpeakingChanged, onLocalSpeaking);
+    setLocalSpeaking(liveKitRoom.localParticipant.isSpeaking);
+
+    let gmSpeakingHandler: (() => void) | null = null;
+    const subscribeGmSpeaking = (p: Participant) => {
+      gmSpeakingHandler = () => setMasterSpeaking(p.isSpeaking);
+      p.on(ParticipantEvent.IsSpeakingChanged, gmSpeakingHandler);
+      setMasterSpeaking(p.isSpeaking);
+    };
+
+    const gmParticipant = liveKitRoom.localParticipant.identity === "gm"
+      ? liveKitRoom.localParticipant
+      : Array.from(liveKitRoom.remoteParticipants.values()).find((p) => p.identity === "gm");
+    if (gmParticipant) subscribeGmSpeaking(gmParticipant);
+
+    const onParticipantConnected = (p: Participant) => {
+      if (p.identity === "gm") subscribeGmSpeaking(p);
+    };
+    liveKitRoom.on(RoomEvent.ParticipantConnected, onParticipantConnected);
+    liveKitRoom.remoteParticipants.forEach((p) => onParticipantConnected(p));
+
     return () => {
-      liveKitRoom.off(RoomEvent.ActiveSpeakersChanged, handler);
       liveKitRoom.off(RoomEvent.TrackSubscribed, onTrackSubscribed);
+      liveKitRoom.localParticipant.off(ParticipantEvent.IsSpeakingChanged, onLocalSpeaking);
+      liveKitRoom.off(RoomEvent.ParticipantConnected, onParticipantConnected);
+      if (gmParticipant && gmSpeakingHandler) {
+        gmParticipant.off(ParticipantEvent.IsSpeakingChanged, gmSpeakingHandler);
+      }
+      liveKitRoom.remoteParticipants.forEach((p) => {
+        if (p.identity === "gm") p.removeAllListeners(ParticipantEvent.IsSpeakingChanged);
+      });
     };
   }, [liveKitRoom]);
 
@@ -123,9 +150,6 @@ export function Routes() {
       setLiveKitRoom(null);
     }
   }, [logged, liveKitRoom]);
-
-  const masterSpeaking = activeSpeakers.some((p) => p.identity === "gm");
-  const localSpeaking = !!liveKitRoom && activeSpeakers.some((p) => p.identity === liveKitRoom.localParticipant.identity);
 
   function getPortraitUrl(c: any) {
     if (!c.default_image_url) return "/assets/jogador_default.png";
@@ -297,6 +321,7 @@ export function Routes() {
           )}
 
           <LobbyScreen
+            room={liveKitRoom}
             selectedCharacter={selectedCharacter}
             onSelectCharacter={() => setSubView("SELECT_CHARACTER")}
             onCreateCharacter={() => {
