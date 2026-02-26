@@ -116,6 +116,59 @@
   transition: max-height 0.4s ease-in, opacity 0.25s ease-in;
 }
 
+.lobby-audio-status{
+  font-size: 12px;
+  color: rgba(215,178,92,.9);
+  margin: 0 0 8px;
+  padding: 8px 0;
+}
+.lobby-audio-retry{
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--gold);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+.lobby-audio-retry:hover{
+  color: rgba(215,178,92,1);
+}
+
+.lobby-audio-status-block{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lobby-audio-status-block .lobby-audio-status{ margin: 0; padding: 0; }
+.lobby-audio-status-block .lobby-permission-hint{ margin: 0; }
+.lobby-audio-diagnostic-btn{
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid rgba(215,178,92,.3);
+  border-radius: 6px;
+  background: rgba(0,0,0,.35);
+  color: rgba(215,178,92,.9);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.lobby-audio-diagnostic-btn:hover:not(:disabled){
+  background: rgba(0,0,0,.5);
+  border-color: rgba(215,178,92,.5);
+}
+.lobby-audio-diagnostic-btn:disabled{ opacity: .8; cursor: not-allowed; }
+.lobby-audio-error-detail{
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: rgba(0,0,0,.4);
+  border-radius: 6px;
+  border: 1px solid rgba(200,80,80,.3);
+}
+.lobby-audio-error-detail .lobby-error{ color: #e88; font-size: 12px; }
+.lobby-audio-error-detail .lobby-error-url{ font-size: 10px; margin-top: 6px; }
+
 .lobby-permission-hint{
   font-size: 11px;
   line-height: 1.3;

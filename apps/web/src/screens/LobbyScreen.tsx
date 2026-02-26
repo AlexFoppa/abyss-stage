@@ -264,8 +264,7 @@ export function LobbyScreen({
   useEffect(() => {
     if (didAutoConnect.current) return;
     didAutoConnect.current = true;
-    const t = setTimeout(() => connectAudio(), 600);
-    return () => clearTimeout(t);
+    connectAudio();
   }, [connectAudio]);
 
   useEffect(() => {
@@ -437,48 +436,7 @@ export function LobbyScreen({
               Criar personagem
             </button>
 
-            <button
-              className="ui-btn lobby-btn-audio"
-              disabled={status === "connecting" || status === "connected"}
-              onClick={connectAudio}
-              title={audioTooltip}
-              aria-describedby={audioTooltip ? "lobby-audio-hint" : undefined}
-            >
-              {status === "connecting" && "Conectando…"}
-              {status === "connected" && "Áudio ativo"}
-              {status !== "connecting" && status !== "connected" && "Compartilhar áudio"}
-            </button>
-            {micPermission === "denied" && (
-              <p id="lobby-audio-hint" className="lobby-permission-hint" role="status">
-                {MIC_TOOLTIP_DENIED}
-              </p>
-            )}
-
             <div className="lobby-actions-secondary">
-              <button
-                type="button"
-                className="ui-btn ui-btn--ghost"
-                disabled={diagnosticRunning}
-                onClick={runDiagnostic}
-                title="Identifica se o problema é URL/túnel ou rede (WebRTC/NAT)"
-              >
-                {diagnosticRunning ? "Diagnosticando…" : "Diagnosticar conexão de áudio"}
-              </button>
-
-              {diagnosticSteps && diagnosticSteps.length > 0 && (
-                <div className="lobby-diagnostic" role="status">
-                  <strong>Diagnóstico:</strong>
-                  <ul>
-                    {diagnosticSteps.map((s) => (
-                      <li key={s.step} className={s.ok ? "lobby-diagnostic--ok" : "lobby-diagnostic--fail"}>
-                        {s.step}. {s.label}
-                        {s.detail && <span className="lobby-diagnostic-detail"> — {s.detail}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
               <button className="ui-btn" disabled title="Em breve">
                 Informações do jogador
               </button>
@@ -490,24 +448,9 @@ export function LobbyScreen({
           </div>
         </div>
 
-        {err && status === "error" && (
-          <div className="lobby-error-wrap">
-            <div className="lobby-error">{err}</div>
-            {lastLiveKitUrl && (
-              <p className="lobby-error-url">
-                URL usada: <code>{lastLiveKitUrl}</code>
-                <br />
-                <span className="lobby-error-hint">
-                  Túnel 7880 deve estar aberto e a API reiniciada com essa URL. Se falhar sempre, use LiveKit Cloud — veja docs/audio-livekit-cloud.md.
-                </span>
-              </p>
-            )}
-          </div>
-        )}
       </div>
 
-      {connected &&
-        createPortal(
+      {createPortal(
           <div
             className="lobby-audio-wrap"
             style={{ right: audioPanelPos.right, bottom: audioPanelPos.bottom }}
@@ -539,6 +482,61 @@ export function LobbyScreen({
               <span className="lobby-audio-panel-title">Áudio</span>
             </div>
             <div className="lobby-audio-body">
+              {!connected ? (
+                <div className="lobby-audio-status-block">
+                  <p className="lobby-audio-status" role="status" aria-live="polite">
+                    {status === "connecting" && "Conectando…"}
+                    {status === "connected" && "Áudio ativo"}
+                    {status === "error" && err && (
+                      <>
+                        Falha na conexão.{" "}
+                        <button type="button" className="lobby-audio-retry" onClick={connectAudio}>
+                          Tentar novamente
+                        </button>
+                      </>
+                    )}
+                    {status === "idle" && "Iniciando áudio…"}
+                  </p>
+                  {micPermission === "denied" && (
+                    <p className="lobby-permission-hint" role="status">
+                      {MIC_TOOLTIP_DENIED}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="lobby-audio-diagnostic-btn"
+                    disabled={diagnosticRunning}
+                    onClick={runDiagnostic}
+                    title="Identifica se o problema é URL/túnel ou rede (WebRTC/NAT)"
+                  >
+                    {diagnosticRunning ? "Diagnosticando…" : "Diagnosticar conexão"}
+                  </button>
+                  {diagnosticSteps && diagnosticSteps.length > 0 && (
+                    <div className="lobby-diagnostic" role="status">
+                      <strong>Diagnóstico:</strong>
+                      <ul>
+                        {diagnosticSteps.map((s) => (
+                          <li key={s.step} className={s.ok ? "lobby-diagnostic--ok" : "lobby-diagnostic--fail"}>
+                            {s.step}. {s.label}
+                            {s.detail && <span className="lobby-diagnostic-detail"> — {s.detail}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {err && status === "error" && (
+                    <div className="lobby-audio-error-detail">
+                      <span className="lobby-error">{err}</span>
+                      {lastLiveKitUrl && (
+                        <p className="lobby-error-url">
+                          URL: <code>{lastLiveKitUrl}</code>. Túnel 7880 e API; ou use LiveKit Cloud (docs/audio-livekit-cloud.md).
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
               <div className="lobby-audio-toggles">
                 <button
                   type="button"
@@ -655,6 +653,8 @@ export function LobbyScreen({
                   </div>
                 </div>
               </div>
+                </>
+              )}
             </div>
           </div>
         </div>,
