@@ -72,6 +72,19 @@ export function ScenarioManagerModal({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<{ scenario: Scenario; x: number; y: number } | null>(null);
+  const tooltipLeaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const TOOLTIP_W = 320;
+  const TOOLTIP_GAP = 8;
+  function placeBeside(rect: DOMRect) {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    let x: number;
+    if (rect.right + TOOLTIP_GAP + TOOLTIP_W <= w) x = rect.right + TOOLTIP_GAP;
+    else if (rect.left - TOOLTIP_GAP - TOOLTIP_W >= 0) x = rect.left - TOOLTIP_W - TOOLTIP_GAP;
+    else x = Math.max(TOOLTIP_GAP, w - TOOLTIP_W - TOOLTIP_GAP);
+    const y = Math.max(TOOLTIP_GAP, Math.min(rect.top, h - 400 - 16));
+    return { x, y };
+  }
   const [uploading, setUploading] = useState(false);
   const isStoryEditor = Boolean(onAddScenarioToStory && onRemoveScenarioFromStory);
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
@@ -430,12 +443,14 @@ export function ScenarioManagerModal({
                               <div
                                 className="scenario-manager__polaroid-info-wrap"
                                 onMouseEnter={(e) => {
+                                  if (tooltipLeaveRef.current) { clearTimeout(tooltipLeaveRef.current); tooltipLeaveRef.current = null; }
                                   const r = e.currentTarget.getBoundingClientRect();
-                                  setTooltip({ scenario: s, x: Math.min(r.left, window.innerWidth - 320), y: r.bottom + 4 });
+                                  const { x, y } = placeBeside(r);
+                                  setTooltip({ scenario: s, x, y });
                                 }}
-                                onMouseLeave={() => setTooltip(null)}
+                                onMouseLeave={() => { tooltipLeaveRef.current = setTimeout(() => setTooltip(null), 200); }}
                               >
-                                <span className="scenario-manager__polaroid-info-trigger" aria-label="Ver detalhes" title={`${s.name || ""}\n${s.description || ""}`}>?</span>
+                                <span className="scenario-manager__polaroid-info-trigger" aria-label="Ver detalhes">?</span>
                               </div>
                             </div>
                           </div>
@@ -501,12 +516,14 @@ export function ScenarioManagerModal({
                               <div
                                 className="scenario-manager__polaroid-info-wrap"
                                 onMouseEnter={(e) => {
+                                  if (tooltipLeaveRef.current) { clearTimeout(tooltipLeaveRef.current); tooltipLeaveRef.current = null; }
                                   const r = e.currentTarget.getBoundingClientRect();
-                                  setTooltip({ scenario: s, x: Math.min(r.left, window.innerWidth - 320), y: r.bottom + 4 });
+                                  const { x, y } = placeBeside(r);
+                                  setTooltip({ scenario: s, x, y });
                                 }}
-                                onMouseLeave={() => setTooltip(null)}
+                                onMouseLeave={() => { tooltipLeaveRef.current = setTimeout(() => setTooltip(null), 200); }}
                               >
-                                <span className="scenario-manager__polaroid-info-trigger" aria-label="Ver detalhes" title={`${s.name || ""}\n${s.description || ""}`}>?</span>
+                                <span className="scenario-manager__polaroid-info-trigger" aria-label="Ver detalhes">?</span>
                               </div>
                             </div>
                           </div>
@@ -523,6 +540,8 @@ export function ScenarioManagerModal({
                 <div
                   className="scenario-manager__polaroid-tooltip scenario-manager__polaroid-tooltip--portal"
                   style={{ position: "fixed", left: tooltip.x, top: tooltip.y, zIndex: 100002 }}
+                  onMouseEnter={() => { if (tooltipLeaveRef.current) { clearTimeout(tooltipLeaveRef.current); tooltipLeaveRef.current = null; } }}
+                  onMouseLeave={() => setTooltip(null)}
                 >
                   <ScenarioTooltipContent scenario={tooltip.scenario} className="scenario-manager__polaroid-tooltip__body" />
                 </div>,

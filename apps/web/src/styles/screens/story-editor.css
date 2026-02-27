@@ -28,14 +28,52 @@
   padding-right: 1rem;
 }
 
+.story-editor__title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Título não cresce para não empurrar o ? para perto do Autosave; ? fica colado ao título */
 .story-editor__title {
   margin: 0;
   font-size: 1.125rem;
   font-weight: 600;
   letter-spacing: var(--ls-ui);
   color: var(--text-main);
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
+}
+
+.story-editor__story-info-wrap {
+  flex-shrink: 0;
+  cursor: help;
+}
+
+.story-editor__story-info-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(215,178,92,.4);
+  background: rgba(0,0,0,.3);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 600;
+  transition: background .15s, border-color .15s;
+}
+
+.story-editor__story-info-trigger:hover {
+  background: rgba(0,0,0,.5);
+  border-color: var(--gold);
+}
+
+.story-editor__story-tooltip {
+  pointer-events: auto;
 }
 
 .story-editor__autosave-toggle {
@@ -997,11 +1035,12 @@
   overflow-y: auto;
 }
 
-/* Só esconder quando for tooltip inline (dentro do wrap); no portal o conteúdo fica visível */
+/* Tooltip só via portal (ao lado); não usamos tooltip inline dentro do wrap */
 .scene-chars-modal__polaroid-info-wrap .scene-chars-modal__polaroid-tooltip,
 .scenario-manager__polaroid-info-wrap .scenario-manager__polaroid-tooltip {
   opacity: 0;
   visibility: hidden;
+  pointer-events: none;
 }
 
 /* Tooltip renderizado em portal: wrapper fixo; o conteúdo usa __body para ficar no fluxo */
@@ -1018,6 +1057,7 @@
   opacity: 1;
   visibility: visible;
   z-index: 100002;
+  pointer-events: auto;
 }
 
 /* Conteúdo do tooltip no portal: no fluxo (sem position absolute) para o texto aparecer */

@@ -198,9 +198,32 @@ function SortableSceneItem({
 export type StoryInfo = {
   id: string;
   name: string;
+  premissa?: string;
+  o_que_aconteceu?: string;
+  temas?: string;
+  atmosfera?: string;
+  notas?: string;
   created_at: string;
   updated_at: string;
 };
+
+const TOOLTIP_WIDTH = 360;
+const TOOLTIP_GAP = 8;
+
+function placeTooltipBeside(rect: DOMRect): { left: number; top: number } {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  let left: number;
+  if (rect.right + TOOLTIP_GAP + TOOLTIP_WIDTH <= w) {
+    left = rect.right + TOOLTIP_GAP;
+  } else if (rect.left - TOOLTIP_GAP - TOOLTIP_WIDTH >= 0) {
+    left = rect.left - TOOLTIP_WIDTH - TOOLTIP_GAP;
+  } else {
+    left = Math.max(TOOLTIP_GAP, w - TOOLTIP_WIDTH - TOOLTIP_GAP);
+  }
+  const top = Math.min(rect.top, h - 400 - 16);
+  return { left, top: Math.max(TOOLTIP_GAP, top) };
+}
 
 export type Scene = {
   id: string;
@@ -319,6 +342,8 @@ export function StoryEditorScreen({
   const [sceneDetailsCharacterIds, setSceneDetailsCharacterIds] = useState<number[]>([]);
   const [duplicating, setDuplicating] = useState(false);
   const [autosaveEnabled, setAutosaveEnabled] = useState(true);
+  const [storyTooltipPos, setStoryTooltipPos] = useState<{ left: number; top: number } | null>(null);
+  const storyTooltipLeaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lastSavedState, setLastSavedState] = useState<{
     sceneId: string;
     title: string;
@@ -847,7 +872,68 @@ export function StoryEditorScreen({
         <button type="button" className="ui-btn ui-btn--ghost" onClick={handleBack}>
           Voltar
         </button>
-        <h1 className="story-editor__title">{story?.name ?? storyId}</h1>
+        <div className="story-editor__title-row">
+          <h1 className="story-editor__title">{story?.name ?? storyId}</h1>
+          {story && (
+            <div
+              className="story-editor__story-info-wrap"
+              onMouseEnter={(e) => {
+                if (storyTooltipLeaveRef.current) {
+                  clearTimeout(storyTooltipLeaveRef.current);
+                  storyTooltipLeaveRef.current = null;
+                }
+                const r = e.currentTarget.getBoundingClientRect();
+                setStoryTooltipPos(placeTooltipBeside(r));
+              }}
+              onMouseLeave={() => {
+                storyTooltipLeaveRef.current = setTimeout(() => setStoryTooltipPos(null), 200);
+              }}
+            >
+              <span className="story-editor__story-info-trigger" aria-label="Ver informações da história">?</span>
+            </div>
+          )}
+        </div>
+        {story && storyTooltipPos && createPortal(
+          <div
+            className="scene-chars-modal__polaroid-tooltip scene-chars-modal__polaroid-tooltip--portal story-editor__story-tooltip"
+            style={{ position: "fixed", left: storyTooltipPos.left, top: storyTooltipPos.top, zIndex: 100002 }}
+            onMouseEnter={() => {
+              if (storyTooltipLeaveRef.current) {
+                clearTimeout(storyTooltipLeaveRef.current);
+                storyTooltipLeaveRef.current = null;
+              }
+            }}
+            onMouseLeave={() => setStoryTooltipPos(null)}
+          >
+            <div className="scene-chars-modal__polaroid-tooltip__body scenario-manager__polaroid-tooltip__body">
+              <div className="scene-chars-tooltip__row">
+                <div className="scene-chars-tooltip__label">Nome</div>
+                <div className="scene-chars-tooltip__value">{story.name || "—"}</div>
+              </div>
+              <div className="scene-chars-tooltip__row">
+                <div className="scene-chars-tooltip__label">Premissa</div>
+                <div className="scene-chars-tooltip__value">{story.premissa || "—"}</div>
+              </div>
+              <div className="scene-chars-tooltip__row">
+                <div className="scene-chars-tooltip__label">O que realmente aconteceu</div>
+                <div className="scene-chars-tooltip__value">{story.o_que_aconteceu || "—"}</div>
+              </div>
+              <div className="scene-chars-tooltip__row">
+                <div className="scene-chars-tooltip__label">Temas</div>
+                <div className="scene-chars-tooltip__value">{story.temas || "—"}</div>
+              </div>
+              <div className="scene-chars-tooltip__row">
+                <div className="scene-chars-tooltip__label">Atmosfera</div>
+                <div className="scene-chars-tooltip__value">{story.atmosfera || "—"}</div>
+              </div>
+              <div className="scene-chars-tooltip__row">
+                <div className="scene-chars-tooltip__label">Notas</div>
+                <div className="scene-chars-tooltip__value">{story.notas || "—"}</div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
         <label className="story-editor__autosave-toggle">
           <input
             type="checkbox"

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api";
 
@@ -99,6 +99,19 @@ export function SceneCharactersModal({
   const [newConcept, setNewConcept] = useState("");
   const [creating, setCreating] = useState(false);
   const [tooltip, setTooltip] = useState<{ character: GMCharacter; x: number; y: number } | null>(null);
+  const tooltipLeaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const TOOLTIP_W = 320;
+  const TOOLTIP_GAP = 8;
+  function placeBeside(rect: DOMRect) {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    let x: number;
+    if (rect.right + TOOLTIP_GAP + TOOLTIP_W <= w) x = rect.right + TOOLTIP_GAP;
+    else if (rect.left - TOOLTIP_GAP - TOOLTIP_W >= 0) x = rect.left - TOOLTIP_W - TOOLTIP_GAP;
+    else x = Math.max(TOOLTIP_GAP, w - TOOLTIP_W - TOOLTIP_GAP);
+    const y = Math.max(TOOLTIP_GAP, Math.min(rect.top, h - 400 - 16));
+    return { x, y };
+  }
 
   useEffect(() => {
     if (open) setLocalIds(storyCharacterIds);
@@ -281,12 +294,14 @@ export function SceneCharactersModal({
                           <div
                             className="scene-chars-modal__polaroid-info-wrap"
                             onMouseEnter={(e) => {
+                              if (tooltipLeaveRef.current) { clearTimeout(tooltipLeaveRef.current); tooltipLeaveRef.current = null; }
                               const r = e.currentTarget.getBoundingClientRect();
-                              setTooltip({ character: c, x: Math.min(r.left, window.innerWidth - 320), y: r.bottom + 4 });
+                              const { x, y } = placeBeside(r);
+                              setTooltip({ character: c, x, y });
                             }}
-                            onMouseLeave={() => setTooltip(null)}
+                            onMouseLeave={() => { tooltipLeaveRef.current = setTimeout(() => setTooltip(null), 200); }}
                           >
-                            <span className="scene-chars-modal__polaroid-info-trigger" aria-label="Ver ficha" title={`${c.name || ""}\n${c.concept || ""}\n${c.backstory || ""}`}>?</span>
+                            <span className="scene-chars-modal__polaroid-info-trigger" aria-label="Ver ficha">?</span>
                           </div>
                         </div>
                       </div>
@@ -340,12 +355,14 @@ export function SceneCharactersModal({
                           <div
                             className="scene-chars-modal__polaroid-info-wrap"
                             onMouseEnter={(e) => {
+                              if (tooltipLeaveRef.current) { clearTimeout(tooltipLeaveRef.current); tooltipLeaveRef.current = null; }
                               const r = e.currentTarget.getBoundingClientRect();
-                              setTooltip({ character: c, x: Math.min(r.left, window.innerWidth - 320), y: r.bottom + 4 });
+                              const { x, y } = placeBeside(r);
+                              setTooltip({ character: c, x, y });
                             }}
-                            onMouseLeave={() => setTooltip(null)}
+                            onMouseLeave={() => { tooltipLeaveRef.current = setTimeout(() => setTooltip(null), 200); }}
                           >
-                            <span className="scene-chars-modal__polaroid-info-trigger" aria-label="Ver ficha" title={`${c.name || ""}\n${c.concept || ""}\n${c.backstory || ""}`}>?</span>
+                            <span className="scene-chars-modal__polaroid-info-trigger" aria-label="Ver ficha">?</span>
                           </div>
                         </div>
                       </div>
@@ -361,6 +378,8 @@ export function SceneCharactersModal({
                 <div
                   className="scene-chars-modal__polaroid-tooltip scene-chars-modal__polaroid-tooltip--portal"
                   style={{ position: "fixed", left: tooltip.x, top: tooltip.y, zIndex: 100002 }}
+                  onMouseEnter={() => { if (tooltipLeaveRef.current) { clearTimeout(tooltipLeaveRef.current); tooltipLeaveRef.current = null; } }}
+                  onMouseLeave={() => setTooltip(null)}
                 >
                   <CharacterTooltipContent character={tooltip.character} className="scene-chars-modal__polaroid-tooltip__body" />
                 </div>,
