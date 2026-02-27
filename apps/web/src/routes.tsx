@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { RoomEvent, ParticipantEvent, Track, type Room, type Participant } from "livekit-client";
 import { useAuth } from "./auth/AuthProvider";
+import { api } from "./api";
 import { StageLayout } from "./ui/StageLayout";
 import { Screen } from "./ui/Screen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { ForceResetScreen } from "./screens/ForceResetScreen";
-import { LobbyScreen } from "./screens/LobbyScreen";
+import { LobbyScreen, type LobbyParticipant } from "./screens/LobbyScreen";
 import { CreateCharacterScreen } from "./screens/CreateCharacterScreen";
 import { SelectCharacterScreen } from "./screens/SelectCharacterScreen";
 import { EditCharacterScreen } from "./screens/EditCharacterScreen";
@@ -69,6 +70,11 @@ export function Routes() {
   const [liveKitRoom, setLiveKitRoom] = useState<Room | null>(null);
   const [masterSpeaking, setMasterSpeaking] = useState(false);
   const [localSpeaking, setLocalSpeaking] = useState(false);
+  const [speakingByIdentity, setSpeakingByIdentity] = useState<Record<string, boolean>>({});
+
+  const [lobbyParticipants, setLobbyParticipants] = useState<LobbyParticipant[]>([]);
+  const [actorOffsets, setActorOffsets] = useState<Record<string, number>>({});
+  const actorDragRef = useRef<{ identity: string; startX: number; startOffset: number } | null>(null);
 
   const view: View = useMemo(() => {
     if (loading) return "LOGIN";
@@ -109,38 +115,47 @@ export function Routes() {
       });
     });
 
-    const onLocalSpeaking = () => setLocalSpeaking(liveKitRoom.localParticipant.isSpeaking);
+    const updateSpeaking = (identity: string, speaking: boolean) => {
+      setSpeakingByIdentity((prev) => (prev[identity] === speaking ? prev : { ...prev, [identity]: speaking }));
+    };
+    const onLocalSpeaking = () => {
+      const v = liveKitRoom.localParticipant.isSpeaking;
+      setLocalSpeaking(v);
+      updateSpeaking(liveKitRoom.localParticipant.identity, v);
+    };
     liveKitRoom.localParticipant.on(ParticipantEvent.IsSpeakingChanged, onLocalSpeaking);
-    setLocalSpeaking(liveKitRoom.localParticipant.isSpeaking);
+    onLocalSpeaking();
 
-    let gmSpeakingHandler: (() => void) | null = null;
-    const subscribeGmSpeaking = (p: Participant) => {
-      gmSpeakingHandler = () => setMasterSpeaking(p.isSpeaking);
-      p.on(ParticipantEvent.IsSpeakingChanged, gmSpeakingHandler);
-      setMasterSpeaking(p.isSpeaking);
+    const unsubs: (() => void)[] = [];
+    const subscribeSpeaking = (p: Participant) => {
+      const handler = () => {
+        const identity = p.identity;
+        const speaking = p.isSpeaking;
+        if (identity === "gm") setMasterSpeaking(speaking);
+        updateSpeaking(identity, speaking);
+      };
+      p.on(ParticipantEvent.IsSpeakingChanged, handler);
+      handler();
+      unsubs.push(() => p.off(ParticipantEvent.IsSpeakingChanged, handler));
     };
-
-    const gmParticipant = liveKitRoom.localParticipant.identity === "gm"
-      ? liveKitRoom.localParticipant
-      : Array.from(liveKitRoom.remoteParticipants.values()).find((p) => p.identity === "gm");
-    if (gmParticipant) subscribeGmSpeaking(gmParticipant);
-
-    const onParticipantConnected = (p: Participant) => {
-      if (p.identity === "gm") subscribeGmSpeaking(p);
-    };
+    liveKitRoom.remoteParticipants.forEach(subscribeSpeaking);
+    const onParticipantConnected = (p: Participant) => subscribeSpeaking(p);
     liveKitRoom.on(RoomEvent.ParticipantConnected, onParticipantConnected);
-    liveKitRoom.remoteParticipants.forEach((p) => onParticipantConnected(p));
+    const onParticipantDisconnected = (p: Participant) => {
+      setSpeakingByIdentity((prev) => {
+        const next = { ...prev };
+        delete next[p.identity];
+        return next;
+      });
+    };
+    liveKitRoom.on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
 
     return () => {
       liveKitRoom.off(RoomEvent.TrackSubscribed, onTrackSubscribed);
       liveKitRoom.localParticipant.off(ParticipantEvent.IsSpeakingChanged, onLocalSpeaking);
       liveKitRoom.off(RoomEvent.ParticipantConnected, onParticipantConnected);
-      if (gmParticipant && gmSpeakingHandler) {
-        gmParticipant.off(ParticipantEvent.IsSpeakingChanged, gmSpeakingHandler);
-      }
-      liveKitRoom.remoteParticipants.forEach((p) => {
-        if (p.identity === "gm") p.removeAllListeners(ParticipantEvent.IsSpeakingChanged);
-      });
+      liveKitRoom.off(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
+      unsubs.forEach((u) => u());
     };
   }, [liveKitRoom]);
 
@@ -151,6 +166,55 @@ export function Routes() {
     }
   }, [logged, liveKitRoom]);
 
+  const isLobbyView = view === "LOBBY";
+  const fetchLobby = useCallback(() => {
+    if (!user) return;
+    api<{ participants: LobbyParticipant[] }>("/api/lobby")
+      .then((res) => setLobbyParticipants(res.participants ?? []))
+      .catch(() => {});
+  }, [user]);
+
+  useEffect(() => {
+    if (!isLobbyView || !user) return;
+    fetchLobby();
+    const intervalMs = 2000;
+    const t = setInterval(fetchLobby, intervalMs);
+    return () => clearInterval(t);
+  }, [isLobbyView, user, fetchLobby]);
+
+  useEffect(() => {
+    if (!isLobbyView || !user) return;
+    const heartbeat = () => {
+      api("/api/lobby/me", {
+        method: "POST",
+        body: JSON.stringify({ character_id: selectedCharacter?.id ?? null }),
+      })
+        .then(() => fetchLobby())
+        .catch(() => {});
+    };
+    heartbeat();
+    const t = setInterval(heartbeat, 25000);
+    return () => clearInterval(t);
+  }, [isLobbyView, user, selectedCharacter?.id, fetchLobby]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const r = actorDragRef.current;
+      if (!r) return;
+      const dx = e.clientX - r.startX;
+      setActorOffsets((prev) => ({ ...prev, [r.identity]: r.startOffset + dx }));
+    };
+    const onUp = () => {
+      actorDragRef.current = null;
+    };
+    window.addEventListener("mousemove", onMove, { capture: true });
+    window.addEventListener("mouseup", onUp, { capture: true });
+    return () => {
+      window.removeEventListener("mousemove", onMove, { capture: true });
+      window.removeEventListener("mouseup", onUp, { capture: true });
+    };
+  }, []);
+
   function getPortraitUrl(c: any) {
     if (!c.default_image_url) return "/assets/jogador_default.png";
     if (c.default_image_rev) return `${c.default_image_url}?rev=${c.default_image_rev}`;
@@ -159,6 +223,39 @@ export function Routes() {
 
   const shouldOpenCurtains = isGM && !["LOBBY", "SELECT_CHARACTER", "CREATE_CHARACTER", "EDIT_CHARACTER"].includes(view);
   const isGMView = isGM && ["GM_HOME", "GM_CHARACTERS", "GM_SCENARIOS", "GM_STORIES", "GM_STORY_EDITOR"].includes(view);
+
+  const gmInRoom =
+    liveKitRoom &&
+    (liveKitRoom.localParticipant.identity === "gm" ||
+      [...liveKitRoom.remoteParticipants.values()].some((p) => p.identity === "gm"));
+
+  const baseParticipants: LobbyParticipant[] =
+    lobbyParticipants.length > 0
+      ? lobbyParticipants
+      : view === "LOBBY" && user
+        ? [
+            ...(isGM || gmInRoom
+              ? [{ user_id: isGM ? user!.id : 0, identity: "gm", is_gm: true, character_id: null, character_name: null, character_image_url: null }]
+              : []),
+            ...(selectedCharacter && !isGM
+              ? [
+                  {
+                    user_id: user!.id,
+                    identity: `player-${user!.id}`,
+                    is_gm: false,
+                    character_id: selectedCharacter.id,
+                    character_name: selectedCharacter.name,
+                    character_image_url: selectedCharacter.imageUrl ?? null,
+                  },
+                ]
+              : []),
+          ]
+        : [];
+  // Garantir que o mestre apareça sempre na visão do lobby quando o usuário é GM (evita sumir com atraso/API vazia).
+  const displayParticipants: LobbyParticipant[] =
+    view === "LOBBY" && user && isGM && !baseParticipants.some((p) => p.is_gm)
+      ? [{ user_id: user.id, identity: "gm", is_gm: true, character_id: null, character_name: null, character_image_url: null }, ...baseParticipants]
+      : baseParticipants;
 
   return (
     <StageLayout
@@ -306,23 +403,58 @@ export function Routes() {
         />
       ) : (
         <>
-          <img
-            className={"lobby-master" + (masterSpeaking ? " lobby-master--speaking" : "")}
-            src="/assets/jogador_default.png"
-            alt="Mestre"
-            aria-label="Mestre"
-          />
-          {selectedCharacter && (
-            <img
-              className={"lobby-actor" + (localSpeaking ? " lobby-actor--speaking" : "")}
-              src={selectedCharacter.imageUrl || "/assets/jogador_default.png"}
-              alt={selectedCharacter.name}
-            />
-          )}
+          <div className="lobby-stage">
+            {displayParticipants.some((p) => p.is_gm) && (
+              <img
+                className={
+                  "lobby-master" + ((speakingByIdentity["gm"] ?? false) ? " lobby-master--speaking" : "")
+                }
+                src="/assets/jogador_default.png"
+                alt="Mestre"
+                aria-label="Mestre"
+              />
+            )}
+            <div className="lobby-actors">
+              {displayParticipants
+                .filter((p) => !p.is_gm)
+                .slice(0, 6)
+                .map((p) => {
+                  const isSpeaking = liveKitRoom
+                    ? p.identity === liveKitRoom.localParticipant.identity
+                      ? localSpeaking
+                      : (speakingByIdentity[p.identity] ?? false)
+                    : false;
+                  const offset = actorOffsets[p.identity] ?? 0;
+                  return (
+                    <div
+                      key={p.user_id}
+                      className="lobby-actor-wrap"
+                      style={{ transform: `translateX(${offset}px)` }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        actorDragRef.current = {
+                          identity: p.identity,
+                          startX: e.clientX,
+                          startOffset: offset,
+                        };
+                      }}
+                    >
+                      <img
+                        className={"lobby-actor" + (isSpeaking ? " lobby-actor--speaking" : "")}
+                        src={p.character_image_url || "/assets/jogador_default.png"}
+                        alt={p.character_name ?? "Personagem"}
+                        draggable={false}
+                      />
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
 
           <LobbyScreen
             room={liveKitRoom}
             selectedCharacter={selectedCharacter}
+            lobbyParticipants={displayParticipants}
             onSelectCharacter={() => setSubView("SELECT_CHARACTER")}
             onCreateCharacter={() => {
               setStageMode("ZOOM_IN");

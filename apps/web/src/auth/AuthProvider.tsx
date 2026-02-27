@@ -1,6 +1,6 @@
 // src/auth/AuthProvider.tsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { api } from "../api";
+import { api, setOn401 } from "../api";
 
 export type Role = "GM" | "PLAYER";
 export type User = {
@@ -70,6 +70,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function logout() {
     try {
+      await api("/api/lobby/me", { method: "DELETE" });
+    } catch {
+      // ignora (pode já estar deslogado ou não estar no lobby)
+    }
+    try {
       await api("/api/auth/logout", { method: "POST" });
     } finally {
       setUser(null);
@@ -97,6 +102,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     refreshMe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    setOn401(() => setUser(null));
+    return () => setOn401(null);
   }, []);
 
   const value = useMemo<AuthCtx>(() => {

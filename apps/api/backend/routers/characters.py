@@ -187,7 +187,7 @@ def _uploads_root() -> Path:
     p.mkdir(parents=True, exist_ok=True)
     return p
 
-def _img_url(storage_key: str, rev: str | None = None) -> str:
+def _img_url(storage_key: str, rev: Optional[str] = None) -> str:
     storage_key = (storage_key or "").lstrip("/")
     url = f"/api/uploads/{storage_key}"
     if rev:

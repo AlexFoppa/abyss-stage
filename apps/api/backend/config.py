@@ -12,6 +12,11 @@ class Settings:
     livekit_api_secret: str = os.getenv("LIVEKIT_API_SECRET", "")
     # URL do servidor LiveKit (WS). Aceita LIVEKIT_WS_URL ou LIVEKIT_URL (ex.: LiveKit Cloud).
     livekit_ws_url: str = os.getenv("LIVEKIT_WS_URL") or os.getenv("LIVEKIT_URL", "ws://127.0.0.1:7880")
+    # URL da API REST LiveKit (para listar participantes). Se não setar, deriva do WS: wss->https, ws->http.
+    livekit_api_url: str = os.getenv("LIVEKIT_API_URL") or (
+        (os.getenv("LIVEKIT_WS_URL") or os.getenv("LIVEKIT_URL") or "ws://127.0.0.1:7880")
+        .replace("wss://", "https://", 1).replace("ws://", "http://", 1).rstrip("/")
+    )
 
     # Auth (vamos usar já já)
     auth_jwt_secret: str = os.getenv("AUTH_JWT_SECRET", "")    

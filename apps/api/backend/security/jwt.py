@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from jose import jwt
-from typing import Any
+from typing import Any, Optional
 
 
 def encode_hs256(payload: dict[str, Any], secret: str) -> str:
@@ -12,7 +12,7 @@ def decode_hs256(token: str, secret: str) -> dict[str, Any]:
     return jwt.decode(token, secret, algorithms=["HS256"])
 
 
-def make_access_token(*, sub: str, secret: str, issuer: str, ttl_seconds: int, extra: dict[str, Any] | None = None) -> str:
+def make_access_token(*, sub: str, secret: str, issuer: str, ttl_seconds: int, extra: Optional[dict[str, Any]] = None) -> str:
     import time
     now = int(time.time())
     payload: dict[str, Any] = {

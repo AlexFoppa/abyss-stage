@@ -8,6 +8,7 @@ export default defineConfig({
     port: 5173,
     allowedHosts: [".trycloudflare.com"],
     proxy: {
+      // Requer a API rodando em 8000: uvicorn apps.api.main:app --reload --host 127.0.0.1 --port 8000
       "/api": {
         target: "http://127.0.0.1:8000",
         changeOrigin: true,

@@ -132,17 +132,28 @@ export type AudioCaptureOpts = {
   voiceIsolation: boolean;
 };
 
+export type LobbyParticipant = {
+  user_id: number;
+  identity: string;
+  is_gm: boolean;
+  character_id: number | null;
+  character_name: string | null;
+  character_image_url: string | null;
+};
+
 export function LobbyScreen({
   room,
+  selectedCharacter,
+  lobbyParticipants = [],
   onCreateCharacter,
   onSelectCharacter,
-  selectedCharacter,
   onRoomConnected,
 }: {
   room?: Room | null;
+  selectedCharacter: null | { id: number; name: string; system: string };
+  lobbyParticipants?: LobbyParticipant[];
   onCreateCharacter: () => void;
   onSelectCharacter: () => void;
-  selectedCharacter: null | { id: number; name: string; system: string };
   onRoomConnected?: (room: Room) => void;
 }) {
   const { logout } = useAuth();
@@ -406,12 +417,16 @@ export function LobbyScreen({
     });
   }, [connected]);
 
+  const characterNames = lobbyParticipants
+    .filter((p) => !p.is_gm && p.character_name)
+    .map((p) => p.character_name as string);
+
   return (
     <div className="lobby-wrap">
-      {selectedCharacter ? (
-        <div className="lobby-wall-poster" aria-label="Poster do personagem selecionado">
+      {characterNames.length > 0 ? (
+        <div className="lobby-wall-poster" aria-label="Poster dos personagens no lobby">
           <div className="lobby-wall-poster__kicker">Estrelando:</div>
-          <div className="lobby-wall-poster__name">{selectedCharacter.name}</div>
+          <div className="lobby-wall-poster__name">{characterNames.join(", ")}</div>
         </div>
       ) : null}
 

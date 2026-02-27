@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from sqlmodel import Session, select
 import secrets
@@ -56,7 +57,7 @@ def _set_auth_cookie(resp: Response, token: str) -> None:
 def _clear_auth_cookie(resp: Response) -> None:
     resp.delete_cookie(key=settings.auth_cookie_name, path="/")
 
-def _get_token_from_cookie(req: Request) -> str | None:
+def _get_token_from_cookie(req: Request) -> Optional[str]:
     return req.cookies.get(settings.auth_cookie_name)
 
 def get_current_user(req: Request, session: Session = Depends(get_session)) -> User:

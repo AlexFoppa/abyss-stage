@@ -1,6 +1,12 @@
 // src/api.ts
 export type ApiError = { status: number; message: string; body?: unknown };
 
+/** Chamado em 401 para limpar sessão (ex.: outra aba deslogou e o cookie sumiu). */
+let on401: (() => void) | null = null;
+export function setOn401(fn: (() => void) | null) {
+  on401 = fn;
+}
+
 async function readBody(res: Response) {
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("application/json")) return res.json();
@@ -27,6 +33,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
 
   const body = await readBody(res);
+  if (res.status === 401 && on401) {
+    on401();
+  }
   if (!res.ok) {
     const message =
       (body as any)?.detail || (body as any)?.message || res.statusText || "Request failed";
