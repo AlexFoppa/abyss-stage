@@ -186,16 +186,16 @@
 .lobby-audio-wrap{
   position: fixed;
   z-index: 100;
-  width: 44px;
-  height: 44px;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 6px;
   font-family: var(--font-display);
   opacity: 0.92;
 }
 
+.lobby-audio-mute-btn,
 .lobby-audio-trigger{
-  position: absolute;
-  right: 0;
-  bottom: 0;
   width: 44px;
   height: 44px;
   padding: 0;
@@ -210,9 +210,18 @@
   transition: background .15s, border-color .15s, color .15s;
   box-shadow: 0 4px 12px rgba(0,0,0,.4);
 }
+.lobby-audio-mute-btn:hover,
 .lobby-audio-trigger:hover{
   color: var(--gold);
   border-color: rgba(215,178,92,.55);
+}
+.lobby-audio-mute-btn.is-active{
+  color: rgba(215,178,92,.7);
+  border-color: rgba(215,178,92,.25);
+}
+
+.lobby-audio-trigger{
+  flex-shrink: 0;
 }
 
 .lobby-audio-panel{

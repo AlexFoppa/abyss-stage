@@ -166,7 +166,7 @@ export function LobbyScreen({
   const [diagnosticRunning, setDiagnosticRunning] = useState(false);
   const [diagnosticSteps, setDiagnosticSteps] = useState<DiagnosticStep[] | null>(null);
 
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(true);
   const [captureOpts, setCaptureOpts] = useState<AudioCaptureOpts>({
     noiseSuppression: true,
     echoCancellation: true,
@@ -260,6 +260,7 @@ export function LobbyScreen({
       const room = await joinRoom(res.token, wsUrl);
       setStatus("connected");
       setMicPermission("granted");
+      await room.localParticipant.setMicrophoneEnabled(false);
       onRoomConnected?.(room);
     } catch (e: unknown) {
       setStatus("error");
@@ -472,6 +473,30 @@ export function LobbyScreen({
           >
           <button
             type="button"
+            className={"lobby-audio-mute-btn" + (muted ? " is-active" : "")}
+            onClick={toggleMute}
+            title={muted ? "Desmutar (M)" : "Mutar (M)"}
+            aria-pressed={muted}
+            aria-label={muted ? "Desmutar microfone" : "Mutar microfone"}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              {muted ? (
+                <>
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                  <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6" />
+                  <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+                  <path d="M12 19v4M8 23h8" />
+                </>
+              ) : (
+                <>
+                  <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" />
+                </>
+              )}
+            </svg>
+          </button>
+          <button
+            type="button"
             className="lobby-audio-trigger"
             onMouseDown={(e) => onAudioDragStart(e, true)}
             onClick={(e) => {
@@ -485,6 +510,7 @@ export function LobbyScreen({
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
               <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+              <path d="M18 15v5m-2.5-2.5h5" strokeWidth="1.5" />
             </svg>
           </button>
           <div className={"lobby-audio-panel" + (audioMenuOpen ? " lobby-audio-panel--open" : "")}>
@@ -553,29 +579,6 @@ export function LobbyScreen({
               ) : (
                 <>
               <div className="lobby-audio-toggles">
-                <button
-                  type="button"
-                  className={"lobby-audio-icon-btn" + (muted ? " is-active" : "")}
-                  onClick={toggleMute}
-                  title={muted ? "Desmutar (M)" : "Mutar (M)"}
-                  aria-pressed={muted}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    {muted ? (
-                      <>
-                        <line x1="1" y1="1" x2="23" y2="23" />
-                        <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6" />
-                        <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
-                        <path d="M12 19v4M8 23h8" />
-                      </>
-                    ) : (
-                      <>
-                        <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" />
-                      </>
-                    )}
-                  </svg>
-                </button>
                 <button
                   type="button"
                   className={"lobby-audio-icon-btn" + (captureOpts.noiseSuppression ? " is-active" : "")}
