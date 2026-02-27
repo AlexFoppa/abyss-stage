@@ -28,6 +28,20 @@ def init_db() -> None:
         if r is not None and r == 0:
             conn.execute(text("DROP TABLE IF EXISTS story"))
             conn.commit()
+        # Story: adicionar colunas de premissa, o_que_aconteceu, temas, atmosfera, notas se não existirem
+        for col, col_type in [
+            ("premissa", "TEXT DEFAULT ''"),
+            ("o_que_aconteceu", "TEXT DEFAULT ''"),
+            ("temas", "VARCHAR(500) DEFAULT ''"),
+            ("atmosfera", "VARCHAR(500) DEFAULT ''"),
+            ("notas", "TEXT DEFAULT ''"),
+        ]:
+            r = conn.execute(text(
+                f"SELECT COUNT(*) FROM pragma_table_info('story') WHERE name = '{col}'"
+            )).scalar()
+            if r is not None and r == 0:
+                conn.execute(text(f"ALTER TABLE story ADD COLUMN {col} {col_type}"))
+                conn.commit()
         r = conn.execute(text(
             "SELECT COUNT(*) FROM pragma_table_info('scene') WHERE name = 'order_index'"
         )).scalar()

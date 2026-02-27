@@ -28,12 +28,22 @@ class StoryCreateIn(BaseModel):
 class StoryOut(BaseModel):
     id: str
     name: str
+    premissa: str = ""
+    o_que_aconteceu: str = ""
+    temas: str = ""
+    atmosfera: str = ""
+    notas: str = ""
     created_at: datetime
     updated_at: datetime
 
 
 class StoryUpdateIn(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    premissa: Optional[str] = None
+    o_que_aconteceu: Optional[str] = None
+    temas: Optional[str] = Field(default=None, max_length=500)
+    atmosfera: Optional[str] = Field(default=None, max_length=500)
+    notas: Optional[str] = None
 
 
 # --- Scenes (nested under story; declare before /{story_id} so path matches) ---
@@ -277,7 +287,7 @@ def list_stories(
 ):
     stmt = select(Story).order_by(Story.updated_at.desc())
     rows = session.exec(stmt).all()
-    return [StoryOut(id=s.id, name=s.name, created_at=s.created_at, updated_at=s.updated_at) for s in rows]
+    return [_story_to_out(s) for s in rows]
 
 
 @router.post("", status_code=201, response_model=StoryOut)
@@ -291,6 +301,11 @@ def create_story(
     story = Story(
         id=story_id,
         name=data.name.strip(),
+        premissa="",
+        o_que_aconteceu="",
+        temas="",
+        atmosfera="",
+        notas="",
         created_at=now,
         updated_at=now,
     )
@@ -303,7 +318,21 @@ def create_story(
             status_code=503,
             detail=f"Database error creating story. If you just added the Story feature, restart the API server so the story table is created: {e!s}",
         )
-    return StoryOut(id=story.id, name=story.name, created_at=story.created_at, updated_at=story.updated_at)
+    return _story_to_out(story)
+
+
+def _story_to_out(s: Story) -> StoryOut:
+    return StoryOut(
+        id=s.id,
+        name=s.name,
+        premissa=getattr(s, "premissa", "") or "",
+        o_que_aconteceu=getattr(s, "o_que_aconteceu", "") or "",
+        temas=getattr(s, "temas", "") or "",
+        atmosfera=getattr(s, "atmosfera", "") or "",
+        notas=getattr(s, "notas", "") or "",
+        created_at=s.created_at,
+        updated_at=s.updated_at,
+    )
 
 
 @router.get("/{story_id}", response_model=StoryOut)
@@ -315,7 +344,7 @@ def get_story(
     story = session.get(Story, story_id)
     if not story:
         raise HTTPException(status_code=404, detail="Story not found")
-    return StoryOut(id=story.id, name=story.name, created_at=story.created_at, updated_at=story.updated_at)
+    return _story_to_out(story)
 
 
 @router.put("/{story_id}", response_model=StoryOut)
@@ -328,11 +357,22 @@ def update_story(
     story = session.get(Story, story_id)
     if not story:
         raise HTTPException(status_code=404, detail="Story not found")
-    story.name = data.name.strip()
+    if data.name is not None:
+        story.name = data.name.strip()
+    if data.premissa is not None:
+        story.premissa = data.premissa
+    if data.o_que_aconteceu is not None:
+        story.o_que_aconteceu = data.o_que_aconteceu
+    if data.temas is not None:
+        story.temas = data.temas[:500]
+    if data.atmosfera is not None:
+        story.atmosfera = data.atmosfera[:500]
+    if data.notas is not None:
+        story.notas = data.notas
     story.updated_at = datetime.utcnow()
     session.add(story)
     session.commit()
-    return StoryOut(id=story.id, name=story.name, created_at=story.created_at, updated_at=story.updated_at)
+    return _story_to_out(story)
 
 
 @router.delete("/{story_id}", status_code=204)

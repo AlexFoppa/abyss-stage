@@ -140,6 +140,37 @@
   white-space:pre-wrap;
 }
 
+.book-value--block{
+  word-break: break-word;
+  max-height: 12em;
+  overflow-y: auto;
+}
+
+.book-input,
+.book-textarea{
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(215,178,92,.35);
+  background: rgba(0,0,0,.25);
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+}
+
+.book-textarea{
+  resize: vertical;
+  min-height: 80px;
+}
+
+.book-btn-icon{
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
 .book-multiline{
   min-height:0px;
 }
