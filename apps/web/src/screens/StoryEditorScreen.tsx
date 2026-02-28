@@ -13,8 +13,10 @@ import { useDraggable } from "@dnd-kit/core";
 import { useDroppable } from "@dnd-kit/core";
 import { useAuth } from "../auth/AuthProvider";
 import { api } from "../api";
+import { scenarioCropFromScenario, scenarioImageUrl as getScenarioImageUrl } from "../scenarioCrop";
 import { ScenarioManagerModal, type Scenario } from "./ScenarioManagerModal";
 import { SceneCharactersModal, type GMCharacter } from "./SceneCharactersModal";
+import { SceneStagePreview } from "./SceneStagePreview";
 import { EditCharacterScreen } from "./EditCharacterScreen";
 import type { Character } from "./CharacterScreen";
 
@@ -48,8 +50,7 @@ function gmCharToCharacter(c: GMCharacter | null): Character | null {
 }
 
 function scenarioImageUrl(scenario: Scenario): string | null {
-  if (!scenario.image_storage_key) return null;
-  return `/uploads/${scenario.image_storage_key}`;
+  return getScenarioImageUrl(scenario);
 }
 
 function DraggableScenarioThumb({ scenario }: { scenario: Scenario }) {
@@ -250,23 +251,7 @@ function ScenePreview({
   gmCharacters: GMCharacter[];
   gmEmail?: string;
 }) {
-  const sceneChars = sceneCharacterIds
-    .map((id) => gmCharacters.find((c) => c.id === id))
-    .filter((c): c is GMCharacter => c != null);
-
-  const masterChars: GMCharacter[] = [];
-  const playerChars: GMCharacter[] = [];
-  if (gmEmail) {
-    sceneChars.forEach((c) => {
-      if (c.owner_email === gmEmail) masterChars.push(c);
-      else playerChars.push(c);
-    });
-  } else {
-    const half = Math.ceil(sceneChars.length / 2);
-    sceneChars.forEach((c, i) => (i < half ? masterChars.push(c) : playerChars.push(c)));
-  }
-
-  const scenarioBg = scenario ? scenarioImageUrl(scenario) : null;
+  const scenarioBg = getScenarioImageUrl(scenario);
 
   if (!isNormalScene) {
     return (
@@ -279,44 +264,33 @@ function ScenePreview({
     );
   }
 
+  const scenarioCrop = scenarioCropFromScenario(scenario);
+
   return (
     <div className="story-editor__preview">
       <h2 className="story-editor__preview-title">Preview da cena</h2>
-      <div
-        className="story-editor__preview-stage"
-        style={
-          scenarioBg
-            ? { backgroundImage: `url(${scenarioBg})` }
-            : undefined
-        }
-      >
-        <div className="story-editor__preview-stage__chars story-editor__preview-stage__chars--left">
-          {masterChars.map((c) => (
-            <div key={c.id} className="story-editor__preview-char">
-              <img src={characterPortraitUrl(c)} alt={c.name} className="story-editor__preview-char__img" />
-            </div>
-          ))}
-        </div>
-        <div className="story-editor__preview-stage__slot story-editor__preview-stage__slot--center" aria-hidden="true" />
-        <div className="story-editor__preview-stage__chars story-editor__preview-stage__chars--right">
-          {playerChars.map((c) => (
-            <div key={c.id} className="story-editor__preview-char">
-              <img src={characterPortraitUrl(c)} alt={c.name} className="story-editor__preview-char__img" />
-            </div>
-          ))}
-        </div>
-      </div>
+      <SceneStagePreview
+        scenarioImageUrl={scenarioBg}
+        scenarioCrop={scenarioCrop}
+        sceneCharacterIds={sceneCharacterIds}
+        gmCharacters={gmCharacters}
+        gmEmail={gmEmail}
+        variant="preview"
+      />
     </div>
   );
 }
 
 export function StoryEditorScreen({
   storyId,
+  initialSceneId = null,
   onBack,
   onNavigateToCreateCharacter,
   onNavigateToCreateScenario,
 }: {
   storyId: string;
+  /** Cena a selecionar ao abrir (ex.: vindo do Espetáculo "Editar"). */
+  initialSceneId?: string | null;
   onBack: () => void;
   /** Fecha modais e navega para criação de personagem (telas padrão); ao voltar, retorna ao editor. */
   onNavigateToCreateCharacter?: () => void;
@@ -327,6 +301,7 @@ export function StoryEditorScreen({
   const [story, setStory] = useState<StoryInfo | null>(null);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
+  const initialSceneIdAppliedRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -464,6 +439,7 @@ export function StoryEditorScreen({
 
   useEffect(() => {
     setAddedToStoryScenarioIds([]);
+    initialSceneIdAppliedRef.current = false;
   }, [storyId]);
 
   useEffect(() => {
@@ -486,6 +462,14 @@ export function StoryEditorScreen({
       cancelled = true;
     };
   }, [storyId, loadStory, loadScenes, loadScenarios, loadGmCharacters, loadStoryCharacters]);
+
+  useEffect(() => {
+    if (initialSceneIdAppliedRef.current || !initialSceneId || scenes.length === 0) return;
+    if (scenes.some((s) => s.id === initialSceneId)) {
+      setActiveSceneId(initialSceneId);
+      initialSceneIdAppliedRef.current = true;
+    }
+  }, [initialSceneId, scenes]);
 
   const addScenarioToStory = useCallback((scenarioId: string) => {
     setAddedToStoryScenarioIds((prev) => (prev.includes(scenarioId) ? prev : [...prev, scenarioId]));

@@ -1,18 +1,29 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { scenarioCropFromScenario, scenarioImageUrl as getScenarioImageUrl } from "../scenarioCrop";
+import type { CropRect } from "../scenarioCrop";
+import { ScenarioBackground } from "./SceneStagePreview";
+import { ScenarioCropEditor } from "./ScenarioCropEditor";
 
 export type GMScenario = {
   id: string;
   name: string;
   description: string;
   image_storage_key: string | null;
+  crop_x?: number | null;
+  crop_y?: number | null;
+  crop_width?: number | null;
+  crop_height?: number | null;
   created_at: string;
   updated_at: string;
 };
 
 function scenarioImageUrl(s: GMScenario): string | null {
-  if (!s.image_storage_key) return null;
-  return `/uploads/${s.image_storage_key}`;
+  return getScenarioImageUrl(s);
+}
+
+function scenarioCrop(s: GMScenario): CropRect | null {
+  return scenarioCropFromScenario(s);
 }
 
 export function GMScenariosScreen({
@@ -25,16 +36,21 @@ export function GMScenariosScreen({
   const [scenarios, setScenarios] = useState<GMScenario[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  /** 'create' = formulário novo cenário; string = id do cenário em edição; null = vista somente leitura */
+  const [formMode, setFormMode] = useState<"create" | string | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [crop, setCrop] = useState<CropRect | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+  const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const active = scenarios.find((s) => s.id === activeId) ?? null;
+  const isEditing = typeof formMode === "string" && formMode !== "create";
+  const editingScenario = isEditing ? scenarios.find((s) => s.id === formMode) ?? null : null;
+  const isCreating = formMode === "create";
 
   async function load() {
     setErr(null);
@@ -42,7 +58,7 @@ export function GMScenariosScreen({
     try {
       const list = await api<GMScenario[]>("/api/gm/scenarios");
       setScenarios(Array.isArray(list) ? list : []);
-      setActiveId((Array.isArray(list) && list[0]?.id) || null);
+      setActiveId((prev) => (prev && list?.some((s) => s.id === prev)) ? prev : (list?.[0]?.id ?? null));
     } catch (e: unknown) {
       const msg =
         e && typeof (e as { message?: string })?.message === "string"
@@ -58,38 +74,66 @@ export function GMScenariosScreen({
     load();
   }, []);
 
-  async function handleDelete(s: GMScenario) {
-    if (!window.confirm(`Excluir o cenário "${s.name}"?\n\nCenas que o usam ficarão sem cenário.`)) return;
-    setErr(null);
-    setDeletingId(s.id);
-    try {
-      await api(`/api/gm/scenarios/${s.id}`, { method: "DELETE" });
-      setScenarios((prev) => prev.filter((x) => x.id !== s.id));
-      setActiveId((prev) => (prev === s.id ? null : prev));
-    } catch (e: unknown) {
-      const msg =
-        e && typeof (e as { message?: string })?.message === "string"
-          ? (e as { message: string }).message
-          : "Falha ao excluir";
-      setErr(msg);
-    } finally {
-      setDeletingId(null);
+  useEffect(() => {
+    if (formMode === "create") {
+      setName("");
+      setDescription("");
+      setCrop(null);
+      setPendingImageFile(null);
+      if (pendingImageUrl) {
+        URL.revokeObjectURL(pendingImageUrl);
+        setPendingImageUrl(null);
+      }
+      return;
     }
-  }
+    if (typeof formMode === "string" && formMode !== "create") {
+      const s = scenarios.find((sc) => sc.id === formMode);
+      if (s) {
+        setName(s.name);
+        setDescription(s.description ?? "");
+        setCrop(scenarioCrop(s));
+        setPendingImageFile(null);
+        if (pendingImageUrl) {
+          URL.revokeObjectURL(pendingImageUrl);
+          setPendingImageUrl(null);
+        }
+      }
+    }
+  }, [formMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function startEdit(s: GMScenario) {
-    setEditingId(s.id);
-    setName(s.name);
-    setDescription(s.description ?? "");
-    setFormOpen(true);
-  }
-
-  function startCreate() {
-    setEditingId(null);
-    setName("");
-    setDescription("");
-    setPendingImageFile(null);
-    setFormOpen(true);
+  async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    if (isEditing && editingScenario) {
+      setErr(null);
+      setUploading(true);
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const updated = await api<GMScenario>(`/api/gm/scenarios/${editingScenario.id}/image`, {
+          method: "POST",
+          body: form,
+        });
+        setScenarios((prev) => prev.map((s) => (s.id === editingScenario.id ? updated : s)));
+        setCrop(scenarioCrop(updated));
+      } catch (e: unknown) {
+        const msg =
+          e && typeof (e as { message?: string })?.message === "string"
+            ? (e as { message: string }).message
+            : "Falha ao enviar imagem";
+        setErr(msg);
+      } finally {
+        setUploading(false);
+      }
+      return;
+    }
+    if (isCreating) {
+      if (pendingImageUrl) URL.revokeObjectURL(pendingImageUrl);
+      setPendingImageFile(file);
+      setPendingImageUrl(URL.createObjectURL(file));
+      setCrop(null);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -98,19 +142,21 @@ export function GMScenariosScreen({
     setErr(null);
     setSaving(true);
     try {
-      if (editingId) {
-        await api(`/api/gm/scenarios/${editingId}`, {
+      if (isEditing && editingScenario) {
+        const body: Record<string, unknown> = { name: name.trim(), description: description.trim() };
+        if (crop && crop.width > 0 && crop.height > 0) {
+          body.crop_x = crop.x;
+          body.crop_y = crop.y;
+          body.crop_width = crop.width;
+          body.crop_height = crop.height;
+        }
+        await api<GMScenario>(`/api/gm/scenarios/${editingScenario.id}`, {
           method: "PUT",
-          body: JSON.stringify({ name: name.trim(), description: description.trim() }),
+          body: JSON.stringify(body),
         });
-        setScenarios((prev) =>
-          prev.map((s) =>
-            s.id === editingId
-              ? { ...s, name: name.trim(), description: description.trim() }
-              : s
-          )
-        );
-      } else {
+        setFormMode(null);
+        await load();
+      } else if (isCreating) {
         const created = await api<GMScenario>("/api/gm/scenarios", {
           method: "POST",
           body: JSON.stringify({ name: name.trim(), description: description.trim() }),
@@ -122,11 +168,25 @@ export function GMScenariosScreen({
           try {
             const form = new FormData();
             form.append("file", pendingImageFile);
-            const updated = await api<GMScenario>(`/api/gm/scenarios/${created.id}/image`, {
+            const withImage = await api<GMScenario>(`/api/gm/scenarios/${created.id}/image`, {
               method: "POST",
               body: form,
             });
-            setScenarios((prev) => prev.map((s) => (s.id === created.id ? updated : s)));
+            setScenarios((prev) => prev.map((s) => (s.id === created.id ? withImage : s)));
+            if (crop && crop.width > 0 && crop.height > 0) {
+              const withCrop = await api<GMScenario>(`/api/gm/scenarios/${created.id}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  name: name.trim(),
+                  description: description.trim(),
+                  crop_x: crop.x,
+                  crop_y: crop.y,
+                  crop_width: crop.width,
+                  crop_height: crop.height,
+                }),
+              });
+              setScenarios((prev) => prev.map((s) => (s.id === created.id ? withCrop : s)));
+            }
           } catch (e: unknown) {
             const msg =
               e && typeof (e as { message?: string })?.message === "string"
@@ -137,12 +197,13 @@ export function GMScenariosScreen({
             setUploading(false);
           }
           setPendingImageFile(null);
+          if (pendingImageUrl) {
+            URL.revokeObjectURL(pendingImageUrl);
+            setPendingImageUrl(null);
+          }
         }
+        setFormMode(null);
       }
-      setFormOpen(false);
-      setEditingId(null);
-      setName("");
-      setDescription("");
     } catch (e: unknown) {
       const msg =
         e && typeof (e as { message?: string })?.message === "string"
@@ -154,35 +215,28 @@ export function GMScenariosScreen({
     }
   }
 
-  async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (editingId) {
-      setErr(null);
-      setUploading(true);
-      try {
-        const form = new FormData();
-        form.append("file", file);
-        const updated = await api<GMScenario>(`/api/gm/scenarios/${editingId}/image`, {
-          method: "POST",
-          body: form,
-        });
-        setScenarios((prev) => prev.map((s) => (s.id === editingId ? updated : s)));
-      } catch (e: unknown) {
-        const msg =
-          e && typeof (e as { message?: string })?.message === "string"
-            ? (e as { message: string }).message
-            : "Falha ao enviar imagem";
-        setErr(msg);
-      } finally {
-        setUploading(false);
-        e.target.value = "";
-      }
-    } else {
-      setPendingImageFile(file);
-    }
-    e.target.value = "";
+  function startEdit(id: string) {
+    setFormMode(id);
   }
+
+  function startCreate() {
+    setFormMode("create");
+  }
+
+  function cancelForm() {
+    setFormMode(null);
+    if (pendingImageUrl) {
+      URL.revokeObjectURL(pendingImageUrl);
+      setPendingImageUrl(null);
+    }
+    setPendingImageFile(null);
+  }
+
+  const detailFormUrl = isCreating
+    ? pendingImageUrl
+    : editingScenario
+      ? scenarioImageUrl(editingScenario)
+      : null;
 
   return (
     <div className="select-scene gm-scenarios-screen">
@@ -204,7 +258,9 @@ export function GMScenariosScreen({
                   <button
                     key={s.id}
                     className={`select-item ${isActive ? "is-active" : ""}`}
-                    onClick={() => setActiveId(s.id)}
+                    onClick={() => {
+                      if (!isEditing && !isCreating) setActiveId(s.id);
+                    }}
                     type="button"
                   >
                     <div className="select-item-name">{s.name || "(sem nome)"}</div>
@@ -235,9 +291,9 @@ export function GMScenariosScreen({
         <section className="ui-card select-col select-col--book">
           <h2 className="select-title">Detalhe</h2>
 
-          {formOpen ? (
-            <form className="scenario-manager__form" onSubmit={handleSubmit} style={{ marginTop: 12 }}>
-              <p className="ui-label">{editingId ? "Editar cenário" : "Novo cenário"}</p>
+          {(isCreating || isEditing) ? (
+            <form className="scenario-manager__form scenario-detail-view__form" onSubmit={handleSubmit}>
+              <label className="ui-label">{isEditing ? "Editar cenário" : "Novo cenário"}</label>
               <input
                 type="text"
                 className="ui-field"
@@ -247,7 +303,9 @@ export function GMScenariosScreen({
                 required
                 autoFocus
               />
-              <label className="ui-label" style={{ marginTop: 10 }}>Imagem</label>
+              <label className="ui-label" style={{ marginTop: 10 }}>
+                Imagem
+              </label>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -256,13 +314,11 @@ export function GMScenariosScreen({
                 style={{ display: "none" }}
                 onChange={handleImageChange}
               />
-              <div className="scenario-form__image-wrap">
-                {(editingId && (() => {
-                  const editingScenario = scenarios.find((s) => s.id === editingId);
-                  const imgUrl = editingScenario ? scenarioImageUrl(editingScenario) : null;
-                  return imgUrl ? (
-                    <>
-                      <img src={imgUrl} alt="" className="scenario-form__image" />
+              <div className="scenario-manager__form-image">
+                {detailFormUrl ? (
+                  <>
+                    <ScenarioCropEditor imageUrl={detailFormUrl} crop={crop} onChange={setCrop} />
+                    {isEditing && (
                       <button
                         type="button"
                         className="ui-btn ui-btn--ghost"
@@ -272,22 +328,37 @@ export function GMScenariosScreen({
                       >
                         {uploading ? "Enviando…" : "Trocar imagem"}
                       </button>
-                    </>
-                  ) : null;
-                })()) ?? (
-                  <button
-                    type="button"
-                    className="ui-btn ui-btn--ghost"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                  >
-                    {editingId
-                      ? (uploading ? "Enviando…" : "Adicionar imagem")
-                      : (pendingImageFile ? `${pendingImageFile.name} (clique para trocar)` : "Adicionar imagem (opcional)")}
-                  </button>
+                    )}
+                    {isCreating && (
+                      <button
+                        type="button"
+                        className="ui-btn ui-btn--ghost"
+                        onClick={() => fileInputRef.current?.click()}
+                        style={{ marginTop: 8 }}
+                      >
+                        {pendingImageFile ? `${pendingImageFile.name} (clique para trocar)` : "Adicionar imagem (opcional)"}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  (isEditing && (
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn--ghost"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                    >
+                      {uploading ? "Enviando…" : "Adicionar imagem"}
+                    </button>
+                  )) ||
+                  (isCreating && (
+                    <button type="button" className="ui-btn ui-btn--ghost" onClick={() => fileInputRef.current?.click()}>
+                      Adicionar imagem (opcional)
+                    </button>
+                  ))
                 )}
               </div>
-              <label className="ui-label" style={{ marginTop: 12 }}>
+              <label className="ui-label" style={{ marginTop: 10 }}>
                 Descrição (pré-preenche a cena)
               </label>
               <textarea
@@ -297,33 +368,26 @@ export function GMScenariosScreen({
                 placeholder="Descrição opcional"
                 rows={3}
               />
-              <div className="ui-actions" style={{ marginTop: 12 }}>
+              <div className="ui-actions" style={{ display: "flex", gap: 10, marginTop: 12 }}>
                 <button type="submit" className="ui-btn" disabled={saving || uploading}>
-                  {saving ? "Salvando…" : uploading ? "Enviando…" : editingId ? "Salvar" : "Criar"}
+                  {saving ? "Salvando…" : uploading ? "Enviando…" : isEditing ? "Salvar" : "Criar"}
                 </button>
-                <button
-                  type="button"
-                  className="ui-btn ui-btn--ghost"
-                  onClick={() => {
-                    setFormOpen(false);
-                    setEditingId(null);
-                  }}
-                >
+                <button type="button" className="ui-btn ui-btn--ghost" onClick={cancelForm}>
                   Cancelar
                 </button>
               </div>
             </form>
           ) : !active ? (
-            <div className="select-muted">Selecione um cenário.</div>
+            <div className="select-muted">Selecione um cenário ou crie um novo.</div>
           ) : (
             <div className="scenario-detail-view">
               <div className="scenario-detail-view__name">{active.name || "—"}</div>
-              <div className="scenario-form__image-wrap">
+              <div className="scenario-detail-view__preview-wrap" role="img" aria-label={`Prévia do cenário ${active.name}`}>
                 {scenarioImageUrl(active) ? (
-                  <img
-                    className="scenario-form__image"
-                    src={scenarioImageUrl(active)!}
-                    alt=""
+                  <ScenarioBackground
+                    imageUrl={scenarioImageUrl(active)!}
+                    crop={scenarioCrop(active)}
+                    className="scenario-detail-view__preview scenario-detail-view__preview--with-crop"
                   />
                 ) : (
                   <div className="scenario-detail__placeholder scenario-detail-view__placeholder">
@@ -331,19 +395,34 @@ export function GMScenariosScreen({
                   </div>
                 )}
               </div>
-              <label className="ui-label" style={{ marginTop: 12 }}>Descrição (pré-preenche a cena)</label>
+              <label className="ui-label" style={{ marginTop: 12 }}>
+                Descrição (pré-preenche a cena)
+              </label>
               <div className="scenario-detail-view__description">{active.description || "—"}</div>
               <div className="select-actions" style={{ display: "flex", gap: 10, marginTop: 16 }}>
-                <button
-                  className="ui-btn"
-                  onClick={() => startEdit(active)}
-                  type="button"
-                >
+                <button className="ui-btn" onClick={() => startEdit(active.id)} type="button">
                   Editar
                 </button>
                 <button
                   className="ui-btn ui-btn--ghost"
-                  onClick={() => handleDelete(active)}
+                  onClick={() => {
+                    if (!window.confirm(`Excluir o cenário "${active.name}"?\n\nCenas que o usam ficarão sem cenário.`)) return;
+                    setErr(null);
+                    setDeletingId(active.id);
+                    api(`/api/gm/scenarios/${active.id}`, { method: "DELETE" })
+                      .then(() => {
+                        setScenarios((prev) => prev.filter((x) => x.id !== active.id));
+                        setActiveId((prev) => (prev === active.id ? null : prev));
+                      })
+                      .catch((e: unknown) => {
+                        const msg =
+                          e && typeof (e as { message?: string })?.message === "string"
+                            ? (e as { message: string }).message
+                            : "Falha ao excluir";
+                        setErr(msg);
+                      })
+                      .finally(() => setDeletingId(null));
+                  }}
                   disabled={deletingId === active.id}
                   type="button"
                 >

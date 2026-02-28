@@ -25,6 +25,10 @@ class ScenarioOut(BaseModel):
     name: str
     description: str
     image_storage_key: Optional[str]
+    crop_x: Optional[float] = None
+    crop_y: Optional[float] = None
+    crop_width: Optional[float] = None
+    crop_height: Optional[float] = None
     created_at: datetime
     updated_at: datetime
 
@@ -33,12 +37,20 @@ class ScenarioCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="")
     image_storage_key: Optional[str] = Field(default=None)
+    crop_x: Optional[float] = None
+    crop_y: Optional[float] = None
+    crop_width: Optional[float] = None
+    crop_height: Optional[float] = None
 
 
 class ScenarioUpdateIn(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     description: Optional[str] = None
     image_storage_key: Optional[str] = None
+    crop_x: Optional[float] = None
+    crop_y: Optional[float] = None
+    crop_width: Optional[float] = None
+    crop_height: Optional[float] = None
 
 
 @router.get("", response_model=list[ScenarioOut])
@@ -54,6 +66,10 @@ def list_scenarios(
             name=s.name,
             description=s.description or "",
             image_storage_key=s.image_storage_key,
+            crop_x=getattr(s, "crop_x", None),
+            crop_y=getattr(s, "crop_y", None),
+            crop_width=getattr(s, "crop_width", None),
+            crop_height=getattr(s, "crop_height", None),
             created_at=s.created_at,
             updated_at=s.updated_at,
         )
@@ -74,6 +90,10 @@ def create_scenario(
         name=data.name.strip(),
         description=(data.description or "").strip(),
         image_storage_key=data.image_storage_key,
+        crop_x=data.crop_x,
+        crop_y=data.crop_y,
+        crop_width=data.crop_width,
+        crop_height=data.crop_height,
         created_at=now,
         updated_at=now,
     )
@@ -88,6 +108,10 @@ def create_scenario(
         name=scenario.name,
         description=scenario.description or "",
         image_storage_key=scenario.image_storage_key,
+        crop_x=getattr(scenario, "crop_x", None),
+        crop_y=getattr(scenario, "crop_y", None),
+        crop_width=getattr(scenario, "crop_width", None),
+        crop_height=getattr(scenario, "crop_height", None),
         created_at=scenario.created_at,
         updated_at=scenario.updated_at,
     )
@@ -107,6 +131,10 @@ def get_scenario(
         name=scenario.name,
         description=scenario.description or "",
         image_storage_key=scenario.image_storage_key,
+        crop_x=getattr(scenario, "crop_x", None),
+        crop_y=getattr(scenario, "crop_y", None),
+        crop_width=getattr(scenario, "crop_width", None),
+        crop_height=getattr(scenario, "crop_height", None),
         created_at=scenario.created_at,
         updated_at=scenario.updated_at,
     )
@@ -128,6 +156,14 @@ def update_scenario(
         scenario.description = data.description
     if data.image_storage_key is not None:
         scenario.image_storage_key = data.image_storage_key
+    if data.crop_x is not None:
+        scenario.crop_x = data.crop_x
+    if data.crop_y is not None:
+        scenario.crop_y = data.crop_y
+    if data.crop_width is not None:
+        scenario.crop_width = data.crop_width
+    if data.crop_height is not None:
+        scenario.crop_height = data.crop_height
     scenario.updated_at = datetime.utcnow()
     session.add(scenario)
     session.commit()
@@ -136,6 +172,10 @@ def update_scenario(
         name=scenario.name,
         description=scenario.description or "",
         image_storage_key=scenario.image_storage_key,
+        crop_x=getattr(scenario, "crop_x", None),
+        crop_y=getattr(scenario, "crop_y", None),
+        crop_width=getattr(scenario, "crop_width", None),
+        crop_height=getattr(scenario, "crop_height", None),
         created_at=scenario.created_at,
         updated_at=scenario.updated_at,
     )
@@ -195,6 +235,10 @@ def upload_scenario_image(
         name=scenario.name,
         description=scenario.description or "",
         image_storage_key=scenario.image_storage_key,
+        crop_x=getattr(scenario, "crop_x", None),
+        crop_y=getattr(scenario, "crop_y", None),
+        crop_width=getattr(scenario, "crop_width", None),
+        crop_height=getattr(scenario, "crop_height", None),
         created_at=scenario.created_at,
         updated_at=scenario.updated_at,
     )

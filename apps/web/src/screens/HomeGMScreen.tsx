@@ -3,12 +3,14 @@ export function HomeGMScreen({
   onFigurinos,
   onCenarios,
   onLobby,
+  onEspetaculo,
   onLogout,
 }: {
   onRoteiro: () => void;
   onFigurinos: () => void;
   onCenarios: () => void;
   onLobby?: () => void;
+  onEspetaculo?: () => void;
   onLogout: () => void;
 }) {
   return (
@@ -18,9 +20,9 @@ export function HomeGMScreen({
           {onLobby && (
             <button className="ui-btn gm-home-actions__btn" type="button" onClick={onLobby}>
               <span className="gm-home-actions__icon" aria-hidden="true">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4v16h7v-6h2v6h7V4"/><path d="M12 10V4"/><path d="M9 7h6"/></svg>
               </span>
-              Lobby (áudio)
+              Lobby
             </button>
           )}
           <button className="ui-btn gm-home-actions__btn" type="button" onClick={onRoteiro}>
@@ -31,9 +33,9 @@ export function HomeGMScreen({
           </button>
           <button className="ui-btn gm-home-actions__btn" type="button" onClick={onFigurinos}>
             <span className="gm-home-actions__icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h1.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </span>
-            Figurinos
+            Elenco
           </button>
           <button className="ui-btn gm-home-actions__btn" type="button" onClick={onCenarios}>
             <span className="gm-home-actions__icon" aria-hidden="true">
@@ -41,9 +43,16 @@ export function HomeGMScreen({
             </span>
             Cenários
           </button>
-          <button className="ui-btn ui-btn--ghost" type="button" disabled title="Em breve">
-            Espetáculo
-          </button>
+          {onEspetaculo && (
+            <button className="ui-btn gm-home-actions__btn" type="button" onClick={onEspetaculo}>
+              <span className="gm-home-actions__icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M17.2 5.5c.8 0 1.5 1 1.5 2.2v7c0 1.2-.7 2.2-1.5 2.2-1 0-1.8-.6-2.1-1.4"/><path d="M17.2 5.5c-.8 0-1.5 1-1.5 2.2v7c0 1.2.7 2.2 1.5 2.2 1 0 1.8-.6 2.1-1.4"/><path d="M16.2 9.8c.4 0 .7.3.7.7s-.3.7-.7.7-.7-.3-.7-.7.3-.7.7-.7z"/><path d="M15.2 12.4 Q16.4 13.6 17.6 12.4"/><path d="M6.8 5.5c-.8 0-1.5 1-1.5 2.2v7c0 1.2.7 2.2 1.5 2.2 1 0 1.8-.6 2.1-1.4"/><path d="M6.8 5.5c.8 0 1.5 1 1.5 2.2v7c0 1.2-.7 2.2-1.5 2.2-1 0-1.8-.6-2.1-1.4"/><path d="M7.8 10c-.4 0-.7.3-.7.7s.3.7.7.7.7-.3.7-.7-.3-.7-.7-.7z"/><path d="M6.8 12.6 Q8 11.4 9.2 12.6"/><path d="M12 2.5v1.2"/><path d="M12 2.5c-1 0-1.8.6-1.8 1.4s.5 1.4 1.3 1.4 1.3-.6 1.3-1.4-.5-1.4-1.3-1.4z"/>
+                </svg>
+              </span>
+              Espetáculo
+            </button>
+          )}
           <button className="ui-btn ui-btn--ghost" type="button" onClick={onLogout}>
             Se retirar
           </button>

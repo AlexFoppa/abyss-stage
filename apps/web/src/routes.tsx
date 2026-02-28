@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { RoomEvent, ParticipantEvent, Track, type Room, type Participant } from "livekit-client";
 import { useAuth } from "./auth/AuthProvider";
 import { api } from "./api";
+import { scenarioCropFromScenario, scenarioImageUrl } from "./scenarioCrop";
 import { StageLayout } from "./ui/StageLayout";
 import { Screen } from "./ui/Screen";
 import { LoginScreen } from "./screens/LoginScreen";
@@ -15,6 +17,8 @@ import { GMCharactersScreen } from "./screens/GMCharactersScreen";
 import { GMScenariosScreen } from "./screens/GMScenariosScreen";
 import { StoryListScreen } from "./screens/StoryListScreen";
 import { StoryEditorScreen } from "./screens/StoryEditorScreen";
+import { EspetaculoScreen } from "./screens/EspetaculoScreen";
+import { StageView } from "./screens/StageView";
 
 type View =
   | "LOGIN"
@@ -24,6 +28,7 @@ type View =
   | "GM_SCENARIOS"
   | "GM_STORIES"
   | "GM_STORY_EDITOR"
+  | "GM_ESPETACULO"
   | "LOBBY"
   | "CREATE_CHARACTER"
   | "SELECT_CHARACTER"
@@ -42,8 +47,9 @@ export function Routes() {
     "LOBBY" | "CREATE_CHARACTER" | "SELECT_CHARACTER" | "EDIT_CHARACTER"
   >("LOBBY");
 
-  const [gmSubView, setGmSubView] = useState<"GM_HOME" | "GM_CHARACTERS" | "GM_SCENARIOS" | "GM_STORIES" | "GM_STORY_EDITOR">("GM_HOME");
+  const [gmSubView, setGmSubView] = useState<"GM_HOME" | "GM_CHARACTERS" | "GM_SCENARIOS" | "GM_STORIES" | "GM_STORY_EDITOR" | "GM_ESPETACULO">("GM_HOME");
   const [editingStoryId, setEditingStoryId] = useState<string | null>(null);
+  const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [returnToStoryId, setReturnToStoryId] = useState<string | null>(null);
   const [stageMode, setStageMode] = useState<"IDLE" | "ZOOM_IN">("IDLE");
   
@@ -67,8 +73,18 @@ export function Routes() {
   const [editingFromGM, setEditingFromGM] = useState(false);
   const [editingReturnGmView, setEditingReturnGmView] = useState<"GM_CHARACTERS" | "GM_STORY_EDITOR" | null>(null);
 
+  const [show, setShow] = useState<null | {
+    id: string;
+    startedAt: number;
+    storyId: string;
+    sceneId: string;
+    scenarioId: string | null;
+    scenarioImageUrl: string | null;
+    scenarioCrop: { x: number; y: number; width: number; height: number } | null;
+  }>(null);
+  const [showTick, setShowTick] = useState(0);
+
   const [liveKitRoom, setLiveKitRoom] = useState<Room | null>(null);
-  const [masterSpeaking, setMasterSpeaking] = useState(false);
   const [localSpeaking, setLocalSpeaking] = useState(false);
   const [speakingByIdentity, setSpeakingByIdentity] = useState<Record<string, boolean>>({});
 
@@ -91,7 +107,104 @@ export function Routes() {
   }, [view]);
 
   useEffect(() => {
+    if (!show) return;
+    const t = setInterval(() => setShowTick((x) => x + 1), 200);
+    return () => clearInterval(t);
+  }, [show?.id]);
+
+  const showPhase = useMemo(() => {
+    if (!show) return null;
+    const countdownMs = 10_000;
+    const t = Date.now();
+    const elapsed = t - show.startedAt;
+    if (elapsed < countdownMs) return "countdown" as const;
+    if (elapsed < countdownMs + 1000) return "sliding" as const;
+    if (elapsed < countdownMs + 2000) return "half" as const;
+    return "stage" as const;
+  }, [show, showTick]);
+
+  const countdownSeconds = useMemo(() => {
+    if (!show || showPhase !== "countdown") return 0;
+    const countdownMs = 10_000;
+    const t = Date.now();
+    const elapsed = t - show.startedAt;
+    const remaining = Math.max(0, countdownMs - elapsed);
+    return Math.max(1, Math.ceil(remaining / 1000));
+  }, [show, showPhase, showTick]);
+
+  const espetaculoPhase =
+    showPhase === "sliding" || showPhase === "half" || showPhase === "stage" ? showPhase : null;
+
+  /* Ao final da contagem, jogador sai de seleção/criar/editar personagem para ver o palco. */
+  useEffect(() => {
+    if (effectiveRole === "PLAYER" && show && showPhase !== "countdown" && showPhase !== null) {
+      setSubView("LOBBY");
+    }
+  }, [effectiveRole, show?.id, showPhase]);
+
+  useEffect(() => {
     if (!liveKitRoom) return;
+
+    const decoder = new TextDecoder();
+    const onDataReceived = (
+      payload: Uint8Array,
+      _participant?: Participant,
+      _kind?: unknown,
+      topic?: string
+    ) => {
+      if (topic && topic !== "espetaculo") return;
+      let msg: any;
+      try {
+        msg = JSON.parse(decoder.decode(payload));
+      } catch {
+        return;
+      }
+      if (!msg || typeof msg !== "object") return;
+
+      if (msg.type === "show/start") {
+        const startedAt = typeof msg.startedAt === "number" ? msg.startedAt : Number(msg.startedAt);
+        const storyId = typeof msg.storyId === "string" ? msg.storyId : null;
+        const sceneId = typeof msg.sceneId === "string" ? msg.sceneId : null;
+        const scenarioId =
+          msg.scenarioId == null ? null : typeof msg.scenarioId === "string" ? msg.scenarioId : null;
+        const scenarioImageUrl =
+          msg.scenarioImageUrl == null
+            ? null
+            : typeof msg.scenarioImageUrl === "string"
+              ? msg.scenarioImageUrl
+              : null;
+        const id = typeof msg.showId === "string" ? msg.showId : String(startedAt);
+        if (!Number.isFinite(startedAt) || !storyId || !sceneId) return;
+        setShow({ id, startedAt, storyId, sceneId, scenarioId, scenarioImageUrl, scenarioCrop: null });
+      } else if (msg.type === "show/scenario") {
+        const id = typeof msg.showId === "string" ? msg.showId : null;
+        const scenarioImageUrl =
+          msg.scenarioImageUrl == null
+            ? null
+            : typeof msg.scenarioImageUrl === "string"
+              ? msg.scenarioImageUrl
+              : null;
+        const raw = msg.scenarioCrop;
+        const scenarioCrop =
+          raw &&
+          typeof raw === "object" &&
+          typeof (raw as any).x === "number" &&
+          typeof (raw as any).y === "number" &&
+          typeof (raw as any).width === "number" &&
+          typeof (raw as any).height === "number" &&
+          (raw as any).width > 0 &&
+          (raw as any).height > 0
+            ? { x: (raw as any).x, y: (raw as any).y, width: (raw as any).width, height: (raw as any).height }
+            : null;
+        if (!id) return;
+        setShow((prev) => (prev && prev.id === id ? { ...prev, scenarioImageUrl, scenarioCrop } : prev));
+      } else if (msg.type === "show/cancel") {
+        const id = typeof msg.showId === "string" ? msg.showId : null;
+        if (!id) return;
+        setShow((prev) => (prev?.id === id ? null : prev));
+      }
+    };
+    liveKitRoom.on(RoomEvent.DataReceived, onDataReceived);
 
     const attachRemoteAudio = (track: import("livekit-client").RemoteTrack) => {
       if (track.kind !== Track.Kind.Audio) return;
@@ -131,7 +244,6 @@ export function Routes() {
       const handler = () => {
         const identity = p.identity;
         const speaking = p.isSpeaking;
-        if (identity === "gm") setMasterSpeaking(speaking);
         updateSpeaking(identity, speaking);
       };
       p.on(ParticipantEvent.IsSpeakingChanged, handler);
@@ -141,6 +253,7 @@ export function Routes() {
     liveKitRoom.remoteParticipants.forEach(subscribeSpeaking);
     const onParticipantConnected = (p: Participant) => subscribeSpeaking(p);
     liveKitRoom.on(RoomEvent.ParticipantConnected, onParticipantConnected);
+    /* Resiliência: não alteramos show ao desconectar (ex.: mestre); jogadores mantêm cenário, atores e posições. */
     const onParticipantDisconnected = (p: Participant) => {
       setSpeakingByIdentity((prev) => {
         const next = { ...prev };
@@ -151,6 +264,7 @@ export function Routes() {
     liveKitRoom.on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
 
     return () => {
+      liveKitRoom.off(RoomEvent.DataReceived, onDataReceived);
       liveKitRoom.off(RoomEvent.TrackSubscribed, onTrackSubscribed);
       liveKitRoom.localParticipant.off(ParticipantEvent.IsSpeakingChanged, onLocalSpeaking);
       liveKitRoom.off(RoomEvent.ParticipantConnected, onParticipantConnected);
@@ -221,8 +335,22 @@ export function Routes() {
     return c.default_image_url;
   }
 
-  const shouldOpenCurtains = isGM && !["LOBBY", "SELECT_CHARACTER", "CREATE_CHARACTER", "EDIT_CHARACTER"].includes(view);
-  const isGMView = isGM && ["GM_HOME", "GM_CHARACTERS", "GM_SCENARIOS", "GM_STORIES", "GM_STORY_EDITOR"].includes(view);
+  /* Cortina: fechada até a sequência; um segundo após o countdown = half (todos); mais um segundo = stage (cortina e valance saem). */
+  const shouldOpenCurtains = showPhase === "half" || showPhase === "stage";
+  const isGMView =
+    isGM &&
+    ["GM_HOME", "GM_CHARACTERS", "GM_SCENARIOS", "GM_STORIES", "GM_STORY_EDITOR", "GM_ESPETACULO"].includes(
+      view
+    );
+  /* No espetáculo com show ativo, a valance deve aparecer e só sair na fase stage; nas outras telas GM, esconder valance. */
+  const hideValance =
+    isGMView &&
+    (view !== "GM_ESPETACULO" || !show) &&
+    (shouldOpenCurtains ||
+      view === "GM_STORIES" ||
+      view === "GM_CHARACTERS" ||
+      view === "GM_SCENARIOS" ||
+      view === "GM_STORY_EDITOR");
 
   const gmInRoom =
     liveKitRoom &&
@@ -264,8 +392,76 @@ export function Routes() {
       showBackstage={showBackstage}
       stageMode={stageMode}
       curtainsOpen={shouldOpenCurtains}
-      hideValance={isGMView}
+      hideValance={hideValance}
+      espetaculoPhase={espetaculoPhase}
+      stageContent={
+        show && (showPhase === "half" || showPhase === "stage") ? (
+          <StageView
+            room={liveKitRoom}
+            showId={show.id}
+            phase={showPhase}
+            storyId={show.storyId}
+            sceneId={show.sceneId}
+            scenarioImageUrl={show.scenarioImageUrl}
+            scenarioCrop={show.scenarioCrop ?? null}
+            isGM={isGM}
+            gmEmail={user?.email ?? null}
+            lobbyParticipants={displayParticipants}
+            speakingByIdentity={speakingByIdentity}
+          />
+        ) : null
+      }
     >
+      {showPhase === "countdown" && (
+        <div className="espetaculo-countdown-overlay" role="dialog" aria-live="polite">
+          <div className="espetaculo-countdown-box">
+            <p className="espetaculo-countdown-text">
+              O jogo começará em <strong>{countdownSeconds}</strong> segundo{countdownSeconds !== 1 ? "s" : ""}.
+            </p>
+          </div>
+        </div>
+      )}
+      {isGM &&
+        show &&
+        createPortal(
+          <div className="espetaculo-interrupt-wrap" aria-label="Controle do espetáculo">
+            <button
+              type="button"
+              className="ui-btn ui-btn--ghost"
+              onClick={() => {
+                if (!show) return;
+                const msg = { type: "show/cancel", showId: show.id };
+                try {
+                  liveKitRoom?.localParticipant.publishData(
+                    new TextEncoder().encode(JSON.stringify(msg)),
+                    { reliable: true, topic: "espetaculo" }
+                  );
+                } catch {}
+                setShow(null);
+              }}
+            >
+              Interromper o espetáculo
+            </button>
+          </div>,
+          document.body
+        )}
+      {logged && (
+        <LobbyScreen
+          room={liveKitRoom}
+          selectedCharacter={selectedCharacter}
+          lobbyParticipants={displayParticipants}
+          onSelectCharacter={() => setSubView("SELECT_CHARACTER")}
+          onCreateCharacter={() => {
+            setStageMode("ZOOM_IN");
+            setSubView("CREATE_CHARACTER");
+          }}
+          onRoomConnected={setLiveKitRoom}
+          showMainUI={
+            view === "LOBBY" &&
+            !(effectiveRole === "PLAYER" && show && (showPhase === "half" || showPhase === "stage"))
+          }
+        />
+      )}
       {loading ? (
         <Screen title="Carregando…" />
       ) : view === "LOGIN" ? (
@@ -278,8 +474,50 @@ export function Routes() {
           onFigurinos={() => setGmSubView("GM_CHARACTERS")}
           onCenarios={() => setGmSubView("GM_SCENARIOS")}
           onLobby={() => setViewMode("PLAYER")}
+          onEspetaculo={() => setGmSubView("GM_ESPETACULO")}
           onLogout={() => logout()}
         />
+      ) : view === "GM_ESPETACULO" ? (
+        show ? null : (
+          <EspetaculoScreen
+            onBack={() => setGmSubView("GM_HOME")}
+            onEditScene={(storyId, sceneId) => {
+              setEditingStoryId(storyId);
+              setEditingSceneId(sceneId);
+              setGmSubView("GM_STORY_EDITOR");
+            }}
+            onStartShow={(storyId, sceneId, scenarioId) => {
+              const startedAt = Date.now();
+              const id = String(startedAt);
+              const next = { id, startedAt, storyId, sceneId, scenarioId, scenarioImageUrl: null as string | null, scenarioCrop: null as { x: number; y: number; width: number; height: number } | null };
+              setShow(next);
+
+              try {
+                liveKitRoom?.localParticipant.publishData(
+                  new TextEncoder().encode(JSON.stringify({ type: "show/start", showId: id, startedAt, storyId, sceneId, scenarioId, scenarioImageUrl: null, scenarioCrop: null })),
+                  { reliable: true, topic: "espetaculo" }
+                );
+              } catch {}
+
+              if (scenarioId) {
+                (async () => {
+                  try {
+                    const s = await api<{ image_storage_key: string | null; crop_x?: number | null; crop_y?: number | null; crop_width?: number | null; crop_height?: number | null }>(`/api/gm/scenarios/${scenarioId}`);
+                    const scenarioImageUrlRes = scenarioImageUrl(s);
+                    const scenarioCropRes = scenarioCropFromScenario(s);
+                    setShow((prev) => (prev && prev.id === id ? { ...prev, scenarioImageUrl: scenarioImageUrlRes, scenarioCrop: scenarioCropRes } : prev));
+                    try {
+                      liveKitRoom?.localParticipant.publishData(
+                        new TextEncoder().encode(JSON.stringify({ type: "show/scenario", showId: id, scenarioImageUrl: scenarioImageUrlRes, scenarioCrop: scenarioCropRes })),
+                        { reliable: true, topic: "espetaculo" }
+                      );
+                    } catch {}
+                  } catch {}
+                })();
+              }
+            }}
+          />
+        )
       ) : view === "GM_STORIES" ? (
         <StoryListScreen
           onBack={() => setGmSubView("GM_HOME")}
@@ -292,9 +530,11 @@ export function Routes() {
         editingStoryId ? (
           <StoryEditorScreen
             storyId={editingStoryId}
+            initialSceneId={editingSceneId}
             onBack={() => {
               setGmSubView("GM_STORIES");
               setEditingStoryId(null);
+              setEditingSceneId(null);
             }}
             onNavigateToCreateCharacter={() => {
               setEditingReturnGmView("GM_STORY_EDITOR");
@@ -450,18 +690,6 @@ export function Routes() {
                 })}
             </div>
           </div>
-
-          <LobbyScreen
-            room={liveKitRoom}
-            selectedCharacter={selectedCharacter}
-            lobbyParticipants={displayParticipants}
-            onSelectCharacter={() => setSubView("SELECT_CHARACTER")}
-            onCreateCharacter={() => {
-              setStageMode("ZOOM_IN");
-              setSubView("CREATE_CHARACTER");
-            }}
-            onRoomConnected={setLiveKitRoom}
-          />
         </>
       )}
     </StageLayout>

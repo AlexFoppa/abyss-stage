@@ -143,11 +143,12 @@ export type LobbyParticipant = {
 
 export function LobbyScreen({
   room,
-  selectedCharacter,
+  selectedCharacter: _selectedCharacter,
   lobbyParticipants = [],
   onCreateCharacter,
   onSelectCharacter,
   onRoomConnected,
+  showMainUI = true,
 }: {
   room?: Room | null;
   selectedCharacter: null | { id: number; name: string; system: string };
@@ -155,6 +156,8 @@ export function LobbyScreen({
   onCreateCharacter: () => void;
   onSelectCharacter: () => void;
   onRoomConnected?: (room: Room) => void;
+  /** Quando false, só renderiza o widget de áudio (portal). Use true apenas na view LOBBY. */
+  showMainUI?: boolean;
 }) {
   const { logout } = useAuth();
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
@@ -290,7 +293,8 @@ export function LobbyScreen({
     );
   }, []);
 
-  const audioTooltip = micPermission === "denied" ? MIC_TOOLTIP_DENIED : status === "error" && err ? err : undefined;
+  const audioTooltip =
+    micPermission === "denied" ? MIC_TOOLTIP_DENIED : status === "error" && err ? err : undefined;
 
   const connected = !!room;
   const pub = room?.localParticipant.getTrackPublication(Track.Source.Microphone);
@@ -422,6 +426,208 @@ export function LobbyScreen({
     .filter((p) => !p.is_gm && p.character_name)
     .map((p) => p.character_name as string);
 
+  const audioWidget = createPortal(
+    <div
+      className="lobby-audio-wrap"
+      style={{ right: audioPanelPos.right, bottom: audioPanelPos.bottom }}
+      role="region"
+      aria-label="Menu de áudio"
+    >
+      <button
+        type="button"
+        className={"lobby-audio-mute-btn" + (muted ? " is-active" : "")}
+        onClick={toggleMute}
+        title={audioTooltip ?? (muted ? "Desmutar (M)" : "Mutar (M)")}
+        aria-pressed={muted}
+        aria-label={muted ? "Desmutar microfone" : "Mutar microfone"}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          {muted ? (
+            <>
+              <line x1="1" y1="1" x2="23" y2="23" />
+              <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6" />
+              <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+              <path d="M12 19v4M8 23h8" />
+            </>
+          ) : (
+            <>
+              <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" />
+            </>
+          )}
+        </svg>
+      </button>
+      <button
+        type="button"
+        className="lobby-audio-trigger"
+        onMouseDown={(e) => onAudioDragStart(e, true)}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        aria-expanded={audioMenuOpen}
+        aria-label={audioMenuOpen ? "Recolher opções de áudio" : "Opções de áudio"}
+        title={audioMenuOpen ? "Recolher (clique) ou arraste para mover" : "Áudio — clique para abrir ou arraste para mover"}
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+          <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+          <path d="M18 15v5m-2.5-2.5h5" strokeWidth="1.5" />
+        </svg>
+      </button>
+      <div className={"lobby-audio-panel" + (audioMenuOpen ? " lobby-audio-panel--open" : "")}>
+        <div
+          className="lobby-audio-drag-handle"
+          title="Arraste para mover"
+          onMouseDown={(e) => onAudioDragStart(e, false)}
+        >
+          <span className="lobby-audio-drag-dots">⋯</span>
+          <span className="lobby-audio-panel-title">Áudio</span>
+        </div>
+        <div className="lobby-audio-body">
+          {!connected ? (
+            <div className="lobby-audio-status-block">
+              <p className="lobby-audio-status" role="status" aria-live="polite">
+                {status === "connecting" && "Conectando…"}
+                {status === "connected" && "Áudio ativo"}
+                {status === "error" && err && (
+                  <>
+                    Falha na conexão.{" "}
+                    <button type="button" className="lobby-audio-retry" onClick={connectAudio}>
+                      Tentar novamente
+                    </button>
+                  </>
+                )}
+                {status === "idle" && "Iniciando áudio…"}
+              </p>
+              {micPermission === "denied" && (
+                <p className="lobby-permission-hint" role="status">
+                  {MIC_TOOLTIP_DENIED}
+                </p>
+              )}
+              <button
+                type="button"
+                className="lobby-audio-diagnostic-btn"
+                disabled={diagnosticRunning}
+                onClick={runDiagnostic}
+                title="Identifica se o problema é URL/túnel ou rede (WebRTC/NAT)"
+              >
+                {diagnosticRunning ? "Diagnosticando…" : "Diagnosticar conexão"}
+              </button>
+              {diagnosticSteps && diagnosticSteps.length > 0 && (
+                <div className="lobby-diagnostic" role="status">
+                  <strong>Diagnóstico:</strong>
+                  <ul>
+                    {diagnosticSteps.map((s) => (
+                      <li key={s.step} className={s.ok ? "lobby-diagnostic--ok" : "lobby-diagnostic--fail"}>
+                        {s.step}. {s.label}
+                        {s.detail && <span className="lobby-diagnostic-detail"> — {s.detail}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {err && status === "error" && (
+                <div className="lobby-audio-error-detail">
+                  <span className="lobby-error">{err}</span>
+                  {lastLiveKitUrl && (
+                    <p className="lobby-error-url">
+                      URL: <code>{lastLiveKitUrl}</code>. Túnel 7880 e API; ou use LiveKit Cloud (docs/audio-livekit-cloud.md).
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="lobby-audio-toggles">
+                <button
+                  type="button"
+                  className={"lobby-audio-icon-btn" + (captureOpts.noiseSuppression ? " is-active" : "")}
+                  title="Supressão de ruído"
+                  onClick={() => setCaptureOpts((o) => ({ ...o, noiseSuppression: !o.noiseSuppression }))}
+                >
+                  <span aria-hidden>NS</span>
+                </button>
+                <button
+                  type="button"
+                  className={"lobby-audio-icon-btn" + (captureOpts.echoCancellation ? " is-active" : "")}
+                  title="Cancelamento de eco"
+                  onClick={() => setCaptureOpts((o) => ({ ...o, echoCancellation: !o.echoCancellation }))}
+                >
+                  <span aria-hidden>EC</span>
+                </button>
+                <button
+                  type="button"
+                  className={"lobby-audio-icon-btn" + (captureOpts.autoGainControl ? " is-active" : "")}
+                  title="Controle automático de ganho"
+                  onClick={() => setCaptureOpts((o) => ({ ...o, autoGainControl: !o.autoGainControl }))}
+                >
+                  <span aria-hidden>AGC</span>
+                </button>
+                <button
+                  type="button"
+                  className={"lobby-audio-icon-btn" + (captureOpts.voiceIsolation ? " is-active" : "")}
+                  title="Isolamento de voz"
+                  onClick={() => setCaptureOpts((o) => ({ ...o, voiceIsolation: !o.voiceIsolation }))}
+                >
+                  <span aria-hidden>VI</span>
+                </button>
+                <button
+                  type="button"
+                  className={"lobby-audio-icon-btn" + (krispEnabled ? " is-active" : "")}
+                  title="Krisp (redução de ruído)"
+                  onClick={toggleKrisp}
+                >
+                  <span aria-hidden>K</span>
+                </button>
+              </div>
+              <div className="lobby-audio-sliders">
+                <label className="lobby-audio-label">
+                  Volume dos outros
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={remoteVolume}
+                    onChange={(e) => setRemoteVolume(Number(e.target.value))}
+                  />
+                </label>
+                <label className="lobby-audio-label">
+                  Dispositivo
+                  <select
+                    className="lobby-audio-select"
+                    value={deviceId}
+                    onChange={(e) => setDeviceId(e.target.value)}
+                  >
+                    <option value="">Padrão</option>
+                    {devices.map((d) => (
+                      <option key={d.deviceId} value={d.deviceId}>
+                        {d.label || `Dispositivo ${d.deviceId.slice(0, 8)}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="lobby-audio-level">
+                  <span>Nível do microfone</span>
+                  <div className="lobby-audio-level-bar" role="meter" aria-valuenow={Math.round(micLevel * 100)} aria-valuemin={0} aria-valuemax={100}>
+                    <div className="lobby-audio-level-fill" style={{ width: `${Math.min(100, micLevel * 100)}%` }} />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+
+  if (!showMainUI) {
+    return audioWidget;
+  }
+
   return (
     <div className="lobby-wrap">
       {characterNames.length > 0 ? (
@@ -466,218 +672,7 @@ export function LobbyScreen({
 
       </div>
 
-      {createPortal(
-          <div
-            className="lobby-audio-wrap"
-            style={{ right: audioPanelPos.right, bottom: audioPanelPos.bottom }}
-          >
-          <button
-            type="button"
-            className={"lobby-audio-mute-btn" + (muted ? " is-active" : "")}
-            onClick={toggleMute}
-            title={muted ? "Desmutar (M)" : "Mutar (M)"}
-            aria-pressed={muted}
-            aria-label={muted ? "Desmutar microfone" : "Mutar microfone"}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              {muted ? (
-                <>
-                  <line x1="1" y1="1" x2="23" y2="23" />
-                  <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6" />
-                  <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
-                  <path d="M12 19v4M8 23h8" />
-                </>
-              ) : (
-                <>
-                  <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" />
-                </>
-              )}
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="lobby-audio-trigger"
-            onMouseDown={(e) => onAudioDragStart(e, true)}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            aria-expanded={audioMenuOpen}
-            aria-label={audioMenuOpen ? "Recolher opções de áudio" : "Opções de áudio"}
-            title={audioMenuOpen ? "Recolher (clique) ou arraste para mover" : "Áudio — clique para abrir ou arraste para mover"}
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
-              <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
-              <path d="M18 15v5m-2.5-2.5h5" strokeWidth="1.5" />
-            </svg>
-          </button>
-          <div className={"lobby-audio-panel" + (audioMenuOpen ? " lobby-audio-panel--open" : "")}>
-            <div
-              className="lobby-audio-drag-handle"
-              title="Arraste para mover"
-              onMouseDown={(e) => onAudioDragStart(e, false)}
-            >
-              <span className="lobby-audio-drag-dots">⋯</span>
-              <span className="lobby-audio-panel-title">Áudio</span>
-            </div>
-            <div className="lobby-audio-body">
-              {!connected ? (
-                <div className="lobby-audio-status-block">
-                  <p className="lobby-audio-status" role="status" aria-live="polite">
-                    {status === "connecting" && "Conectando…"}
-                    {status === "connected" && "Áudio ativo"}
-                    {status === "error" && err && (
-                      <>
-                        Falha na conexão.{" "}
-                        <button type="button" className="lobby-audio-retry" onClick={connectAudio}>
-                          Tentar novamente
-                        </button>
-                      </>
-                    )}
-                    {status === "idle" && "Iniciando áudio…"}
-                  </p>
-                  {micPermission === "denied" && (
-                    <p className="lobby-permission-hint" role="status">
-                      {MIC_TOOLTIP_DENIED}
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    className="lobby-audio-diagnostic-btn"
-                    disabled={diagnosticRunning}
-                    onClick={runDiagnostic}
-                    title="Identifica se o problema é URL/túnel ou rede (WebRTC/NAT)"
-                  >
-                    {diagnosticRunning ? "Diagnosticando…" : "Diagnosticar conexão"}
-                  </button>
-                  {diagnosticSteps && diagnosticSteps.length > 0 && (
-                    <div className="lobby-diagnostic" role="status">
-                      <strong>Diagnóstico:</strong>
-                      <ul>
-                        {diagnosticSteps.map((s) => (
-                          <li key={s.step} className={s.ok ? "lobby-diagnostic--ok" : "lobby-diagnostic--fail"}>
-                            {s.step}. {s.label}
-                            {s.detail && <span className="lobby-diagnostic-detail"> — {s.detail}</span>}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {err && status === "error" && (
-                    <div className="lobby-audio-error-detail">
-                      <span className="lobby-error">{err}</span>
-                      {lastLiveKitUrl && (
-                        <p className="lobby-error-url">
-                          URL: <code>{lastLiveKitUrl}</code>. Túnel 7880 e API; ou use LiveKit Cloud (docs/audio-livekit-cloud.md).
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <>
-              <div className="lobby-audio-toggles">
-                <button
-                  type="button"
-                  className={"lobby-audio-icon-btn" + (captureOpts.noiseSuppression ? " is-active" : "")}
-                  onClick={() => toggleCaptureOpt("noiseSuppression")}
-                  title="Supressão de ruído"
-                  aria-pressed={captureOpts.noiseSuppression}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M2 12h2M20 12h2M4 12v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v4a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4v-2" /><path d="M9 8v8M15 8v8M12 6v12" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className={"lobby-audio-icon-btn" + (captureOpts.echoCancellation ? " is-active" : "")}
-                  onClick={() => toggleCaptureOpt("echoCancellation")}
-                  title="Cancelamento de eco"
-                  aria-pressed={captureOpts.echoCancellation}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M4 12a8 8 0 0 1 16 0" /><path d="M4 12a4 4 0 0 1 8 0" /><path d="M4 12a1 1 0 0 1 2 0" /><path d="M12 4v4M12 16v4M8 8l2 2 2-2M8 16l2-2 2 2" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className={"lobby-audio-icon-btn" + (captureOpts.autoGainControl ? " is-active" : "")}
-                  onClick={() => toggleCaptureOpt("autoGainControl")}
-                  title="Controle automático de ganho"
-                  aria-pressed={captureOpts.autoGainControl}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M12 20V4M9 7l3-3 3 3M9 17l3 3 3-3" /><path d="M5 14h2M7 10h2M17 14h2M19 10h2" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className={"lobby-audio-icon-btn" + (captureOpts.voiceIsolation ? " is-active" : "")}
-                  onClick={() => toggleCaptureOpt("voiceIsolation")}
-                  title="Isolamento de voz (experimental)"
-                  aria-pressed={captureOpts.voiceIsolation}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <circle cx="12" cy="12" r="3" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className={"lobby-audio-icon-btn" + (krispEnabled ? " is-active" : "")}
-                  onClick={toggleKrisp}
-                  title="Cancelamento de ruído (Krisp)"
-                  aria-pressed={krispEnabled}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" /><path d="M5 19l2-6 2 2 2-2 2 6M19 5l-2 6-2-2-2 2-2-6" />
-                  </svg>
-                </button>
-              </div>
-              <div className="lobby-audio-sliders">
-                <label className="lobby-audio-label">
-                  <span>Volume dos outros</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={remoteVolume}
-                    onChange={(e) => setVolume(Number(e.target.value))}
-                  />
-                </label>
-                {devices.length > 1 && (
-                  <label className="lobby-audio-label">
-                    <span>Microfone</span>
-                    <select
-                      value={deviceId}
-                      onChange={(e) => selectDevice(e.target.value)}
-                      className="lobby-audio-select"
-                    >
-                      <option value="">Padrão</option>
-                      {devices.map((d) => (
-                        <option key={d.deviceId} value={d.deviceId}>
-                          {d.label || `Dispositivo ${d.deviceId.slice(0, 8)}`}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                <div className="lobby-audio-level">
-                  <span>Nível do microfone</span>
-                  <div className="lobby-audio-level-bar" role="meter" aria-valuenow={Math.round(micLevel * 100)} aria-valuemin={0} aria-valuemax={100}>
-                    <div className="lobby-audio-level-fill" style={{ width: `${Math.min(100, micLevel * 100)}%` }} />
-                  </div>
-                </div>
-              </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>,
-          document.body
-        )}
+      {audioWidget}
     </div>
   );
 }

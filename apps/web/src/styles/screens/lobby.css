@@ -185,7 +185,7 @@
 
 .lobby-audio-wrap{
   position: fixed;
-  z-index: 100;
+  z-index: 99999;
   display: flex;
   flex-direction: row;
   align-items: stretch;

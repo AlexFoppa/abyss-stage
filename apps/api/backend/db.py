@@ -54,6 +54,14 @@ def init_db() -> None:
         if r is not None and r == 0:
             conn.execute(text("DROP TABLE IF EXISTS scenario"))
             conn.commit()
+        # scenario: colunas de recorte (crop) para imagem no palco
+        for col in ("crop_x", "crop_y", "crop_width", "crop_height"):
+            r = conn.execute(text(
+                f"SELECT COUNT(*) FROM pragma_table_info('scenario') WHERE name = '{col}'"
+            )).scalar()
+            if r is not None and r == 0:
+                conn.execute(text(f"ALTER TABLE scenario ADD COLUMN {col} FLOAT"))
+                conn.commit()
         # scene_character: migration had scene_id INTEGER and no order_index; model needs scene_id TEXT (UUID) and order_index
         try:
             info = conn.execute(text("SELECT name, type FROM pragma_table_info('scene_character')")).fetchall()

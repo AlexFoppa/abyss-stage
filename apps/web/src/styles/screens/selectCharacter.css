@@ -291,3 +291,73 @@
     grid-row: 3;
   }
 }
+
+/* Espetáculo: estética normal (texto legível em fundo escuro) */
+.espetaculo-screen {
+  color: var(--text-main);
+}
+.espetaculo-screen .select-title,
+.espetaculo-screen .select-muted,
+.espetaculo-screen .book-label,
+.espetaculo-screen .book-value,
+.espetaculo-screen .select-list-head,
+.espetaculo-screen .espetaculo-screen__intro {
+  color: var(--text-main);
+}
+.espetaculo-screen .select-muted,
+.espetaculo-screen .espetaculo-screen__intro {
+  opacity: 0.9;
+}
+.espetaculo-screen__intro {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.espetaculo-screen select.ui-field {
+  color: var(--text-input);
+  background: var(--bg-ink-2);
+  border-color: var(--gold-border);
+}
+.espetaculo-screen select.ui-field option {
+  background: var(--bg-ink-2);
+  color: var(--text-main);
+}
+.espetaculo-story-row {
+  margin-bottom: 14px;
+}
+.espetaculo-story-row .book-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-label);
+}
+.select-list-head {
+  margin-top: 8px;
+  margin-bottom: 8px;
+  color: var(--text-label);
+}
+
+.espetaculo-preview-wrap {
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+
+.espetaculo-preview-wrap .story-editor__preview-title {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+}
+
+.espetaculo-char-list {
+  margin: 0;
+  padding-left: 1.2em;
+  list-style: disc;
+}
+
+.espetaculo-char-list li {
+  margin-bottom: 2px;
+}
+
+.espetaculo-scene-actions {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}

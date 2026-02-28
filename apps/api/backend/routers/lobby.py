@@ -129,10 +129,10 @@ async def _livekit_identities_in_room(room: str = "lobby") -> Optional[Set[str]]
         secret = (settings.livekit_api_secret or "").strip()
         if not url or not key or not secret:
             return None
-        lk = LiveKitAPI(url=url, api_key=key, api_secret=secret)
-        req = ListParticipantsRequest(room=room)
-        res = await lk.room.list_participants(req)
-        return {p.identity for p in (res.participants or [])}
+        async with LiveKitAPI(url=url, api_key=key, api_secret=secret) as lk:
+            req = ListParticipantsRequest(room=room)
+            res = await lk.room.list_participants(req)
+            return {p.identity for p in (res.participants or [])}
     except Exception:
         return None
 
