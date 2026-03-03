@@ -361,3 +361,9 @@
   padding-top: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+.espetaculo-lobby-wait {
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+  color: rgba(215, 178, 92, 0.9);
+}

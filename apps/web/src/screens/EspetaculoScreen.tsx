@@ -45,10 +45,13 @@ export function EspetaculoScreen({
   onBack,
   onStartShow,
   onEditScene,
+  lobbyConnected = false,
 }: {
   onBack: () => void;
   onStartShow: (storyId: string, sceneId: string, scenarioId: string | null) => void;
   onEditScene?: (storyId: string, sceneId: string) => void;
+  /** Quando false, jogadores não recebem o início do espetáculo; botão fica desabilitado até conectar ao lobby. */
+  lobbyConnected?: boolean;
 }) {
   const { user } = useAuth();
   const [stories, setStories] = useState<Story[]>([]);
@@ -109,7 +112,7 @@ export function EspetaculoScreen({
   }, [selectedStoryId]);
 
   const activeScene = scenes.find((s) => s.id === selectedSceneId) ?? null;
-  const canOpenCurtains = Boolean(selectedStoryId && selectedSceneId);
+  const canOpenCurtains = Boolean(selectedStoryId && selectedSceneId && lobbyConnected);
 
   const [scenarioImageUrl, setScenarioImageUrl] = useState<string | null>(null);
   const [scenarioCrop, setScenarioCrop] = useState<ReturnType<typeof scenarioCropFromScenario>>(null);
@@ -334,6 +337,11 @@ export function EspetaculoScreen({
                 </div>
 
                 <div className="select-actions espetaculo-scene-actions">
+                  {!lobbyConnected && (
+                    <p className="espetaculo-lobby-wait" role="status">
+                      Aguarde a conexão com o lobby (áudio)… Os jogadores só recebem o início do espetáculo quando você estiver conectado.
+                    </p>
+                  )}
                   <button
                     type="button"
                     className="ui-btn"

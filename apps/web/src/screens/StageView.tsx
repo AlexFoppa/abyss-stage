@@ -118,6 +118,7 @@ export function StageView({
   isGM,
   gmEmail,
   lobbyParticipants,
+  lobbyCharacterIdsKey: lobbyCharacterIdsKeyFromParent,
   speakingByIdentity,
 }: {
   room: Room | null;
@@ -130,6 +131,8 @@ export function StageView({
   isGM: boolean;
   gmEmail: string | null;
   lobbyParticipants: LobbyParticipant[];
+  /** Chave estável (ex.: do Routes) para evitar refetch a cada poll; quando não passada, usa a derivada de lobbyParticipants. */
+  lobbyCharacterIdsKey?: string;
   speakingByIdentity: Record<string, boolean>;
 }) {
   const [actors, setActors] = useState<Actor[]>([]);
@@ -143,6 +146,18 @@ export function StageView({
   const [selectedActorIdsRemote, setSelectedActorIdsRemote] = useState<number[]>([]);
   const draggedRecentlyRef = useRef(false);
 
+  const lobbyParticipantsRef = useRef(lobbyParticipants);
+  lobbyParticipantsRef.current = lobbyParticipants;
+  /** Chave estável para o efeito de fetch: usa a do parent quando fornecida, senão deriva de lobbyParticipants. */
+  const lobbyCharacterIdsKey = useMemo(
+    () =>
+      lobbyCharacterIdsKeyFromParent ??
+      [...new Set((lobbyParticipants || []).map((p) => p.character_id).filter((id): id is number => id != null))]
+        .sort((a, b) => a - b)
+        .join(","),
+    [lobbyCharacterIdsKeyFromParent, lobbyParticipants]
+  );
+
   useEffect(() => {
     posRef.current = posByActor;
   }, [posByActor]);
@@ -151,7 +166,7 @@ export function StageView({
     if (!isGM) return;
     if (!storyId || !sceneId) return;
     const lobbyByCharId = new Map<number, LobbyParticipant>();
-    (lobbyParticipants || []).forEach((p) => {
+    (lobbyParticipantsRef.current || []).forEach((p) => {
       if (typeof p.character_id === "number" && !p.is_gm) lobbyByCharId.set(p.character_id, p);
     });
     let cancelled = false;
@@ -193,7 +208,7 @@ export function StageView({
     return () => {
       cancelled = true;
     };
-  }, [isGM, storyId, sceneId, gmEmail, lobbyParticipants]);
+  }, [isGM, storyId, sceneId, gmEmail, lobbyCharacterIdsKey]);
 
   useEffect(() => {
     // inicializa posições default para atores novos (GM e PLAYER)

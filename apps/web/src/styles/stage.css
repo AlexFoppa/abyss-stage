@@ -154,11 +154,11 @@
   z-index: 11;
 }
 
-/* Espetáculo: overlay de countdown */
+/* Espetáculo: overlay de countdown (acima do lobby, ex.: .lobby-audio-wrap z-index 99999) */
 .espetaculo-countdown-overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 10;
+  z-index: 100000;
   display: grid;
   place-items: center;
   background: rgba(0, 0, 0, 0.75);

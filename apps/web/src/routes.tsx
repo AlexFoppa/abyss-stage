@@ -89,6 +89,22 @@ export function Routes() {
   const [speakingByIdentity, setSpeakingByIdentity] = useState<Record<string, boolean>>({});
 
   const [lobbyParticipants, setLobbyParticipants] = useState<LobbyParticipant[]>([]);
+  /** Chave estável: só muda quando o conjunto de character_id no lobby muda; evita refetch em StageView a cada poll. */
+  const lobbyCharacterIdsComputed = useMemo(
+    () =>
+      [...new Set(lobbyParticipants.map((p) => p.character_id).filter((id): id is number => id != null))]
+        .sort((a, b) => a - b)
+        .join(","),
+    [lobbyParticipants]
+  );
+  const [lobbyCharacterIdsKeyStable, setLobbyCharacterIdsKeyStable] = useState(lobbyCharacterIdsComputed);
+  const prevLobbyCharacterIdsKeyRef = useRef(lobbyCharacterIdsComputed);
+  useEffect(() => {
+    if (lobbyCharacterIdsComputed !== prevLobbyCharacterIdsKeyRef.current) {
+      prevLobbyCharacterIdsKeyRef.current = lobbyCharacterIdsComputed;
+      setLobbyCharacterIdsKeyStable(lobbyCharacterIdsComputed);
+    }
+  }, [lobbyCharacterIdsComputed]);
   const [actorOffsets, setActorOffsets] = useState<Record<string, number>>({});
   const actorDragRef = useRef<{ identity: string; startX: number; startOffset: number } | null>(null);
 
@@ -148,11 +164,10 @@ export function Routes() {
     const decoder = new TextDecoder();
     const onDataReceived = (
       payload: Uint8Array,
-      _participant?: Participant,
+      participant?: Participant,
       _kind?: unknown,
       topic?: string
     ) => {
-      if (topic && topic !== "espetaculo") return;
       let msg: any;
       try {
         msg = JSON.parse(decoder.decode(payload));
@@ -161,8 +176,9 @@ export function Routes() {
       }
       if (!msg || typeof msg !== "object") return;
 
+      /* show/start: processar sempre (topic pode não vir no receptor em algumas versões/setups). */
       if (msg.type === "show/start") {
-        const startedAt = typeof msg.startedAt === "number" ? msg.startedAt : Number(msg.startedAt);
+        const startedAtFromMsg = typeof msg.startedAt === "number" ? msg.startedAt : Number(msg.startedAt);
         const storyId = typeof msg.storyId === "string" ? msg.storyId : null;
         const sceneId = typeof msg.sceneId === "string" ? msg.sceneId : null;
         const scenarioId =
@@ -173,10 +189,26 @@ export function Routes() {
             : typeof msg.scenarioImageUrl === "string"
               ? msg.scenarioImageUrl
               : null;
-        const id = typeof msg.showId === "string" ? msg.showId : String(startedAt);
-        if (!Number.isFinite(startedAt) || !storyId || !sceneId) return;
-        setShow({ id, startedAt, storyId, sceneId, scenarioId, scenarioImageUrl, scenarioCrop: null });
-      } else if (msg.type === "show/scenario") {
+        const id = typeof msg.showId === "string" ? msg.showId : String(startedAtFromMsg);
+        if (!Number.isFinite(startedAtFromMsg) || !storyId || !sceneId) return;
+        /* Log temporário: confirme no console do jogador se esta linha aparece ao mestre abrir as cortinas; pode remover depois. */
+        if (typeof console !== "undefined" && console.log) {
+          console.log("[espetaculo] show/start received", { storyId, sceneId, from: participant?.identity });
+        }
+        /* Sempre atualizar com startedAt: Date.now() para que o countdown de 10s seja correto para quem recebe a mensagem. */
+        setShow({
+          id,
+          startedAt: Date.now(),
+          storyId,
+          sceneId,
+          scenarioId,
+          scenarioImageUrl,
+          scenarioCrop: null,
+        });
+        return;
+      }
+      if (topic && topic !== "espetaculo") return;
+      if (msg.type === "show/scenario") {
         const id = typeof msg.showId === "string" ? msg.showId : null;
         const scenarioImageUrl =
           msg.scenarioImageUrl == null
@@ -407,20 +439,23 @@ export function Routes() {
             isGM={isGM}
             gmEmail={user?.email ?? null}
             lobbyParticipants={displayParticipants}
+            lobbyCharacterIdsKey={lobbyCharacterIdsKeyStable}
             speakingByIdentity={speakingByIdentity}
           />
         ) : null
       }
     >
-      {showPhase === "countdown" && (
-        <div className="espetaculo-countdown-overlay" role="dialog" aria-live="polite">
-          <div className="espetaculo-countdown-box">
-            <p className="espetaculo-countdown-text">
-              O jogo começará em <strong>{countdownSeconds}</strong> segundo{countdownSeconds !== 1 ? "s" : ""}.
-            </p>
-          </div>
-        </div>
-      )}
+      {showPhase === "countdown" &&
+        createPortal(
+          <div className="espetaculo-countdown-overlay" role="dialog" aria-live="polite">
+            <div className="espetaculo-countdown-box">
+              <p className="espetaculo-countdown-text">
+                O jogo começará em <strong>{countdownSeconds}</strong> segundo{countdownSeconds !== 1 ? "s" : ""}.
+              </p>
+            </div>
+          </div>,
+          document.body
+        )}
       {isGM &&
         show &&
         createPortal(
@@ -481,6 +516,7 @@ export function Routes() {
         show ? null : (
           <EspetaculoScreen
             onBack={() => setGmSubView("GM_HOME")}
+            lobbyConnected={!!liveKitRoom}
             onEditScene={(storyId, sceneId) => {
               setEditingStoryId(storyId);
               setEditingSceneId(sceneId);
