@@ -1,36 +1,44 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { RoomEvent, type Room } from "livekit-client";
 import type { LobbyParticipant } from "./LobbyScreen";
 import { ScenarioBackground } from "./SceneStagePreview";
-type GMCharacter = {
-  id: number;
-  name: string;
-  owner_email: string;
-  default_image_url?: string | null;
-  default_image_rev?: string | null;
-};
+import type { GMCharacter } from "../types/character";
+import { getAvatarUrl } from "../utils/avatar";
 
 type SceneCharactersOut = { character_ids: number[] };
 
-type ActorSide = "NPC" | "PC";
-type Actor = {
+/** Personagem no palco: uma única lista; PC vs NPC só define "quem acende ao falar" e "seleção do mestre". */
+type CharacterOnStage = {
   id: number;
   name: string;
-  side: ActorSide;
   imageUrl: string | null;
+  /** true = NPC (acende quando mestre fala por ele); false = PC (acende quando o jogador dono fala ou quando mestre está falando por ele). */
+  isNPC: boolean;
 };
 
+/** Wire: mantido "actor" por compatibilidade com mensagens LiveKit. */
 type VisibilityMsg = {
   type: "show/actor/visible";
   showId: string;
-  actor: { id: number; name: string; side: ActorSide; imageUrl: string | null; xPct?: number };
+  actor: { id: number; name: string; side: "NPC" | "PC"; imageUrl: string | null; xPct?: number };
   visible: boolean;
 };
-
 type PosMsg = { type: "show/actor/pos"; showId: string; actorId: number; xPct: number };
-/** Seleção de quem fala quando o mestre fala (NPCs e PCs — ex.: jogador faltando). */
 type SelectionMsg = { type: "show/actor/selection"; showId: string; selectedIds: number[] };
+/** Estado completo do palco; GM envia ao abrir o palco para o jogador ficar igual ao mestre (evita cópia/duplicação). */
+type SyncMsg = {
+  type: "show/sync";
+  showId: string;
+  characters: Array<{
+    id: number;
+    name: string;
+    side: "NPC" | "PC";
+    imageUrl: string | null;
+    xPct?: number;
+    visible: boolean;
+  }>;
+};
 
 function EyeOpenIcon({ className }: { className?: string }) {
   return (
@@ -48,15 +56,6 @@ function EyeClosedIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-function SelectedBadgeIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-      <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
-  );
-}
-/** Ícone "falar por este personagem" (balão de fala — não confundir com mute/unmute). */
 function SpeakForIcon({ className }: { className?: string }) {
   return (
     <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -65,31 +64,21 @@ function SpeakForIcon({ className }: { className?: string }) {
   );
 }
 
-function portraitUrl(c: { default_image_url?: string | null; default_image_rev?: string | null }) {
-  if (!c.default_image_url) return null;
-  if (c.default_image_rev) return `${c.default_image_url}?rev=${c.default_image_rev}`;
-  return c.default_image_url;
+function defaultPositionsForCharacters(characters: CharacterOnStage[]): Record<number, number> {
+  const npc = characters.filter((c) => c.isNPC);
+  const pc = characters.filter((c) => !c.isNPC);
+  const npcXs = [20, 14, 26, 8, 32].slice(0, npc.length);
+  const pcXs = [80, 86, 74, 92, 68].slice(0, pc.length);
+  const out: Record<number, number> = {};
+  npc.forEach((c, i) => {
+    out[c.id] = npcXs[i] ?? 20;
+  });
+  pc.forEach((c, i) => {
+    out[c.id] = pcXs[i] ?? 80;
+  });
+  return out;
 }
 
-function computePositions(count: number, side: ActorSide) {
-  const base = side === "NPC" ? 20 : 80;
-  const deltas =
-    side === "NPC"
-      ? [0, -6, +6, -12, +12, -18, +18, -24, +24]
-      : [0, +6, -6, +12, -12, +18, -18, +24, -24];
-  const min = side === "NPC" ? 8 : 68;
-  const max = side === "NPC" ? 32 : 92;
-
-  const xs: number[] = [];
-  for (let i = 0; i < count; i++) {
-    const d = deltas[i] ?? deltas[deltas.length - 1];
-    const x = base + d;
-    xs.push(i < deltas.length ? Math.max(min, Math.min(max, x)) : x);
-  }
-  return xs;
-}
-
-/** Durante o arraste: permite 8–92% (imagem inverte ao cruzar 50%). Na soltura, coluna 3 (32–68%) não pode ficar ocupada. */
 function clampPositionWhileDragging(next: number): number {
   return Math.max(8, Math.min(92, next));
 }
@@ -101,11 +90,8 @@ function snapToColumn(xPct: number): number {
 }
 
 /**
- * Vista do palco quando o espetáculo está em andamento (cortinas abertas).
- * Grid 5 colunas: NPCs nas colunas 1–2, PCs nas 4–5, coluna 3 vazia.
- * Mestre vê todos os personagens; jogador só os que o mestre tornou visíveis.
- * Estado (visibilidade, posições, seleção de NPCs) é sincronizado via LiveKit;
- * jogadores mantêm o último estado válido (resiliência à desconexão do mestre).
+ * Vista do palco no espetáculo.
+ * Uma única lista de personagens; PC vs NPC só afeta: (1) PC acende quando o jogador fala, (2) NPC (e PC) sujeitos à seleção do mestre para "falar por".
  */
 export function StageView({
   room,
@@ -131,24 +117,21 @@ export function StageView({
   isGM: boolean;
   gmEmail: string | null;
   lobbyParticipants: LobbyParticipant[];
-  /** Chave estável (ex.: do Routes) para evitar refetch a cada poll; quando não passada, usa a derivada de lobbyParticipants. */
   lobbyCharacterIdsKey?: string;
   speakingByIdentity: Record<string, boolean>;
 }) {
-  const [actors, setActors] = useState<Actor[]>([]);
+  const [characters, setCharacters] = useState<CharacterOnStage[]>([]);
   const [visibleForPlayer, setVisibleForPlayer] = useState<Record<number, boolean>>({});
-  const [animByActor, setAnimByActor] = useState<Record<number, "in-left" | "in-right" | "out-left" | "out-right" | null>>({});
-  const [posByActor, setPosByActor] = useState<Record<number, number>>({});
-  const dragRef = useRef<null | { actorId: number; startClientX: number; startXPct: number }>(null);
+  const [animByCharId, setAnimByCharId] = useState<Record<number, "in-left" | "in-right" | "out-left" | "out-right" | null>>({});
+  const [posByCharId, setPosByCharId] = useState<Record<number, number>>({});
+  const dragRef = useRef<null | { characterId: number; startClientX: number; startXPct: number }>(null);
   const dragRafRef = useRef<number | null>(null);
   const posRef = useRef<Record<number, number>>({});
-  const [selectedActorIdsLocal, setSelectedActorIdsLocal] = useState<number[]>([]);
-  const [selectedActorIdsRemote, setSelectedActorIdsRemote] = useState<number[]>([]);
+  const [selectedCharacterIdsLocal, setSelectedCharacterIdsLocal] = useState<number[]>([]);
+  const [selectedCharacterIdsRemote, setSelectedCharacterIdsRemote] = useState<number[]>([]);
   const draggedRecentlyRef = useRef(false);
+  const syncSentForShowIdRef = useRef<string | null>(null);
 
-  const lobbyParticipantsRef = useRef(lobbyParticipants);
-  lobbyParticipantsRef.current = lobbyParticipants;
-  /** Chave estável para o efeito de fetch: usa a do parent quando fornecida, senão deriva de lobbyParticipants. */
   const lobbyCharacterIdsKey = useMemo(
     () =>
       lobbyCharacterIdsKeyFromParent ??
@@ -159,144 +142,222 @@ export function StageView({
   );
 
   useEffect(() => {
-    posRef.current = posByActor;
-  }, [posByActor]);
+    posRef.current = posByCharId;
+  }, [posByCharId]);
+
+  const fetchCharactersForGM = useCallback(async () => {
+    if (!storyId || !sceneId) return;
+    try {
+      const [scRes, lobbyRes, list] = await Promise.all([
+        api<SceneCharactersOut>(`/api/gm/stories/${storyId}/scenes/${sceneId}/characters`),
+        api<{ participants: LobbyParticipant[] }>("/api/lobby"),
+        api<GMCharacter[]>("/api/gm/characters"),
+      ]);
+      const lobbyParticipantsFromApi = Array.isArray(lobbyRes?.participants) ? lobbyRes.participants : [];
+      const lobbyByCharId = new Map<number, LobbyParticipant>();
+      const lobbyCharIds: number[] = [];
+      lobbyParticipantsFromApi.forEach((p) => {
+        if (typeof p.character_id === "number" && !p.is_gm) {
+          lobbyByCharId.set(p.character_id, p);
+          lobbyCharIds.push(p.character_id);
+        }
+      });
+      const sceneIds = Array.isArray(scRes?.character_ids) ? scRes.character_ids : [];
+      const ids = [...new Set([...sceneIds, ...lobbyCharIds])];
+      const gmMap = new Map<number, GMCharacter>();
+      (Array.isArray(list) ? list : []).forEach((c) => gmMap.set(c.id, c));
+      const byId = new Map<number, CharacterOnStage>();
+      for (const id of ids) {
+        const gmChar = gmMap.get(id);
+        const lobby = lobbyByCharId.get(id);
+        const isNPC = gmChar
+          ? gmChar.kind === "NPC" || (!!gmEmail && gmChar.owner_email === gmEmail)
+          : false;
+        if (gmChar) {
+          const imageUrl =
+            lobby?.character_image_url != null && lobby.character_image_url !== ""
+              ? getAvatarUrl({ character_image_url: lobby.character_image_url })
+              : getAvatarUrl(gmChar);
+          byId.set(id, {
+            id: gmChar.id,
+            name: gmChar.name,
+            imageUrl,
+            isNPC,
+          });
+          continue;
+        }
+        if (lobby) {
+          byId.set(id, {
+            id,
+            name: lobby.character_name ?? "Personagem",
+            imageUrl: getAvatarUrl({ character_image_url: lobby.character_image_url }),
+            isNPC: false,
+          });
+        }
+      }
+      setCharacters([...byId.values()]);
+    } catch {
+      setCharacters([]);
+    }
+  }, [storyId, sceneId, gmEmail, showId]);
 
   useEffect(() => {
     if (!isGM) return;
-    if (!storyId || !sceneId) return;
-    const lobbyByCharId = new Map<number, LobbyParticipant>();
-    (lobbyParticipantsRef.current || []).forEach((p) => {
-      if (typeof p.character_id === "number" && !p.is_gm) lobbyByCharId.set(p.character_id, p);
-    });
     let cancelled = false;
-    (async () => {
-      try {
-        const sc = await api<SceneCharactersOut>(`/api/gm/stories/${storyId}/scenes/${sceneId}/characters`);
-        const ids = Array.isArray(sc?.character_ids) ? sc.character_ids : [];
-        const list = await api<GMCharacter[]>("/api/gm/characters");
-        const gmMap = new Map<number, GMCharacter>();
-        (Array.isArray(list) ? list : []).forEach((c) => gmMap.set(c.id, c));
-        const next: Actor[] = ids
-          .map((id) => {
-            const gmChar = gmMap.get(id);
-            if (gmChar) {
-              return {
-                id: gmChar.id,
-                name: gmChar.name,
-                side: gmEmail && gmChar.owner_email === gmEmail ? ("NPC" as const) : ("PC" as const),
-                imageUrl: portraitUrl(gmChar) ?? null,
-              };
-            }
-            const lobby = lobbyByCharId.get(id);
-            if (lobby) {
-              return {
-                id,
-                name: lobby.character_name ?? "Personagem",
-                side: "PC" as const,
-                imageUrl: lobby.character_image_url ?? null,
-              };
-            }
-            return null;
-          })
-          .filter((a): a is Actor => a != null);
-        if (!cancelled) setActors(next);
-      } catch {
-        if (!cancelled) setActors([]);
-      }
-    })();
+    fetchCharactersForGM();
+    const intervalMs = 2500;
+    const t = setInterval(() => {
+      if (cancelled) return;
+      fetchCharactersForGM();
+    }, intervalMs);
     return () => {
       cancelled = true;
+      clearInterval(t);
     };
-  }, [isGM, storyId, sceneId, gmEmail, lobbyCharacterIdsKey]);
+  }, [isGM, fetchCharactersForGM]);
 
   useEffect(() => {
-    // inicializa posições default para atores novos (GM e PLAYER)
-    const all = actors;
-    if (all.length === 0) return;
-    setPosByActor((prev) => {
+    if (characters.length === 0) return;
+    setPosByCharId((prev) => {
+      const defaults = defaultPositionsForCharacters(characters);
       const next = { ...prev };
-      const npc = all.filter((a) => a.side === "NPC");
-      const pc = all.filter((a) => a.side === "PC");
-      const npcXs = computePositions(npc.length, "NPC");
-      const pcXs = computePositions(pc.length, "PC");
-      npc.forEach((a, idx) => {
-        if (next[a.id] == null) next[a.id] = npcXs[idx] ?? 20;
-      });
-      pc.forEach((a, idx) => {
-        if (next[a.id] == null) next[a.id] = pcXs[idx] ?? 80;
-      });
+      for (const c of characters) {
+        if (next[c.id] == null) next[c.id] = defaults[c.id] ?? 50;
+      }
       return next;
     });
-  }, [actors]);
+  }, [characters]);
 
   useEffect(() => {
     if (isGM) return;
     if (!room) return;
     const decoder = new TextDecoder();
-    const handler = (payload: Uint8Array, _p: any, _k: any, topic?: string) => {
+    const handler = (payload: Uint8Array, _p: unknown, _k: unknown, topic?: string) => {
       if (topic && topic !== "espetaculo") return;
-      let msg: any;
+      let msg: unknown;
       try {
         msg = JSON.parse(decoder.decode(payload));
       } catch {
         return;
       }
       if (!msg || typeof msg !== "object") return;
-      if (msg.type === "show/actor/visible") {
+
+      if ((msg as { type?: string }).type === "show/sync") {
+        const m = msg as SyncMsg;
+        if (m.showId !== showId || !Array.isArray(m.characters)) return;
+        const list: CharacterOnStage[] = [];
+        const visible: Record<number, boolean> = {};
+        const pos: Record<number, number> = {};
+        for (const raw of m.characters) {
+          if (typeof raw.id !== "number" || !Number.isFinite(raw.id)) continue;
+          list.push({
+            id: raw.id,
+            name: typeof raw.name === "string" ? raw.name : "Personagem",
+            imageUrl: typeof raw.imageUrl === "string" ? raw.imageUrl : null,
+            isNPC: raw.side === "NPC",
+          });
+          visible[raw.id] = !!raw.visible;
+          if (typeof raw.xPct === "number" && Number.isFinite(raw.xPct)) pos[raw.id] = raw.xPct;
+        }
+        setCharacters(list);
+        setVisibleForPlayer(visible);
+        setPosByCharId((prev) => ({ ...prev, ...pos }));
+        return;
+      }
+
+      if ((msg as { type?: string }).type === "show/actor/visible") {
         const m = msg as VisibilityMsg;
         if (m.showId !== showId) return;
-        const actor = m.actor;
-        if (!actor || typeof actor.id !== "number") return;
+        const raw = m.actor;
+        if (!raw || (typeof raw.id !== "number" && typeof raw.id !== "string")) return;
+        const id = Number(raw.id);
+        if (!Number.isFinite(id) || id < 0) return;
+        const character: CharacterOnStage = {
+          id,
+          name: typeof raw.name === "string" ? raw.name : "Personagem",
+          imageUrl: typeof raw.imageUrl === "string" ? raw.imageUrl : null,
+          isNPC: raw.side === "NPC",
+        };
 
-        setActors((prev) => {
-          const exists = prev.some((a) => a.id === actor.id);
-          if (exists) return prev.map((a) => (a.id === actor.id ? { ...a, ...actor } : a));
-          return [...prev, actor];
+        setCharacters((prev) => {
+          const without = prev.filter((c) => c.id !== id);
+          const next = [...without, character];
+          const byId = new Map(next.map((c) => [c.id, c]));
+          return [...byId.values()];
         });
-        if (typeof actor.xPct === "number" && Number.isFinite(actor.xPct)) {
-          setPosByActor((prev) => ({ ...prev, [actor.id]: actor.xPct! }));
+        if (typeof raw.xPct === "number" && Number.isFinite(raw.xPct)) {
+          setPosByCharId((prev) => ({ ...prev, [id]: raw.xPct }));
         }
 
-        setVisibleForPlayer((prev) => ({ ...prev, [actor.id]: !!m.visible }));
-        const side = actor.side;
-        const dir =
-          side === "NPC"
-            ? m.visible
-              ? ("in-left" as const)
-              : ("out-left" as const)
-            : m.visible
-              ? ("in-right" as const)
-              : ("out-right" as const);
-        setAnimByActor((prev) => ({ ...prev, [actor.id]: dir }));
+        setVisibleForPlayer((prev) => ({ ...prev, [id]: !!m.visible }));
+        const dir = m.visible
+          ? (character.isNPC ? "in-left" : "in-right")
+          : (character.isNPC ? "out-left" : "out-right");
+        setAnimByCharId((prev) => ({ ...prev, [id]: dir }));
+        const OUT_ANIM_MS = 280;
         window.setTimeout(() => {
-          setAnimByActor((prev) => ({ ...prev, [actor.id]: null }));
-        }, 600);
-      } else if (msg.type === "show/actor/pos") {
+          setAnimByCharId((prev) => ({ ...prev, [id]: null }));
+          if (!m.visible) {
+            setCharacters((prev) => prev.filter((c) => c.id !== id));
+          }
+        }, OUT_ANIM_MS);
+      } else if ((msg as { type?: string }).type === "show/actor/pos") {
         const m = msg as PosMsg;
         if (m.showId !== showId) return;
         if (typeof m.actorId !== "number" || typeof m.xPct !== "number") return;
         if (!Number.isFinite(m.xPct)) return;
-        setPosByActor((prev) => ({ ...prev, [m.actorId]: m.xPct }));
-      } else if (msg.type === "show/actor/selection" || msg.type === "show/npc/selection") {
+        setPosByCharId((prev) => ({ ...prev, [m.actorId]: m.xPct }));
+      } else if (
+        (msg as { type?: string }).type === "show/actor/selection" ||
+        (msg as { type?: string }).type === "show/npc/selection"
+      ) {
         const m = msg as SelectionMsg & { selectedNpcIds?: number[] };
         if (m.showId !== showId) return;
-        const ids = Array.isArray((m as any).selectedIds)
-          ? (m as any).selectedIds.filter((x: unknown) => typeof x === "number")
+        const ids = Array.isArray((m as { selectedIds?: number[] }).selectedIds)
+          ? (m as { selectedIds: number[] }).selectedIds.filter((x: unknown) => typeof x === "number")
           : Array.isArray(m.selectedNpcIds)
             ? m.selectedNpcIds.filter((x) => typeof x === "number")
             : [];
-        setSelectedActorIdsRemote(ids);
+        setSelectedCharacterIdsRemote(ids);
       }
     };
-    room.on(RoomEvent.DataReceived, handler as any);
+    room.on(RoomEvent.DataReceived, handler as (payload: Uint8Array, participant?: unknown, kind?: unknown, topic?: string) => void);
     return () => {
-      room.off(RoomEvent.DataReceived, handler as any);
+      room.off(RoomEvent.DataReceived, handler as (payload: Uint8Array, participant?: unknown, kind?: unknown, topic?: string) => void);
     };
   }, [room, isGM, showId]);
 
-  const npcActors = useMemo(() => actors.filter((a) => a.side === "NPC"), [actors]);
-  const pcActors = useMemo(() => actors.filter((a) => a.side === "PC"), [actors]);
+  const charactersDeduped = useMemo(() => {
+    const byId = new Map<number, CharacterOnStage>();
+    for (const c of characters) byId.set(c.id, c);
+    return [...byId.values()];
+  }, [characters]);
+
+  useEffect(() => {
+    if (!isGM || phase !== "stage" || !room || showId === syncSentForShowIdRef.current) return;
+    const t = window.setTimeout(() => {
+      syncSentForShowIdRef.current = showId;
+      const payload: SyncMsg = {
+        type: "show/sync",
+        showId,
+        characters: charactersDeduped.map((c) => ({
+          id: c.id,
+          name: c.name,
+          side: c.isNPC ? "NPC" : "PC",
+          imageUrl: c.imageUrl,
+          xPct: posByCharId[c.id],
+          visible: !!visibleForPlayer[c.id],
+        })),
+      };
+      try {
+        room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), {
+          reliable: true,
+          topic: "espetaculo",
+        });
+      } catch {}
+    }, 600);
+    return () => clearTimeout(t);
+  }, [isGM, phase, room, showId, charactersDeduped, visibleForPlayer, posByCharId]);
 
   useEffect(() => {
     if (!isGM) return;
@@ -305,24 +366,21 @@ export function StageView({
       if (!r) return;
       const w = window.innerWidth || 1;
       const dxPct = ((e.clientX - r.startClientX) / w) * 100;
-      setPosByActor((prev) => {
-        const current = prev[r.actorId] ?? r.startXPct;
-        const actor = actors.find((a) => a.id === r.actorId);
-        if (!actor) return prev;
+      setPosByCharId((prev) => {
+        const current = prev[r.characterId] ?? r.startXPct;
         const next = r.startXPct + dxPct;
         const clamped = clampPositionWhileDragging(next);
         if (Math.abs(current - clamped) < 0.01) return prev;
-        return { ...prev, [r.actorId]: clamped };
+        return { ...prev, [r.characterId]: clamped };
       });
-
       if (dragRafRef.current == null) {
         dragRafRef.current = window.requestAnimationFrame(() => {
           dragRafRef.current = null;
-          const actorId = dragRef.current?.actorId;
-          if (!actorId) return;
-          const xPct = posRef.current[actorId];
+          const characterId = dragRef.current?.characterId;
+          if (!characterId) return;
+          const xPct = posRef.current[characterId];
           if (typeof xPct !== "number") return;
-          const msg: PosMsg = { type: "show/actor/pos", showId, actorId, xPct };
+          const msg: PosMsg = { type: "show/actor/pos", showId, actorId: characterId, xPct };
           try {
             room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
               reliable: false,
@@ -335,10 +393,10 @@ export function StageView({
     const onUp = () => {
       const r = dragRef.current;
       if (!r) return;
-      let xPct = posRef.current[r.actorId];
+      let xPct = posRef.current[r.characterId];
       if (typeof xPct !== "number") xPct = r.startXPct;
       xPct = snapToColumn(xPct);
-      setPosByActor((prev) => ({ ...prev, [r.actorId]: xPct }));
+      setPosByCharId((prev) => ({ ...prev, [r.characterId]: xPct }));
       const didMove = Math.abs(xPct - r.startXPct) > 1;
       dragRef.current = null;
       if (didMove) {
@@ -347,7 +405,7 @@ export function StageView({
           draggedRecentlyRef.current = false;
         }, 180);
       }
-      const msg: PosMsg = { type: "show/actor/pos", showId, actorId: r.actorId, xPct };
+      const msg: PosMsg = { type: "show/actor/pos", showId, actorId: r.characterId, xPct };
       try {
         room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
           reliable: true,
@@ -363,12 +421,12 @@ export function StageView({
       if (dragRafRef.current != null) window.cancelAnimationFrame(dragRafRef.current);
       dragRafRef.current = null;
     };
-  }, [isGM, actors, room, showId]);
+  }, [isGM, room, showId]);
 
-  const selectedActorSet = useMemo(() => {
-    const ids = (isGM ? selectedActorIdsLocal : selectedActorIdsRemote) || [];
-    return new Set<number>(ids);
-  }, [isGM, selectedActorIdsLocal, selectedActorIdsRemote]);
+  const selectedCharacterSet = useMemo(() => {
+    const ids = isGM ? selectedCharacterIdsLocal : selectedCharacterIdsRemote;
+    return new Set<number>(ids ?? []);
+  }, [isGM, selectedCharacterIdsLocal, selectedCharacterIdsRemote]);
 
   const gmSpeaking = speakingByIdentity["gm"] ?? false;
   const identityByCharacterId = useMemo(() => {
@@ -399,20 +457,23 @@ export function StageView({
 
       <div className="stage-view__actors" aria-label="Palco">
         {(isGM ? phase === "stage" : true) &&
-          npcActors.map((a) => {
-            const anim = animByActor[a.id];
-            const visible = isGM ? true : !!visibleForPlayer[a.id];
-            const shouldRender = isGM ? true : visible || (anim && anim.startsWith("out"));
+          charactersDeduped.map((c) => {
+            const anim = animByCharId[c.id];
+            const visible = isGM ? true : !!visibleForPlayer[c.id];
+            const shouldRender = isGM ? true : visible || (anim != null && anim.startsWith("out"));
             if (!shouldRender) return null;
-            const x = posByActor[a.id] ?? 20;
-            const selected = selectedActorSet.has(a.id);
-            const speaking = selected && gmSpeaking;
+            const x = posByCharId[c.id] ?? (c.isNPC ? 20 : 80);
+            const selected = selectedCharacterSet.has(c.id);
+            const identity = identityByCharacterId.get(c.id);
+            const speaking =
+              (selected && gmSpeaking) || (!c.isNPC && identity != null && (speakingByIdentity[identity] ?? false));
             const lookRight = x < 50;
-            const visibleToPlayer = !!visibleForPlayer[a.id];
+            const visibleToPlayer = !!visibleForPlayer[c.id];
+
             return (
               <div
-                key={a.id}
-                className={`stage-actor stage-actor--npc ${anim ? `stage-actor--${anim}` : ""} ${
+                key={c.id}
+                className={`stage-actor ${c.isNPC ? "stage-actor--npc" : "stage-actor--pc"} ${anim ? `stage-actor--${anim}` : ""} ${
                   lookRight ? "stage-actor--look-right" : "stage-actor--look-left"
                 } ${isGM && selected ? "stage-actor--selected" : ""} ${speaking ? "stage-actor--speaking" : "stage-actor--silent"}`}
                 style={{ left: `${x}%` }}
@@ -420,15 +481,15 @@ export function StageView({
                   if (!isGM) return;
                   if ((e.target as HTMLElement).closest(".stage-actor__eye-btn, .stage-actor__select-btn")) return;
                   e.preventDefault();
-                  dragRef.current = { actorId: a.id, startClientX: e.clientX, startXPct: x };
+                  dragRef.current = { characterId: c.id, startClientX: e.clientX, startXPct: x };
                 }}
                 onClick={(e) => {
                   if (!isGM) return;
                   if ((e.target as HTMLElement).closest(".stage-actor__eye-btn, .stage-actor__select-btn")) return;
                   if (draggedRecentlyRef.current) return;
-                  setSelectedActorIdsLocal((prev) => {
-                    const has = prev.includes(a.id);
-                    const next = has ? prev.filter((id) => id !== a.id) : [...prev, a.id];
+                  setSelectedCharacterIdsLocal((prev) => {
+                    const has = prev.includes(c.id);
+                    const next = has ? prev.filter((id) => id !== c.id) : [...prev, c.id];
                     const msg: SelectionMsg = { type: "show/actor/selection", showId, selectedIds: next };
                     try {
                       room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
@@ -442,9 +503,12 @@ export function StageView({
               >
                 <img
                   className="stage-actor__img"
-                  src={a.imageUrl || "/assets/jogador_default.png"}
+                  src={c.imageUrl || "/assets/jogador_default.png"}
                   alt=""
                   draggable={false}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = "/assets/jogador_default.png";
+                  }}
                 />
                 {isGM && (
                   <>
@@ -453,9 +517,9 @@ export function StageView({
                       className={"stage-actor__select-btn" + (selected ? " is-selected" : "")}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedActorIdsLocal((prev) => {
-                          const has = prev.includes(a.id);
-                          const next = has ? prev.filter((id) => id !== a.id) : [...prev, a.id];
+                        setSelectedCharacterIdsLocal((prev) => {
+                          const has = prev.includes(c.id);
+                          const next = has ? prev.filter((id) => id !== c.id) : [...prev, c.id];
                           const msg: SelectionMsg = { type: "show/actor/selection", showId, selectedIds: next };
                           try {
                             room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
@@ -467,7 +531,7 @@ export function StageView({
                         });
                       }}
                       onMouseDown={(e) => e.stopPropagation()}
-                      title={selected ? "Desselecionar (não fala por você)" : "Selecionar (fala por você quando você falar)"}
+                      title={selected ? "Desselecionar" : "Selecionar (fala por este personagem quando você falar)"}
                       aria-label={selected ? "Desselecionar" : "Selecionar para falar por este personagem"}
                     >
                       <SpeakForIcon />
@@ -478,12 +542,18 @@ export function StageView({
                       onClick={(e) => {
                         e.stopPropagation();
                         const nextVisible = !visibleToPlayer;
-                        setVisibleForPlayer((prev) => ({ ...prev, [a.id]: nextVisible }));
-                        const xPct = posByActor[a.id];
+                        setVisibleForPlayer((prev) => ({ ...prev, [c.id]: nextVisible }));
+                        const xPct = posByCharId[c.id];
                         const msg: VisibilityMsg = {
                           type: "show/actor/visible",
                           showId,
-                          actor: { id: a.id, name: a.name, side: a.side, imageUrl: a.imageUrl, xPct },
+                          actor: {
+                            id: c.id,
+                            name: c.name,
+                            side: c.isNPC ? "NPC" : "PC",
+                            imageUrl: c.imageUrl,
+                            xPct,
+                          },
                           visible: nextVisible,
                         };
                         try {
@@ -499,113 +569,6 @@ export function StageView({
                     >
                       {visibleToPlayer ? <EyeOpenIcon /> : <EyeClosedIcon />}
                     </button>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        {(isGM ? phase === "stage" : true) &&
-          pcActors.map((a) => {
-            const anim = animByActor[a.id];
-            const visible = isGM ? true : !!visibleForPlayer[a.id];
-            const shouldRender = isGM ? true : visible || (anim && anim.startsWith("out"));
-            if (!shouldRender) return null;
-            const x = posByActor[a.id] ?? 80;
-            const identity = identityByCharacterId.get(a.id);
-            const selected = selectedActorSet.has(a.id);
-            const speaking = (selected && gmSpeaking) || (identity ? (speakingByIdentity[identity] ?? false) : false);
-            const lookRight = x < 50;
-            const visibleToPlayer = !!visibleForPlayer[a.id];
-            return (
-              <div
-                key={a.id}
-                className={`stage-actor stage-actor--pc ${anim ? `stage-actor--${anim}` : ""} ${
-                  lookRight ? "stage-actor--look-right" : "stage-actor--look-left"
-                } ${isGM && selected ? "stage-actor--selected" : ""} ${speaking ? "stage-actor--speaking" : "stage-actor--silent"}`}
-                style={{ left: `${x}%` }}
-                onMouseDown={(e) => {
-                  if (!isGM) return;
-                  if ((e.target as HTMLElement).closest(".stage-actor__eye-btn, .stage-actor__select-btn")) return;
-                  e.preventDefault();
-                  dragRef.current = { actorId: a.id, startClientX: e.clientX, startXPct: x };
-                }}
-                onClick={(e) => {
-                  if (!isGM) return;
-                  if ((e.target as HTMLElement).closest(".stage-actor__eye-btn, .stage-actor__select-btn")) return;
-                  if (draggedRecentlyRef.current) return;
-                  setSelectedActorIdsLocal((prev) => {
-                    const has = prev.includes(a.id);
-                    const next = has ? prev.filter((id) => id !== a.id) : [...prev, a.id];
-                    const msg: SelectionMsg = { type: "show/actor/selection", showId, selectedIds: next };
-                    try {
-                      room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
-                        reliable: true,
-                        topic: "espetaculo",
-                      });
-                    } catch {}
-                    return next;
-                  });
-                }}
-              >
-                <img
-                  className="stage-actor__img"
-                  src={a.imageUrl || "/assets/jogador_default.png"}
-                  alt=""
-                  draggable={false}
-                />
-                {isGM && (
-                  <>
-                    <button
-                      type="button"
-                      className={"stage-actor__select-btn" + (selected ? " is-selected" : "")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedActorIdsLocal((prev) => {
-                          const has = prev.includes(a.id);
-                          const next = has ? prev.filter((id) => id !== a.id) : [...prev, a.id];
-                          const msg: SelectionMsg = { type: "show/actor/selection", showId, selectedIds: next };
-                          try {
-                            room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
-                              reliable: true,
-                              topic: "espetaculo",
-                            });
-                          } catch {}
-                          return next;
-                        });
-                      }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      title={selected ? "Desselecionar (não fala por este jogador)" : "Selecionar para falar por este jogador (ex.: jogador faltando)"}
-                      aria-label={selected ? "Desselecionar" : "Selecionar para falar por este personagem"}
-                    >
-                      <SpeakForIcon />
-                    </button>
-                    <button
-                      type="button"
-                      className="stage-actor__eye-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const nextVisible = !visibleToPlayer;
-                      setVisibleForPlayer((prev) => ({ ...prev, [a.id]: nextVisible }));
-                      const xPct = posByActor[a.id];
-                      const msg: VisibilityMsg = {
-                        type: "show/actor/visible",
-                        showId,
-                        actor: { id: a.id, name: a.name, side: a.side, imageUrl: a.imageUrl, xPct },
-                        visible: nextVisible,
-                      };
-                      try {
-                        room?.localParticipant.publishData(
-                          new TextEncoder().encode(JSON.stringify(msg)),
-                          { reliable: true, topic: "espetaculo" }
-                        );
-                      } catch {}
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    title={visibleToPlayer ? "Ocultar do jogador" : "Tornar visível ao jogador"}
-                    aria-label={visibleToPlayer ? "Ocultar do jogador" : "Tornar visível ao jogador"}
-                  >
-                    {visibleToPlayer ? <EyeOpenIcon /> : <EyeClosedIcon />}
-                  </button>
                   </>
                 )}
               </div>

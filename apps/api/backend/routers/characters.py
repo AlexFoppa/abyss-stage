@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session
 from sqlalchemy import text
 from urllib.parse import quote
-from typing import Optional
+from typing import Literal, Optional
 from apps.api.backend.db import get_session
 from apps.api.backend.routers.auth import get_current_user, require_gm
 from apps.api.backend.models.user import User, Role
@@ -30,6 +30,7 @@ class CharacterCreateIn(BaseModel):
 
 class CharacterOut(BaseModel):
     id: int
+    kind: Literal["PC", "NPC"]
     name: str
     concept: str
     system: str                  # base: sempre "simplificado"
@@ -40,9 +41,8 @@ class CharacterOut(BaseModel):
     default_image_rev: Optional[str] = None
 
 
-
 class GMCharacterOut(CharacterOut):
-    owner_email: str
+    owner_email: Optional[str] = None  # null para NPC
 
 class CharacterImageOut(BaseModel):
     slot: int
@@ -595,7 +595,7 @@ def list_my_characters(
     rows = session.exec(
         text(
             """
-            SELECT id, name, concept, system, backstory, notes
+            SELECT id, kind, name, concept, system, backstory, notes
             FROM character
             WHERE kind='PC' AND owner_user_id = :uid
             ORDER BY id DESC
@@ -611,17 +611,19 @@ def list_my_characters(
     out: list[CharacterOut] = []
     for r in rows:
         cid = r[0]
-        base_system = (r[3] or "simplificado").strip() or "simplificado"
+        kind = (r[1] or "PC").strip() or "PC"
+        base_system = (r[4] or "simplificado").strip() or "simplificado"
         img = img_map.get(cid)
 
         out.append(
             CharacterOut(
                 id=cid,
-                name=r[1],
-                concept=r[2],
+                kind=kind,
+                name=r[2],
+                concept=r[3],
                 system=base_system,
-                backstory=r[4],
-                notes=r[5],
+                backstory=r[5],
+                notes=r[6],
                 systems=(sys_map.get(cid) or [base_system]),
                 default_image_url=img[0] if img else None,
                 default_image_rev=img[1] if img else None,
@@ -634,13 +636,14 @@ def list_all_characters(
     gm: User = Depends(require_gm),
     session: Session = Depends(get_session),
 ):
+    # Todos os personagens (PCs; no futuro NPCs): sem filtro por owner
     rows = session.exec(
         text(
             """
-            SELECT c.id, c.name, c.concept, c.system, c.backstory, c.notes, u.email
+            SELECT c.id, c.kind, c.name, c.concept, c.system, c.backstory, c.notes, u.email
             FROM character c
-            JOIN "user" u ON u.id = c.owner_user_id
-            WHERE c.kind='PC'
+            LEFT JOIN "user" u ON u.id = c.owner_user_id
+            WHERE c.kind = 'PC'
             ORDER BY c.id DESC
             """
         )
@@ -653,18 +656,20 @@ def list_all_characters(
     out: list[GMCharacterOut] = []
     for r in rows:
         cid = r[0]
-        base_system = (r[3] or "simplificado").strip() or "simplificado"
+        kind = (r[1] or "PC").strip() or "PC"
+        base_system = (r[4] or "simplificado").strip() or "simplificado"
         img = img_map.get(cid)
         out.append(
             GMCharacterOut(
                 id=cid,
-                name=r[1],
-                concept=r[2],
+                kind=kind,
+                name=r[2],
+                concept=r[3],
                 system=base_system,
-                backstory=r[4],
-                notes=r[5],
+                backstory=r[5],
+                notes=r[6],
                 systems=(sys_map.get(cid) or [base_system]),
-                owner_email=r[6],
+                owner_email=r[7] if r[7] is not None else None,
                 default_image_url=img[0] if img else None,
                 default_image_rev=img[1] if img else None,
             )
@@ -718,7 +723,7 @@ def create_any_character(
     row = session.exec(
         text(
             """
-            SELECT id, name, concept, system, backstory, notes
+            SELECT id, kind, name, concept, system, backstory, notes
             FROM character WHERE id = :cid
             """
         ),
@@ -729,11 +734,12 @@ def create_any_character(
     return {
         "character": CharacterOut(
             id=row[0],
-            name=row[1],
-            concept=row[2],
-            system=row[3],
-            backstory=row[4],
-            notes=row[5],
+            kind=(row[1] or "PC").strip() or "PC",
+            name=row[2],
+            concept=row[3],
+            system=row[4],
+            backstory=row[5],
+            notes=row[6],
             systems=sys_map.get(character_id, ["simplificado"]),
         )
     }
@@ -791,7 +797,7 @@ def update_any_character(
     row2 = session.exec(
         text(
             """
-            SELECT id, name, concept, system, backstory, notes
+            SELECT id, kind, name, concept, system, backstory, notes
             FROM character
             WHERE id = :cid
             """
@@ -802,11 +808,12 @@ def update_any_character(
     sys_map = _load_systems_map(session, [character_id])
     return CharacterOut(
         id=row2[0],
-        name=row2[1],
-        concept=row2[2],
-        system=row2[3],
-        backstory=row2[4],
-        notes=row2[5],
+        kind=(row2[1] or "PC").strip() or "PC",
+        name=row2[2],
+        concept=row2[3],
+        system=row2[4],
+        backstory=row2[5],
+        notes=row2[6],
         systems=sys_map.get(character_id, ["simplificado"]),
     )
 
@@ -949,7 +956,7 @@ def create_my_character(
     row = session.exec(
         text(
             """
-            SELECT id, name, concept, system, backstory, notes
+            SELECT id, kind, name, concept, system, backstory, notes
             FROM character WHERE id = :cid
             """
         ),
@@ -960,11 +967,12 @@ def create_my_character(
     return {
         "character": CharacterOut(
             id=row[0],
-            name=row[1],
-            concept=row[2],
-            system=row[3],
-            backstory=row[4],
-            notes=row[5],
+            kind=(row[1] or "PC").strip() or "PC",
+            name=row[2],
+            concept=row[3],
+            system=row[4],
+            backstory=row[5],
+            notes=row[6],
             systems=sys_map.get(character_id, ["simplificado"]),
         )
     }
@@ -978,7 +986,7 @@ def get_my_character(
     row = session.exec(
         text(
             """
-            SELECT id, name, concept, system, backstory, notes
+            SELECT id, kind, name, concept, system, backstory, notes
             FROM character
             WHERE id = :cid AND kind='PC' AND owner_user_id = :uid
             """
@@ -991,11 +999,12 @@ def get_my_character(
     sys_map = _load_systems_map(session, [character_id])
     return CharacterOut(
         id=row[0],
-        name=row[1],
-        concept=row[2],
-        system=row[3],
-        backstory=row[4],
-        notes=row[5],
+        kind=(row[1] or "PC").strip() or "PC",
+        name=row[2],
+        concept=row[3],
+        system=row[4],
+        backstory=row[5],
+        notes=row[6],
         systems=sys_map.get(character_id, ["simplificado"]),
     )
 
@@ -1051,7 +1060,7 @@ def update_my_character(
     row2 = session.exec(
         text(
             """
-            SELECT id, name, concept, system, backstory, notes
+            SELECT id, kind, name, concept, system, backstory, notes
             FROM character
             WHERE id = :cid
             """
@@ -1062,11 +1071,12 @@ def update_my_character(
     sys_map = _load_systems_map(session, [character_id])
     return CharacterOut(
         id=row2[0],
-        name=row2[1],
-        concept=row2[2],
-        system=row2[3],
-        backstory=row2[4],
-        notes=row2[5],
+        kind=(row2[1] or "PC").strip() or "PC",
+        name=row2[2],
+        concept=row2[3],
+        system=row2[4],
+        backstory=row2[5],
+        notes=row2[6],
         systems=sys_map.get(character_id, ["simplificado"]),
     )
 

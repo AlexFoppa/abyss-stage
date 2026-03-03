@@ -1,17 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-
-type Character = {
-  id: number;
-  name: string;
-  concept: string;
-  system: string;
-  backstory: string;
-  notes: string;
-  systems?: string[];
-  default_image_url?: string | null;
-  default_image_rev?: string | null;
-};
+import type { Character } from "../types/character";
+import { getAvatarUrl } from "../utils/avatar";
 
 export function SelectCharacterScreen({
   onBack,
@@ -75,21 +65,6 @@ export function SelectCharacterScreen({
     return list.map(systemLabel).join(", ");
   }
 
-  function portraitSrc(c: Character): string {
-    const fallback = "/assets/jogador_default.png";
-
-    if (!c.default_image_url) {
-      return fallback;
-    }
-
-    if (c.default_image_rev) {
-      return `${c.default_image_url}?rev=${encodeURIComponent(c.default_image_rev)}`;
-    }
-
-    return c.default_image_url;
-  }
-
-
   return (
     <div className="select-scene">
       <div className="select-grid">
@@ -139,7 +114,7 @@ export function SelectCharacterScreen({
             <div className="book">
               <div className="book-page">
                 <div className="book-portrait">
-                  <img className="book-portrait__img" src={portraitSrc(active)} alt="" />
+                  <img className="book-portrait__img" src={getAvatarUrl(active ?? undefined)} alt="" />
                 </div>
 
                 <div className="book-content">

@@ -35,6 +35,7 @@ class LobbyParticipantOut(BaseModel):
     character_id: Optional[int]
     character_name: Optional[str]
     character_image_url: Optional[str]
+    user_email: Optional[str] = None
 
 
 class LobbyOut(BaseModel):
@@ -106,6 +107,7 @@ def lobby_me(
         "character_id": character_id,
         "character_name": character_name,
         "character_image_url": character_image_url,
+        "user_email": getattr(current_user, "email", None) or None,
         "updated_at": now,
     }
     return {}
@@ -153,12 +155,14 @@ async def get_lobby():
             character_id: Optional[int] = None
             character_name: Optional[str] = None
             character_image_url: Optional[str] = None
+            user_email: Optional[str] = None
             for data in _LOBBY_STORE.values():
                 if data.get("identity") == identity:
                     user_id = data["user_id"]
                     character_id = data.get("character_id")
                     character_name = data.get("character_name")
                     character_image_url = data.get("character_image_url")
+                    user_email = data.get("user_email")
                     break
             if not is_gm and identity.startswith("player-"):
                 try:
@@ -173,6 +177,7 @@ async def get_lobby():
                     character_id=character_id,
                     character_name=character_name,
                     character_image_url=character_image_url,
+                    user_email=user_email,
                 )
             )
         # Ordenar: gm primeiro, depois por identity
@@ -194,6 +199,7 @@ async def get_lobby():
             character_id=data.get("character_id"),
             character_name=data.get("character_name"),
             character_image_url=data.get("character_image_url"),
+            user_email=data.get("user_email"),
         )
         for data in _LOBBY_STORE.values()
     ]

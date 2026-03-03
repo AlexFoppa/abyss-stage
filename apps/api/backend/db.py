@@ -9,6 +9,8 @@ from apps.api.backend.models.scene import Scene  # noqa: F401 - registra tabela 
 from apps.api.backend.models.scenario import Scenario  # noqa: F401 - registra tabela para create_all
 from apps.api.backend.models.scene_character import SceneCharacter  # noqa: F401 - registra tabela para create_all
 from apps.api.backend.models.story_character import StoryCharacter  # noqa: F401 - registra tabela para create_all
+from apps.api.backend.models.character import Character  # noqa: F401 - registra tabela para create_all
+from apps.api.backend.models.character_image import CharacterImage  # noqa: F401 - registra tabela para create_all
 
 # arquivo SQLite local (na raiz do repo). Pode mudar depois.
 DATABASE_URL = "sqlite:///./abyss.db"

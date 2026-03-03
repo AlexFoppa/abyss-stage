@@ -3,6 +3,7 @@ import { api } from "../api";
 import { scenarioCropFromScenario, scenarioImageUrl as getScenarioImageUrl } from "../scenarioCrop";
 import { useAuth } from "../auth/AuthProvider";
 import { SceneStagePreview } from "./SceneStagePreview";
+import type { GMCharacter } from "../types/character";
 import "../styles/screens/selectCharacter.css";
 import "../styles/screens/story-editor.css";
 
@@ -17,14 +18,6 @@ type Scene = {
   scenario_id: string | null;
 };
 
-type GMCharacter = {
-  id: number;
-  name: string;
-  owner_email?: string;
-  default_image_url?: string | null;
-  default_image_rev?: string | null;
-};
-
 type ScenarioOut = {
   id: string;
   image_storage_key: string | null;
@@ -34,12 +27,6 @@ type ScenarioOut = {
   crop_height?: number | null;
 };
 type SceneCharactersOut = { character_ids: number[] };
-
-function characterPortraitUrl(c: GMCharacter): string {
-  if (!c.default_image_url) return "/assets/jogador_default.png";
-  if (c.default_image_rev) return `${c.default_image_url}?rev=${encodeURIComponent(c.default_image_rev)}`;
-  return c.default_image_url;
-}
 
 export function EspetaculoScreen({
   onBack,

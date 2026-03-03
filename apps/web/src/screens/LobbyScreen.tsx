@@ -139,6 +139,8 @@ export type LobbyParticipant = {
   character_id: number | null;
   character_name: string | null;
   character_image_url: string | null;
+  /** E-mail do usuário (nome no lobby); preenchido pelo backend ou pelo fallback. */
+  user_email?: string | null;
 };
 
 export function LobbyScreen({
@@ -422,9 +424,13 @@ export function LobbyScreen({
     });
   }, [connected]);
 
-  const characterNames = lobbyParticipants
-    .filter((p) => !p.is_gm && p.character_name)
-    .map((p) => p.character_name as string);
+  const posterLabels = lobbyParticipants
+    .filter((p) => !p.is_gm)
+    .map((p) =>
+      p.character_name != null && p.character_name.trim() !== ""
+        ? p.character_name
+        : (p.user_email ? `${p.user_email} (se arrumando)` : "(se arrumando)")
+    );
 
   const audioWidget = createPortal(
     <div
@@ -630,10 +636,10 @@ export function LobbyScreen({
 
   return (
     <div className="lobby-wrap">
-      {characterNames.length > 0 ? (
-        <div className="lobby-wall-poster" aria-label="Poster dos personagens no lobby">
+      {posterLabels.length > 0 ? (
+        <div className="lobby-wall-poster" aria-label="Poster dos jogadores no lobby">
           <div className="lobby-wall-poster__kicker">Estrelando:</div>
-          <div className="lobby-wall-poster__name">{characterNames.join(", ")}</div>
+          <div className="lobby-wall-poster__name">{posterLabels.join(", ")}</div>
         </div>
       ) : null}
 

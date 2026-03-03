@@ -1,18 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-
-type GMCharacter = {
-  id: number;
-  name: string;
-  concept: string;
-  system: string;
-  backstory: string;
-  notes: string;
-  systems?: string[];
-  owner_email: string;
-  default_image_url?: string | null;
-  default_image_rev?: string | null;
-};
+import type { GMCharacter } from "../types/character";
+import { getAvatarUrl } from "../utils/avatar";
 
 export function GMCharactersScreen({
   onBack,
@@ -102,19 +91,6 @@ export function GMCharactersScreen({
     return list.map(systemLabel).join(", ");
   }
 
-  function portraitSrc(c: any): string {
-    const fallback = "/assets/jogador_default.png";
-
-    const raw =
-      c?.default_image_url ??
-      c?.portrait_url ??
-      c?.portraitUrl ??
-      null;
-
-    if (!raw) return fallback;
-    return raw;
-  }
-
   return (
     <div className="select-scene">
       <div className="select-grid">
@@ -178,7 +154,7 @@ export function GMCharactersScreen({
             <div className="book">
               <div className="book-page">
                 <div className="book-portrait">
-                  <img className="book-portrait__img" src={portraitSrc(active)} alt="" />
+                  <img className="book-portrait__img" src={getAvatarUrl(active ?? undefined)} alt="" />
                 </div>
 
                 <div className="book-content">

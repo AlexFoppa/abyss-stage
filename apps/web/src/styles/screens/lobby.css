@@ -434,13 +434,13 @@
 .lobby-actors{
   position: absolute;
   bottom: -10vh;
-  left: 32%;
+  left: 20%;
   right: 6vw;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2vw;
   z-index: 2;
   pointer-events: none;
 }
@@ -497,14 +497,14 @@
   filter: drop-shadow(0 22px 40px rgba(0,0,0,.60)) brightness(1) contrast(1);
 }
 
-/* Ator (personagem selecionado). Tamanho: height + scale (silêncio 0.95, falando 1) */
+/* Ator (personagem) no lobby — posição absoluta só quando fora de .lobby-actors; dentro de .lobby-actors fica em fluxo (row) */
 .lobby-actor{
   position:absolute;
   right: 6vw;
   bottom: -10vh;
-  height: 60vh;             /* tamanho base da imagem */
+  height: 60vh;
   width: auto;
-  z-index: 2;               /* abaixo da valance (z=3), abaixo do mestre (z=3) */
+  z-index: 2;
   pointer-events:none;
   object-fit: contain;
   filter: drop-shadow(0 22px 40px rgba(0,0,0,.60)) brightness(0.65) contrast(0.92);
@@ -515,6 +515,12 @@
 .lobby-actor--speaking{
   transform: scale(1);
   filter: drop-shadow(0 22px 40px rgba(0,0,0,.60)) brightness(1) contrast(1);
+}
+/* Dentro do grid do lobby, atores em linha: não usar posição absoluta para não sobrepor */
+.lobby-actors .lobby-actor{
+  position: relative;
+  right: auto;
+  bottom: auto;
 }
 
 /* Poster na parede (levitando) — relativo ao .lobby-wrap */

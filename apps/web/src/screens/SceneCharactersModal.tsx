@@ -1,26 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api";
+import type { GMCharacter } from "../types/character";
+import { getAvatarUrl } from "../utils/avatar";
 
-export type GMCharacter = {
-  id: number;
-  name: string;
-  concept?: string;
-  system?: string;
-  backstory?: string;
-  notes?: string;
-  systems?: string[];
-  owner_email?: string;
-  default_image_url?: string | null;
-  default_image_rev?: string | null;
-};
-
-function characterPortraitUrl(c: GMCharacter): string {
-  const fallback = "/assets/jogador_default.png";
-  if (!c.default_image_url) return fallback;
-  if (c.default_image_rev) return `${c.default_image_url}?rev=${encodeURIComponent(c.default_image_rev)}`;
-  return c.default_image_url;
-}
+export type { GMCharacter } from "../types/character";
 
 function systemLabel(sys: string) {
   if (sys === "candela_obscura") return "Candela Obscura";
@@ -264,7 +248,7 @@ export function SceneCharactersModal({
                         >
                           <div className="polaroid-card__img-wrap">
                             <img
-                              src={characterPortraitUrl(c)}
+                              src={getAvatarUrl(c)}
                               alt=""
                               className="polaroid-card__img"
                             />
@@ -325,7 +309,7 @@ export function SceneCharactersModal({
                         >
                           <div className="polaroid-card__img-wrap">
                             <img
-                              src={characterPortraitUrl(c)}
+                              src={getAvatarUrl(c)}
                               alt=""
                               className="polaroid-card__img"
                             />

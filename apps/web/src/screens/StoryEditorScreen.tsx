@@ -18,20 +18,8 @@ import { ScenarioManagerModal, type Scenario } from "./ScenarioManagerModal";
 import { SceneCharactersModal, type GMCharacter } from "./SceneCharactersModal";
 import { SceneStagePreview } from "./SceneStagePreview";
 import { EditCharacterScreen } from "./EditCharacterScreen";
-import type { Character } from "./CharacterScreen";
-
-const SCENARIO_DRAG_PREFIX = "scenario-";
-const SCENE_DROP_PREFIX = "scene-scenario-";
-const CHAR_DRAG_PREFIX = "char-";
-const SCENE_CHAR_DROP_PREFIX = "scene-char-";
-const SCENE_REORDER_PREFIX = "scene-reorder-";
-
-function characterPortraitUrl(c: GMCharacter): string {
-  const fallback = "/assets/jogador_default.png";
-  if (!c.default_image_url) return fallback;
-  if (c.default_image_rev) return `${c.default_image_url}?rev=${encodeURIComponent(c.default_image_rev)}`;
-  return c.default_image_url;
-}
+import type { Character } from "../types/character";
+import { getAvatarUrl } from "../utils/avatar";
 
 /** Converte GMCharacter (campos opcionais) para Character (campos obrigatórios) para EditCharacterScreen. */
 function gmCharToCharacter(c: GMCharacter | null): Character | null {
@@ -137,7 +125,7 @@ function DraggableCharacterThumb({ character }: { character: GMCharacter }) {
       {...listeners}
       {...attributes}
     >
-      <img src={characterPortraitUrl(character)} alt="" className="story-editor__char-thumb-avatar" />
+      <img src={getAvatarUrl(character ?? undefined)} alt="" className="story-editor__char-thumb-avatar" />
       <span>{character.name}</span>
     </div>
   );
@@ -1166,7 +1154,7 @@ export function StoryEditorScreen({
                         .filter(Boolean)
                         .map((c) => (
                           <li key={c!.id} className="story-editor__scene-characters-item">
-                            <img src={characterPortraitUrl(c!)} alt="" className="story-editor__char-thumb-avatar" />
+                            <img src={getAvatarUrl(c ?? undefined)} alt="" className="story-editor__char-thumb-avatar" />
                             <span>{c!.name}</span>
                             <button
                               type="button"

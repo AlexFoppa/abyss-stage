@@ -1,6 +1,8 @@
 // Lógica compartilhada de preview da cena: mesmo grid 5 colunas e posicionamento do StageView.
 // Usado no Roteiro (StoryEditor), no Espetáculo e deve refletir a tela principal quando o espetáculo inicia.
 import { useMemo } from "react";
+import type { GMCharacter } from "../types/character";
+import { getAvatarUrl } from "../utils/avatar";
 import "../styles/stage.css";
 
 /** Recorte da imagem do cenário no palco (0–1). Se definido, só essa região é exibida. */
@@ -82,20 +84,6 @@ export type SceneStageActor = {
   imageUrl: string | null;
 };
 
-type GMCharacter = {
-  id: number;
-  name: string;
-  owner_email?: string;
-  default_image_url?: string | null;
-  default_image_rev?: string | null;
-};
-
-function portraitUrl(c: GMCharacter): string | null {
-  if (!c.default_image_url) return null;
-  if (c.default_image_rev) return `${c.default_image_url}?rev=${c.default_image_rev}`;
-  return c.default_image_url;
-}
-
 /** Mesma lógica de posicionamento do StageView: NPCs à esquerda (cols 1–2), PCs à direita (cols 4–5), col 3 vazia. */
 function computePositions(count: number, side: "NPC" | "PC"): number[] {
   const base = side === "NPC" ? 20 : 80;
@@ -138,12 +126,13 @@ export function SceneStagePreview({
     const pc: SceneStageActor[] = [];
     if (gmEmail) {
       sceneChars.forEach((c) => {
-        const side = c.owner_email === gmEmail ? ("NPC" as const) : ("PC" as const);
+        const side =
+          c.kind === "NPC" || c.owner_email === gmEmail ? ("NPC" as const) : ("PC" as const);
         const a: SceneStageActor = {
           id: c.id,
           name: c.name,
           side,
-          imageUrl: portraitUrl(c) ?? null,
+          imageUrl: getAvatarUrl(c),
         };
         if (side === "NPC") npc.push(a);
         else pc.push(a);
@@ -156,7 +145,7 @@ export function SceneStagePreview({
           id: c.id,
           name: c.name,
           side,
-          imageUrl: portraitUrl(c) ?? null,
+          imageUrl: getAvatarUrl(c),
         };
         if (side === "NPC") npc.push(a);
         else pc.push(a);

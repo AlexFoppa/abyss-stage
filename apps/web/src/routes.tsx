@@ -19,6 +19,7 @@ import { StoryListScreen } from "./screens/StoryListScreen";
 import { StoryEditorScreen } from "./screens/StoryEditorScreen";
 import { EspetaculoScreen } from "./screens/EspetaculoScreen";
 import { StageView } from "./screens/StageView";
+import { getAvatarUrl } from "./utils/avatar";
 
 type View =
   | "LOGIN"
@@ -36,7 +37,7 @@ type View =
 
 export function Routes() {
   const { user, loading, viewMode, setViewMode, logout } = useAuth();
-  
+
   const logged = !!user && !user.must_reset_password;
   const isGM = user?.role === "GM";
   
@@ -320,13 +321,15 @@ export function Routes() {
       .catch(() => {});
   }, [user]);
 
+  const gmHasShowActive = isGM && !!show;
   useEffect(() => {
-    if (!isLobbyView || !user) return;
+    if (!user) return;
+    if (!isLobbyView && !gmHasShowActive) return;
     fetchLobby();
     const intervalMs = 2000;
     const t = setInterval(fetchLobby, intervalMs);
     return () => clearInterval(t);
-  }, [isLobbyView, user, fetchLobby]);
+  }, [isLobbyView, gmHasShowActive, user, fetchLobby]);
 
   useEffect(() => {
     if (!isLobbyView || !user) return;
@@ -361,12 +364,6 @@ export function Routes() {
     };
   }, []);
 
-  function getPortraitUrl(c: any) {
-    if (!c.default_image_url) return "/assets/jogador_default.png";
-    if (c.default_image_rev) return `${c.default_image_url}?rev=${c.default_image_rev}`;
-    return c.default_image_url;
-  }
-
   /* Cortina: fechada até a sequência; um segundo após o countdown = half (todos); mais um segundo = stage (cortina e valance saem). */
   const shouldOpenCurtains = showPhase === "half" || showPhase === "stage";
   const isGMView =
@@ -395,27 +392,44 @@ export function Routes() {
       : view === "LOBBY" && user
         ? [
             ...(isGM || gmInRoom
-              ? [{ user_id: isGM ? user!.id : 0, identity: "gm", is_gm: true, character_id: null, character_name: null, character_image_url: null }]
+              ? [{ user_id: isGM ? user!.id : 0, identity: "gm", is_gm: true, character_id: null, character_name: null, character_image_url: null, user_email: null }]
               : []),
-            ...(selectedCharacter && !isGM
+            ...(!isGM
               ? [
                   {
                     user_id: user!.id,
                     identity: `player-${user!.id}`,
                     is_gm: false,
-                    character_id: selectedCharacter.id,
-                    character_name: selectedCharacter.name,
-                    character_image_url: selectedCharacter.imageUrl ?? null,
+                    character_id: selectedCharacter?.id ?? null,
+                    character_name: selectedCharacter?.name ?? null,
+                    character_image_url: selectedCharacter?.imageUrl ?? null,
+                    user_email: user?.email ?? null,
                   },
                 ]
               : []),
           ]
         : [];
   // Garantir que o mestre apareça sempre na visão do lobby quando o usuário é GM (evita sumir com atraso/API vazia).
-  const displayParticipants: LobbyParticipant[] =
+  let displayParticipants: LobbyParticipant[] =
     view === "LOBBY" && user && isGM && !baseParticipants.some((p) => p.is_gm)
-      ? [{ user_id: user.id, identity: "gm", is_gm: true, character_id: null, character_name: null, character_image_url: null }, ...baseParticipants]
+      ? [{ user_id: user.id, identity: "gm", is_gm: true, character_id: null, character_name: null, character_image_url: null, user_email: null }, ...baseParticipants]
       : baseParticipants;
+
+  // Garantir que o jogador atual apareça sempre no lobby (com ou sem personagem), mesmo antes da API/LiveKit devolverem sua entrada.
+  if (view === "LOBBY" && user && !isGM && !displayParticipants.some((p) => p.identity === `player-${user.id}`)) {
+    displayParticipants = [
+      ...displayParticipants,
+      {
+        user_id: user.id,
+        identity: `player-${user.id}`,
+        is_gm: false,
+        character_id: selectedCharacter?.id ?? null,
+        character_name: selectedCharacter?.name ?? null,
+        character_image_url: selectedCharacter?.imageUrl ?? null,
+        user_email: user.email ?? null,
+      },
+    ];
+  }
 
   return (
     <StageLayout
@@ -652,7 +666,7 @@ export function Routes() {
               id: c.id,
               name: c.name,
               system: c.system,
-              imageUrl: getPortraitUrl(c),
+              imageUrl: getAvatarUrl(c),
             });
             setSubView("LOBBY");
           }}
@@ -677,8 +691,7 @@ export function Routes() {
             setSubView("SELECT_CHARACTER");
           }}
         />
-      ) : (
-        <>
+      ) : !(effectiveRole === "PLAYER" && show && (showPhase === "half" || showPhase === "stage")) ? (
           <div className="lobby-stage">
             {displayParticipants.some((p) => p.is_gm) && (
               <img
@@ -701,6 +714,10 @@ export function Routes() {
                       : (speakingByIdentity[p.identity] ?? false)
                     : false;
                   const offset = actorOffsets[p.identity] ?? 0;
+                  const altText =
+                    p.character_name != null && p.character_name !== ""
+                      ? p.character_name
+                      : (p.user_email ? `${p.user_email} (se arrumando)` : "(se arrumando)");
                   return (
                     <div
                       key={p.user_id}
@@ -718,7 +735,7 @@ export function Routes() {
                       <img
                         className={"lobby-actor" + (isSpeaking ? " lobby-actor--speaking" : "")}
                         src={p.character_image_url || "/assets/jogador_default.png"}
-                        alt={p.character_name ?? "Personagem"}
+                        alt={altText}
                         draggable={false}
                       />
                     </div>
@@ -726,8 +743,7 @@ export function Routes() {
                 })}
             </div>
           </div>
-        </>
-      )}
+      ) : null}
     </StageLayout>
   );
 }

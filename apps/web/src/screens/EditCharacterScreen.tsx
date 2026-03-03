@@ -1,4 +1,5 @@
-import { CharacterScreen, type Character } from "./CharacterScreen";
+import { CharacterScreen } from "./CharacterScreen";
+import type { Character } from "../types/character";
 
 export function EditCharacterScreen({
   character,

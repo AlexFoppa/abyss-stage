@@ -403,8 +403,8 @@
 
 .stage-actor--in-left{ animation: actorInLeft 600ms cubic-bezier(.2,.9,.2,1) both; }
 .stage-actor--in-right{ animation: actorInRight 600ms cubic-bezier(.2,.9,.2,1) both; }
-.stage-actor--out-left{ animation: actorOutLeft 600ms cubic-bezier(.2,.9,.2,1) both; }
-.stage-actor--out-right{ animation: actorOutRight 600ms cubic-bezier(.2,.9,.2,1) both; }
+.stage-actor--out-left{ animation: actorOutLeft 280ms cubic-bezier(.2,.9,.2,1) both; }
+.stage-actor--out-right{ animation: actorOutRight 280ms cubic-bezier(.2,.9,.2,1) both; }
 
 @keyframes actorInLeft{
   from{ transform: translateX(-50%) translateX(-220px); opacity:0; }
@@ -422,3 +422,4 @@
   from{ transform: translateX(-50%) translateX(0); opacity:1; }
   to{ transform: translateX(-50%) translateX(220px); opacity:0; }
 }
+

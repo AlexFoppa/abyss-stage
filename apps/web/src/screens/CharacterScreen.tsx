@@ -12,18 +12,10 @@ import {
 } from "./system_forms/CandelaObscuraForm";
 import { EmptySystemForm } from "./system_forms/EmptySystemForm";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import type { Character } from "../types/character";
+import { getAvatarUrl } from "../utils/avatar";
 
-export type Character = {
-  id: number;
-  name: string;
-  concept: string;
-  system: string; // base (sempre "simplificado")
-  backstory: string;
-  notes: string;
-  systems?: string[]; // ex: ["simplificado","candela_obscura"]
-  default_image_url?: string | null;
-  default_image_rev?: string | null;
-};
+export type { Character } from "../types/character";
 
 type SystemOpt = { key: string; label: string };
 type Mode = "create" | "edit";
@@ -814,16 +806,15 @@ export function CharacterScreen({
           >
             <div className="mirror">
               {(() => {
-                const characterPortraitUrl =
-                  visibleImageUrl || (character?.default_image_url ?? "");
+                const portraitUrl = visibleImageUrl || getAvatarUrl(character ?? undefined);
 
                 if (scope === "GM") {
-                  if (characterPortraitUrl) return <img className="portrait" src={characterPortraitUrl} alt="Personagem" />;
+                  if (portraitUrl) return <img className="portrait" src={portraitUrl} alt="Personagem" />;
                   return <div className="mirror-empty" />;
                 }
 
-                if (mode === "edit" && characterPortraitUrl) {
-                  return <img className="portrait" src={characterPortraitUrl} alt="Personagem" />;
+                if (mode === "edit" && portraitUrl) {
+                  return <img className="portrait" src={portraitUrl} alt="Personagem" />;
                 }
                 const canShowSystemPortrait = Boolean(specialtyImgSrc) && selectedSystem === "candela_obscura";
                 if (canShowSystemPortrait) {
