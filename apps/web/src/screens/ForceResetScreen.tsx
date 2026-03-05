@@ -41,7 +41,7 @@ export function ForceResetScreen() {
   return (
     <Screen title="Troca de senha obrigatória">
       <div style={{ marginBottom: 12, opacity: 0.8 }}>
-        Logado como <b>{user?.email}</b>
+        Logado como <b>{user?.name?.trim() || user?.email}</b>
       </div>
 
      <form onSubmit={onSubmit} className="ui-stack">

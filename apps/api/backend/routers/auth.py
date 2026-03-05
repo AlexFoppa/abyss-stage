@@ -30,6 +30,11 @@ class ChangePasswordIn(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8, max_length=200)
 
+
+class UpdateMeIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    email: EmailStr
+
 class GMResetIn(BaseModel):
     user_id: int
 
@@ -130,6 +135,25 @@ def logout(resp: Response):
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
+    return UserOut.model_validate(user, from_attributes=True)
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(
+    data: UpdateMeIn,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    new_email = str(data.email).strip().lower()
+    if new_email != getattr(user, "email", ""):
+        existing = session.exec(select(User).where(User.email == new_email)).first()
+        if existing and existing.id != user.id:
+            raise HTTPException(status_code=409, detail="Email already registered")
+    user.name = data.name.strip()
+    user.email = new_email
+    session.add(user)
+    session.commit()
+    session.refresh(user)
     return UserOut.model_validate(user, from_attributes=True)
 
 

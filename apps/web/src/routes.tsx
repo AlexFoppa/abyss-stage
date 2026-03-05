@@ -19,6 +19,7 @@ import { StoryListScreen } from "./screens/StoryListScreen";
 import { StoryEditorScreen } from "./screens/StoryEditorScreen";
 import { EspetaculoScreen } from "./screens/EspetaculoScreen";
 import { StageView } from "./screens/StageView";
+import { EditProfileScreen } from "./screens/EditProfileScreen";
 import { getAvatarUrl } from "./utils/avatar";
 
 type View =
@@ -33,7 +34,8 @@ type View =
   | "LOBBY"
   | "CREATE_CHARACTER"
   | "SELECT_CHARACTER"
-  | "EDIT_CHARACTER";
+  | "EDIT_CHARACTER"
+  | "EDIT_PROFILE";
 
 export function Routes() {
   const { user, loading, viewMode, setViewMode, logout } = useAuth();
@@ -45,7 +47,7 @@ export function Routes() {
   const showBackstage = !!user && effectiveRole === "PLAYER" && !user.must_reset_password;
 
   const [subView, setSubView] = useState<
-    "LOBBY" | "CREATE_CHARACTER" | "SELECT_CHARACTER" | "EDIT_CHARACTER"
+    "LOBBY" | "CREATE_CHARACTER" | "SELECT_CHARACTER" | "EDIT_CHARACTER" | "EDIT_PROFILE"
   >("LOBBY");
 
   const [gmSubView, setGmSubView] = useState<"GM_HOME" | "GM_CHARACTERS" | "GM_SCENARIOS" | "GM_STORIES" | "GM_STORY_EDITOR" | "GM_ESPETACULO">("GM_HOME");
@@ -114,7 +116,7 @@ export function Routes() {
     if (loading) return "LOGIN";
     if (!user) return "LOGIN";
     if (user.must_reset_password) return "RESET";
-    if (subView === "CREATE_CHARACTER" || subView === "EDIT_CHARACTER") return subView;
+    if (subView === "CREATE_CHARACTER" || subView === "EDIT_CHARACTER" || subView === "EDIT_PROFILE") return subView;
 
     if (effectiveRole === "GM") return gmSubView;
     return subView;
@@ -123,6 +125,8 @@ export function Routes() {
   useEffect(() => {
     setStageMode(view === "CREATE_CHARACTER" || view === "EDIT_CHARACTER" ? "ZOOM_IN" : "IDLE");
   }, [view]);
+
+  const displayNameForUser = user ? (user.name?.trim() || user.email) : "";
 
   useEffect(() => {
     if (!show) return;
@@ -393,7 +397,7 @@ export function Routes() {
       : view === "LOBBY" && user
         ? [
             ...(isGM || gmInRoom
-              ? [{ user_id: isGM ? user!.id : 0, identity: "gm", is_gm: true, character_id: null, character_name: null, character_image_url: null, user_email: null }]
+              ? [{ user_id: isGM ? user!.id : 0, identity: "gm", is_gm: true, character_id: null, character_name: null, character_image_url: null, user_email: null, user_name: null }]
               : []),
             ...(!isGM
               ? [
@@ -405,6 +409,7 @@ export function Routes() {
                     character_name: selectedCharacter?.name ?? null,
                     character_image_url: selectedCharacter?.imageUrl ?? null,
                     user_email: user?.email ?? null,
+                    user_name: displayNameForUser || null,
                   },
                 ]
               : []),
@@ -413,7 +418,7 @@ export function Routes() {
   // Garantir que o mestre apareça sempre na visão do lobby quando o usuário é GM (evita sumir com atraso/API vazia).
   let displayParticipants: LobbyParticipant[] =
     view === "LOBBY" && user && isGM && !baseParticipants.some((p) => p.is_gm)
-      ? [{ user_id: user.id, identity: "gm", is_gm: true, character_id: null, character_name: null, character_image_url: null, user_email: null }, ...baseParticipants]
+      ? [{ user_id: user.id, identity: "gm", is_gm: true, character_id: null, character_name: null, character_image_url: null, user_email: null, user_name: null }, ...baseParticipants]
       : baseParticipants;
 
   // Garantir que o jogador atual apareça sempre no lobby (com ou sem personagem), mesmo antes da API/LiveKit devolverem sua entrada.
@@ -428,6 +433,7 @@ export function Routes() {
         character_name: selectedCharacter?.name ?? null,
         character_image_url: selectedCharacter?.imageUrl ?? null,
         user_email: user.email ?? null,
+        user_name: displayNameForUser || null,
       },
     ];
   }
@@ -510,6 +516,7 @@ export function Routes() {
             view === "LOBBY" &&
             !(effectiveRole === "PLAYER" && show && (showPhase === "half" || showPhase === "stage"))
           }
+          onEditProfile={effectiveRole === "PLAYER" ? () => setSubView("EDIT_PROFILE") : undefined}
         />
       )}
       {loading ? (
@@ -701,6 +708,8 @@ export function Routes() {
             setSubView("SELECT_CHARACTER");
           }}
         />
+      ) : view === "EDIT_PROFILE" ? (
+        <EditProfileScreen onBack={() => setSubView("LOBBY")} />
       ) : !(effectiveRole === "PLAYER" && show && (showPhase === "half" || showPhase === "stage")) ? (
           <div className="lobby-stage" aria-label="Jogadores no lobby">
             {displayParticipants.some((p) => p.is_gm) && (
@@ -724,10 +733,11 @@ export function Routes() {
                       : (speakingByIdentity[p.identity] ?? false)
                     : false;
                   const offset = actorOffsets[p.identity] ?? 0;
+                  const displayLabel = (p.user_name ?? p.user_email ?? "").trim() || null;
                   const altText =
                     p.character_name != null && p.character_name !== ""
                       ? p.character_name
-                      : (p.user_email ? `${p.user_email} (se arrumando)` : "(se arrumando)");
+                      : (displayLabel ? `${displayLabel} (se arrumando)` : "(se arrumando)");
                   return (
                     <div
                       key={p.user_id}

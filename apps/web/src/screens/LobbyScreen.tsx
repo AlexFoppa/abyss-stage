@@ -139,8 +139,10 @@ export type LobbyParticipant = {
   character_id: number | null;
   character_name: string | null;
   character_image_url: string | null;
-  /** E-mail do usuário (nome no lobby); preenchido pelo backend ou pelo fallback. */
+  /** E-mail do usuário; usado como fallback de exibição. */
   user_email?: string | null;
+  /** Nome de exibição do jogador (name or email); usado na lista do lobby. */
+  user_name?: string | null;
 };
 
 export function LobbyScreen({
@@ -151,6 +153,7 @@ export function LobbyScreen({
   onSelectCharacter,
   onRoomConnected,
   showMainUI = true,
+  onEditProfile,
 }: {
   room?: Room | null;
   selectedCharacter: null | { id: number; name: string; system: string };
@@ -160,6 +163,8 @@ export function LobbyScreen({
   onRoomConnected?: (room: Room) => void;
   /** Quando false, só renderiza o widget de áudio (portal). Use true apenas na view LOBBY. */
   showMainUI?: boolean;
+  /** Abre a tela de edição de informações do jogador (nome). */
+  onEditProfile?: () => void;
 }) {
   const { logout } = useAuth();
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
@@ -461,13 +466,18 @@ export function LobbyScreen({
     });
   }, [connected]);
 
+  const displayName = (p: LobbyParticipant) => (p.user_name ?? p.user_email ?? "").trim() || null;
+  const toTitleCase = (s: string) =>
+    s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
   const posterLabels = lobbyParticipants
     .filter((p) => !p.is_gm)
-    .map((p) =>
-      p.character_name != null && p.character_name.trim() !== ""
-        ? p.character_name
-        : (p.user_email ? `${p.user_email} (se arrumando)` : "(se arrumando)")
-    );
+    .map((p) => {
+      const raw =
+        p.character_name != null && p.character_name.trim() !== ""
+          ? p.character_name
+          : (displayName(p) ? `${displayName(p)} (se arrumando)` : "(se arrumando)");
+      return toTitleCase(raw);
+    });
 
   const audioWidget = createPortal(
     <div
@@ -726,8 +736,11 @@ export function LobbyScreen({
     <div className="lobby-wrap">
       {posterLabels.length > 0 ? (
         <div className="lobby-wall-poster" aria-label="Poster dos jogadores no lobby">
-          <div className="lobby-wall-poster__kicker">Estrelando:</div>
-          <div className="lobby-wall-poster__name">{posterLabels.join(", ")}</div>
+          <div className="lobby-wall-poster__frame">
+            <div className="lobby-wall-poster__kicker">Estrelando</div>
+            <div className="lobby-wall-poster__name">{posterLabels.join(", ")}</div>
+            <div className="lobby-wall-poster__foot">Abyss Stage</div>
+          </div>
         </div>
       ) : null}
 
@@ -753,7 +766,12 @@ export function LobbyScreen({
             </button>
 
             <div className="lobby-actions-secondary">
-              <button className="ui-btn" disabled title="Em breve">
+              <button
+                className="ui-btn"
+                type="button"
+                onClick={onEditProfile}
+                title="Editar nome e informações do jogador"
+              >
                 Informações do jogador
               </button>
             </div>

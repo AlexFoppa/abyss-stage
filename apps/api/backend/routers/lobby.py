@@ -36,6 +36,7 @@ class LobbyParticipantOut(BaseModel):
     character_name: Optional[str]
     character_image_url: Optional[str]
     user_email: Optional[str] = None
+    user_name: Optional[str] = None
 
 
 class LobbyOut(BaseModel):
@@ -99,6 +100,7 @@ def lobby_me(
         else:
             character_image_url = img_url
 
+    display_name = (getattr(current_user, "name", None) or "").strip() or (getattr(current_user, "email", None) or "")
     now = time.time()
     _LOBBY_STORE[current_user.id] = {
         "user_id": current_user.id,
@@ -108,6 +110,7 @@ def lobby_me(
         "character_name": character_name,
         "character_image_url": character_image_url,
         "user_email": getattr(current_user, "email", None) or None,
+        "user_name": display_name or None,
         "updated_at": now,
     }
     return {}
@@ -156,6 +159,7 @@ async def get_lobby():
             character_name: Optional[str] = None
             character_image_url: Optional[str] = None
             user_email: Optional[str] = None
+            user_name: Optional[str] = None
             for data in _LOBBY_STORE.values():
                 if data.get("identity") == identity:
                     user_id = data["user_id"]
@@ -163,6 +167,7 @@ async def get_lobby():
                     character_name = data.get("character_name")
                     character_image_url = data.get("character_image_url")
                     user_email = data.get("user_email")
+                    user_name = data.get("user_name")
                     break
             if not is_gm and identity.startswith("player-"):
                 try:
@@ -178,6 +183,7 @@ async def get_lobby():
                     character_name=character_name,
                     character_image_url=character_image_url,
                     user_email=user_email,
+                    user_name=user_name,
                 )
             )
         # Ordenar: gm primeiro, depois por identity
@@ -200,6 +206,7 @@ async def get_lobby():
             character_name=data.get("character_name"),
             character_image_url=data.get("character_image_url"),
             user_email=data.get("user_email"),
+            user_name=data.get("user_name"),
         )
         for data in _LOBBY_STORE.values()
     ]
