@@ -7,10 +7,12 @@ export function GMCharactersScreen({
   onBack,
   onEdit,
   onCreate,
+  onCreateNpc,
 }: {
   onBack: () => void;
   onEdit?: (c: GMCharacter) => void;
   onCreate?: () => void;
+  onCreateNpc?: () => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -107,6 +109,7 @@ export function GMCharactersScreen({
             <div className="select-list">
               {chars.map((c) => {
                 const isActive = c.id === activeId;
+                const kindLabel = c.kind === "NPC" ? "NPC" : "PC";
                 return (
                   <button
                     key={c.id}
@@ -115,7 +118,13 @@ export function GMCharactersScreen({
                     type="button"
                   >
                     <div className="select-item-name">
-                      {c.name} ({c.owner_email})
+                      <span className="select-item-badge" title={kindLabel === "NPC" ? "Personagem do mestre" : "Personagem de jogador"}>
+                        {kindLabel}
+                      </span>
+                      {c.name}
+                      {c.owner_email != null && c.owner_email !== "" && (
+                        <span className="select-item-owner"> ({c.owner_email})</span>
+                      )}
                     </div>
                     <div className="select-item-sub">
                       {systemsLabel(c.systems || [c.system])}
@@ -126,20 +135,31 @@ export function GMCharactersScreen({
             </div>
           )}
 
-          <div className="select-footer" style={{ display: "flex", gap: 10, justifyContent: "space-between" }}>
+          <div className="select-footer" style={{ display: "flex", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
             <button className="ui-btn ui-btn--ghost" onClick={onBack} type="button">
               Voltar
             </button>
 
-            <button
-              className="ui-btn"
-              onClick={() => onCreate?.()}
-              type="button"
-              disabled={!onCreate}
-              title={!onCreate ? "Criação não disponível" : ""}
-            >
-              Criar
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                className="ui-btn"
+                onClick={() => onCreate?.()}
+                type="button"
+                disabled={!onCreate}
+                title={!onCreate ? "Criação não disponível" : "Novo personagem de jogador (PC)"}
+              >
+                Criar (PC)
+              </button>
+              <button
+                className="ui-btn ui-btn--ghost"
+                onClick={() => onCreateNpc?.()}
+                type="button"
+                disabled={!onCreateNpc}
+                title={!onCreateNpc ? "Criação não disponível" : "Novo personagem do mestre (NPC)"}
+              >
+                Novo NPC
+              </button>
+            </div>
           </div>
 
           {err && <div className="select-error">{err}</div>}

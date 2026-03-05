@@ -91,12 +91,15 @@ export function CharacterScreen({
   character,
   onBack,
   onCreated,
+  initialKind,
 }: {
   scope?: "ME" | "GM";
   mode: Mode;
   character?: Character | null;
   onBack: () => void;
   onCreated?: (c: Character) => void;
+  /** Em modo create com scope=GM, kind a enviar (PC ou NPC). Ignorado para ME. */
+  initialKind?: "PC" | "NPC";
 }) {
   const [err, setErr] = useState<string | null>(null);
 
@@ -602,14 +605,18 @@ export function CharacterScreen({
     }
 
     try {
+      const body: Record<string, string> = {
+        name: name || "",
+        concept: concept || "",
+        backstory: backstory || "",
+        notes: notes || "",
+      };
+      if (scope === "GM" && (initialKind === "PC" || initialKind === "NPC")) {
+        body.kind = initialKind;
+      }
       const res = await api<{ character: Character }>(basePrefix, {
         method: "POST",
-        body: JSON.stringify({
-          name: name || "",
-          concept: concept || "",
-          backstory: backstory || "",
-          notes: notes || "",
-        }),
+        body: JSON.stringify(body),
       });
 
       const created = res.character;

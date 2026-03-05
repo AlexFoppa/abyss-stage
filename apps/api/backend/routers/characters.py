@@ -23,6 +23,7 @@ router = APIRouter(prefix="/me/characters", tags=["characters"])
 gm_router = APIRouter(prefix="/gm/characters", tags=["gm"])
 
 class CharacterCreateIn(BaseModel):
+    kind: Literal["PC", "NPC"] = "PC"
     name: str = Field(min_length=1, max_length=80)
     concept: str = Field(default="", max_length=200)
     backstory: str = Field(default="")
@@ -636,14 +637,14 @@ def list_all_characters(
     gm: User = Depends(require_gm),
     session: Session = Depends(get_session),
 ):
-    # Todos os personagens (PCs; no futuro NPCs): sem filtro por owner
+    # Todos os personagens (PCs e NPCs): sem filtro por owner
     rows = session.exec(
         text(
             """
             SELECT c.id, c.kind, c.name, c.concept, c.system, c.backstory, c.notes, u.email
             FROM character c
             LEFT JOIN "user" u ON u.id = c.owner_user_id
-            WHERE c.kind = 'PC'
+            WHERE c.kind IN ('PC', 'NPC')
             ORDER BY c.id DESC
             """
         )
@@ -684,18 +685,25 @@ def create_any_character(
 ):
     base_system = "simplificado"
 
+    kind = (data.kind or "PC").strip() or "PC"
+    if kind not in ("PC", "NPC"):
+        kind = "PC"
+    is_npc = kind == "NPC"
+
     try:
         session.exec(text("BEGIN"))
 
         session.exec(
             text(
                 """
-                INSERT INTO character (kind, owner_user_id, name, concept, system, backstory, notes)
-                VALUES ('PC', :uid, :name, :concept, :system, :backstory, :notes)
+                INSERT INTO character (kind, owner_user_id, created_by_gm_id, name, concept, system, backstory, notes)
+                VALUES (:kind, :owner_uid, :created_by_gm_id, :name, :concept, :system, :backstory, :notes)
                 """
             ),
             params={
-                "uid": gm.id,  # owner arbitrário p/ MVP: GM cria e fica como dono
+                "kind": kind,
+                "owner_uid": None if is_npc else gm.id,
+                "created_by_gm_id": gm.id if is_npc else None,
                 "name": data.name,
                 "concept": data.concept,
                 "system": base_system,
@@ -757,7 +765,7 @@ def update_any_character(
             """
             SELECT id
             FROM character
-            WHERE id = :cid AND kind='PC'
+            WHERE id = :cid AND kind IN ('PC', 'NPC')
             """
         ),
         params={"cid": character_id},
@@ -874,7 +882,7 @@ def delete_any_character(
             """
             SELECT 1
             FROM character
-            WHERE id = :cid AND kind='PC'
+            WHERE id = :cid AND kind IN ('PC', 'NPC')
             """
         ),
         params={"cid": character_id},

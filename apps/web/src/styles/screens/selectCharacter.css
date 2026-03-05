@@ -107,6 +107,27 @@
   text-transform:none;
   letter-spacing:.02em;
   color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.select-item-badge{
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  background: rgba(255,255,255,.15);
+  color: var(--text-main);
+}
+
+.select-item-owner{
+  font-weight: 400;
+  opacity: .85;
 }
 
 .select-item-sub{

@@ -73,6 +73,7 @@ export function Routes() {
 
   const [editingFromGM, setEditingFromGM] = useState(false);
   const [editingReturnGmView, setEditingReturnGmView] = useState<"GM_CHARACTERS" | "GM_STORY_EDITOR" | null>(null);
+  const [createCharacterKind, setCreateCharacterKind] = useState<"PC" | "NPC">("PC");
 
   const [show, setShow] = useState<null | {
     id: string;
@@ -632,6 +633,12 @@ export function Routes() {
             setSubView("EDIT_CHARACTER");
           }}
           onCreate={() => {
+            setCreateCharacterKind("PC");
+            setEditingFromGM(true);
+            setSubView("CREATE_CHARACTER");
+          }}
+          onCreateNpc={() => {
+            setCreateCharacterKind("NPC");
             setEditingFromGM(true);
             setSubView("CREATE_CHARACTER");
           }}
@@ -639,12 +646,14 @@ export function Routes() {
       ) : view === "CREATE_CHARACTER" ? (
         <CreateCharacterScreen
           scope={editingFromGM ? "GM" : "ME"}
+          initialKind={editingFromGM ? createCharacterKind : undefined}
           onBack={() => {
             if (editingFromGM) {
               setSubView("LOBBY");
               setGmSubView(editingReturnGmView ?? "GM_CHARACTERS");
               setEditingReturnGmView(null);
               setEditingFromGM(false);
+              setCreateCharacterKind("PC");
               return;
             }
             setSubView("LOBBY");
@@ -655,6 +664,7 @@ export function Routes() {
               setGmSubView(editingReturnGmView ?? "GM_CHARACTERS");
               setEditingReturnGmView(null);
               setEditingFromGM(false);
+              setCreateCharacterKind("PC");
             }
           }}
         />
