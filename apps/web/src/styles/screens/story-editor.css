@@ -630,9 +630,9 @@
 }
 
 .story-editor__char-thumb-avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
+  width: var(--avatar-size-sm);
+  height: var(--avatar-size-sm);
+  border-radius: var(--avatar-radius-round);
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -903,9 +903,9 @@
 }
 
 .scene-chars-modal__char-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  width: var(--avatar-size-md);
+  height: var(--avatar-size-md);
+  border-radius: var(--avatar-radius-round);
   object-fit: cover;
   flex-shrink: 0;
 }

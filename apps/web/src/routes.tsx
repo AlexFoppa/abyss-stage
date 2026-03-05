@@ -287,7 +287,7 @@ export function Routes() {
     liveKitRoom.remoteParticipants.forEach(subscribeSpeaking);
     const onParticipantConnected = (p: Participant) => subscribeSpeaking(p);
     liveKitRoom.on(RoomEvent.ParticipantConnected, onParticipantConnected);
-    /* Resiliência: não alteramos show ao desconectar (ex.: mestre); jogadores mantêm cenário, atores e posições. */
+    /* Resiliência: não alteramos show ao desconectar (ex.: mestre); jogadores mantêm cenário, personagens e posições. */
     const onParticipantDisconnected = (p: Participant) => {
       setSpeakingByIdentity((prev) => {
         const next = { ...prev };
@@ -702,7 +702,7 @@ export function Routes() {
           }}
         />
       ) : !(effectiveRole === "PLAYER" && show && (showPhase === "half" || showPhase === "stage")) ? (
-          <div className="lobby-stage">
+          <div className="lobby-stage" aria-label="Jogadores no lobby">
             {displayParticipants.some((p) => p.is_gm) && (
               <img
                 className={
@@ -713,7 +713,7 @@ export function Routes() {
                 aria-label="Mestre"
               />
             )}
-            <div className="lobby-actors">
+            <div className="lobby-actors" aria-label="Jogadores">
               {displayParticipants
                 .filter((p) => !p.is_gm)
                 .slice(0, 6)

@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import UploadFile, File
 from fastapi import APIRouter, Body, Depends, HTTPException, File, UploadFile, Form
 from pydantic import BaseModel, Field
-from sqlmodel import Session
+from sqlmodel import Session, select
 from sqlalchemy import text
 from urllib.parse import quote
 from typing import Literal, Optional
@@ -115,6 +115,16 @@ class CharacterUpdateIn(BaseModel):
     concept: str = Field(default="", max_length=200)
     backstory: str = Field(default="")
     notes: str = Field(default="")
+
+
+class GMCharacterUpdateIn(BaseModel):
+    """Atualização GM: campos da ficha + opcionalmente kind e owner_user_id para trocar PC↔NPC."""
+    name: str = Field(min_length=1, max_length=80)
+    concept: str = Field(default="", max_length=200)
+    backstory: str = Field(default="")
+    notes: str = Field(default="")
+    kind: Optional[Literal["PC", "NPC"]] = None
+    owner_user_id: Optional[int] = None  # obrigatório ao converter NPC→PC
 
 def _require_player(user: User = Depends(get_current_user)) -> User:
     if user.role != Role.PLAYER:
@@ -753,17 +763,27 @@ def create_any_character(
     }
 
 
+@gm_router.get("/players")
+def list_players(
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    """Lista jogadores (role=PLAYER) para o mestre atribuir um NPC a um jogador (transformar em PC)."""
+    users = session.exec(select(User).where(User.role == Role.PLAYER).order_by(User.email)).all()
+    return [{"id": u.id, "email": u.email, "name": u.name} for u in users]
+
+
 @gm_router.put("/{character_id}")
 def update_any_character(
     character_id: int,
-    data: CharacterUpdateIn,
+    data: GMCharacterUpdateIn,
     gm: User = Depends(require_gm),
     session: Session = Depends(get_session),
 ):
     row = session.exec(
         text(
             """
-            SELECT id
+            SELECT id, kind
             FROM character
             WHERE id = :cid AND kind IN ('PC', 'NPC')
             """
@@ -773,29 +793,91 @@ def update_any_character(
     if not row:
         raise HTTPException(status_code=404, detail="Character not found")
 
+    if data.kind is not None:
+        if data.kind == "NPC":
+            owner_uid = None
+            created_by_gm = gm.id
+        else:
+            if data.owner_user_id is None:
+                raise HTTPException(status_code=400, detail="owner_user_id required when converting to PC")
+            owner_row = session.exec(
+                select(User).where(User.id == data.owner_user_id).where(User.role == Role.PLAYER)
+            ).first()
+            if not owner_row:
+                raise HTTPException(status_code=400, detail="Invalid owner_user_id: must be a player")
+            owner_uid = data.owner_user_id
+            created_by_gm = None
+    else:
+        owner_uid = None
+        created_by_gm = None
+
     try:
         session.exec(text("BEGIN"))
 
-        session.exec(
-            text(
-                """
-                UPDATE character
-                SET name=:name,
-                    concept=:concept,
-                    backstory=:backstory,
-                    notes=:notes,
-                    updated_at=datetime('now')
-                WHERE id=:cid
-                """
-            ),
-            params={
-                "cid": character_id,
-                "name": data.name,
-                "concept": data.concept,
-                "backstory": data.backstory,
-                "notes": data.notes,
-            },
-        )
+        if data.kind is not None and owner_uid is not None:
+            session.exec(
+                text(
+                    """
+                    UPDATE character
+                    SET kind=:kind, owner_user_id=:owner_uid, created_by_gm_id=:created_by_gm_id,
+                        name=:name, concept=:concept, backstory=:backstory, notes=:notes,
+                        updated_at=datetime('now')
+                    WHERE id=:cid
+                    """
+                ),
+                params={
+                    "cid": character_id,
+                    "kind": data.kind,
+                    "owner_uid": owner_uid,
+                    "created_by_gm_id": created_by_gm,
+                    "name": data.name,
+                    "concept": data.concept,
+                    "backstory": data.backstory,
+                    "notes": data.notes,
+                },
+            )
+        elif data.kind is not None and created_by_gm is not None:
+            session.exec(
+                text(
+                    """
+                    UPDATE character
+                    SET kind=:kind, owner_user_id=NULL, created_by_gm_id=:created_by_gm_id,
+                        name=:name, concept=:concept, backstory=:backstory, notes=:notes,
+                        updated_at=datetime('now')
+                    WHERE id=:cid
+                    """
+                ),
+                params={
+                    "cid": character_id,
+                    "kind": data.kind,
+                    "created_by_gm_id": created_by_gm,
+                    "name": data.name,
+                    "concept": data.concept,
+                    "backstory": data.backstory,
+                    "notes": data.notes,
+                },
+            )
+        else:
+            session.exec(
+                text(
+                    """
+                    UPDATE character
+                    SET name=:name,
+                        concept=:concept,
+                        backstory=:backstory,
+                        notes=:notes,
+                        updated_at=datetime('now')
+                    WHERE id=:cid
+                    """
+                ),
+                params={
+                    "cid": character_id,
+                    "name": data.name,
+                    "concept": data.concept,
+                    "backstory": data.backstory,
+                    "notes": data.notes,
+                },
+            )
 
         session.exec(text("COMMIT"))
     except Exception as e:

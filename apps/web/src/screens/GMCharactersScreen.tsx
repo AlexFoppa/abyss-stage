@@ -20,6 +20,10 @@ export function GMCharactersScreen({
   const [chars, setChars] = useState<GMCharacter[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [convertingId, setConvertingId] = useState<number | null>(null);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [players, setPlayers] = useState<Array<{ id: number; email: string; name: string }>>([]);
+  const [assignLoading, setAssignLoading] = useState(false);
 
   async function deleteCharacter(c: GMCharacter) {
     const ok = window.confirm(`Apagar personagem "${c.name}"?\n\nEssa ação não pode ser desfeita.`);
@@ -91,6 +95,87 @@ export function GMCharactersScreen({
     const list = (systems || []).filter(Boolean);
     if (!list.length) return "—";
     return list.map(systemLabel).join(", ");
+  }
+
+  async function refetchChars() {
+    try {
+      const list = await api<GMCharacter[]>("/api/gm/characters");
+      setChars(Array.isArray(list) ? list : []);
+    } catch {
+      // keep current list
+    }
+  }
+
+  async function convertToNpc(c: GMCharacter) {
+    const ok = window.confirm(
+      `Transformar "${c.name}" em NPC?\n\nO personagem deixará de ter dono (jogador) e passará a ser do mestre.`
+    );
+    if (!ok) return;
+    setErr(null);
+    setConvertingId(c.id);
+    try {
+      await api(`/api/gm/characters/${c.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: c.name || "",
+          concept: c.concept ?? "",
+          backstory: c.backstory ?? "",
+          notes: c.notes ?? "",
+          kind: "NPC",
+        }),
+      });
+      await refetchChars();
+    } catch (e: any) {
+      const msg =
+        typeof e?.message === "string"
+          ? e.message
+          : typeof e?.body?.detail === "string"
+            ? e.body.detail
+            : "Falha ao transformar em NPC";
+      setErr(msg);
+    } finally {
+      setConvertingId(null);
+    }
+  }
+
+  function openAssignModal() {
+    setErr(null);
+    setAssignModalOpen(true);
+    setAssignLoading(true);
+    api<Array<{ id: number; email: string; name: string }>>("/api/gm/characters/players")
+      .then((list) => setPlayers(Array.isArray(list) ? list : []))
+      .catch(() => setPlayers([]))
+      .finally(() => setAssignLoading(false));
+  }
+
+  async function assignToPlayer(c: GMCharacter, ownerUserId: number) {
+    setErr(null);
+    setConvertingId(c.id);
+    try {
+      await api(`/api/gm/characters/${c.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: c.name || "",
+          concept: c.concept ?? "",
+          backstory: c.backstory ?? "",
+          notes: c.notes ?? "",
+          kind: "PC",
+          owner_user_id: ownerUserId,
+        }),
+      });
+      setAssignModalOpen(false);
+      await refetchChars();
+    } catch (e: any) {
+      const msg =
+        typeof e?.message === "string"
+          ? e.message
+          : typeof e?.body?.detail === "string"
+            ? e.body.detail
+            : "Falha ao atribuir ao jogador";
+      setErr(msg);
+    } finally {
+      setConvertingId(null);
+    }
   }
 
   return (
@@ -210,7 +295,7 @@ export function GMCharactersScreen({
                 </div>
               </div>
 
-              <div className="select-actions" style={{ display: "flex", gap: 10 }}>
+              <div className="select-actions" style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                 <button
                   className="ui-btn ui-btn--ghost"
                   onClick={() => active && onEdit?.(active)}
@@ -220,6 +305,30 @@ export function GMCharactersScreen({
                 >
                   Editar
                 </button>
+
+                {active?.kind === "PC" && (
+                  <button
+                    className="ui-btn ui-btn--ghost"
+                    onClick={() => active && convertToNpc(active)}
+                    disabled={!active || convertingId === active?.id}
+                    type="button"
+                    title="Transformar em personagem do mestre (NPC)"
+                  >
+                    {convertingId === active?.id ? "Convertendo…" : "Transformar em NPC"}
+                  </button>
+                )}
+
+                {active?.kind === "NPC" && (
+                  <button
+                    className="ui-btn ui-btn--ghost"
+                    onClick={openAssignModal}
+                    disabled={!active || convertingId === active?.id}
+                    type="button"
+                    title="Atribuir este personagem a um jogador (transformar em PC)"
+                  >
+                    {convertingId === active?.id ? "Atribuindo…" : "Atribuir a jogador"}
+                  </button>
+                )}
 
                 <button
                   className="ui-btn ui-btn--ghost"
@@ -231,6 +340,43 @@ export function GMCharactersScreen({
                   {deletingId === active?.id ? "Apagando..." : "Apagar"}
                 </button>
               </div>
+
+              {assignModalOpen && active?.kind === "NPC" && (
+                <div className="gm-characters-assign-overlay" role="dialog" aria-modal="true" aria-label="Atribuir a jogador">
+                  <div className="gm-characters-assign-modal">
+                    <h3 className="gm-characters-assign-title">Atribuir &quot;{active.name}&quot; a um jogador</h3>
+                    <p className="gm-characters-assign-desc">O personagem passará a ser um PC desse jogador.</p>
+                    {assignLoading ? (
+                      <div className="select-muted">Carregando jogadores…</div>
+                    ) : players.length === 0 ? (
+                      <div className="select-muted">Nenhum jogador cadastrado.</div>
+                    ) : (
+                      <ul className="gm-characters-assign-list">
+                        {players.map((p) => (
+                          <li key={p.id}>
+                            <button
+                              type="button"
+                              className="ui-btn ui-btn--ghost"
+                              onClick={() => assignToPlayer(active, p.id)}
+                              disabled={convertingId === active.id}
+                            >
+                              {p.name || p.email} {p.email && <span className="gm-characters-assign-email">({p.email})</span>}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn--ghost"
+                      onClick={() => setAssignModalOpen(false)}
+                      style={{ marginTop: 12 }}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>

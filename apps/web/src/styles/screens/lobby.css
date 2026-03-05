@@ -475,7 +475,7 @@
   pointer-events:none;
 }
 
-/* Mestre — mesma linha que o ator (bottom -10vh). Só aparece quando o GM está na sala (LiveKit). */
+/* Mestre — mesma linha que os avatares dos jogadores (bottom -10vh). Só aparece quando o GM está na sala (LiveKit). */
 .lobby-master{
   position: absolute;
   left: 30vw;
@@ -497,7 +497,7 @@
   filter: drop-shadow(0 22px 40px rgba(0,0,0,.60)) brightness(1) contrast(1);
 }
 
-/* Ator (personagem) no lobby — posição absoluta só quando fora de .lobby-actors; dentro de .lobby-actors fica em fluxo (row) */
+/* Avatar (personagem) no lobby — posição absoluta só quando fora de .lobby-actors; dentro de .lobby-actors fica em fluxo (row) */
 .lobby-actor{
   position:absolute;
   right: 6vw;
@@ -516,7 +516,7 @@
   transform: scale(1);
   filter: drop-shadow(0 22px 40px rgba(0,0,0,.60)) brightness(1) contrast(1);
 }
-/* Dentro do grid do lobby, atores em linha: não usar posição absoluta para não sobrepor */
+/* Dentro do grid do lobby, avatares em linha: não usar posição absoluta para não sobrepor */
 .lobby-actors .lobby-actor{
   position: relative;
   right: auto;

@@ -21,6 +21,13 @@ import { EditCharacterScreen } from "./EditCharacterScreen";
 import type { Character } from "../types/character";
 import { getAvatarUrl } from "../utils/avatar";
 
+/** Prefixos para IDs no DnD (evita colisão entre cenário, cena, personagem, reordenação). */
+const SCENARIO_DRAG_PREFIX = "scenario-";
+const SCENE_DROP_PREFIX = "scene-drop-";
+const SCENE_CHAR_DROP_PREFIX = "scene-char-drop-";
+const CHAR_DRAG_PREFIX = "char-";
+const SCENE_REORDER_PREFIX = "scene-reorder-";
+
 /** Converte GMCharacter (campos opcionais) para Character (campos obrigatórios) para EditCharacterScreen. */
 function gmCharToCharacter(c: GMCharacter | null): Character | null {
   if (!c) return null;

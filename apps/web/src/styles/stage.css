@@ -240,11 +240,24 @@
 .scene-stage-preview .stage-view__actors {
   pointer-events: none;
 }
-/* No preview, altura dos personagens em % do container (ex.: 45% da altura do preview) */
+/* Preview: como no espetáculo, ator estende para baixo (bottom negativo) e overflow corta os pés na borda */
+.scene-stage-preview--preview .stage-view__actors {
+  overflow: hidden;
+}
 .scene-stage-preview--preview .stage-actor {
-  height: 45%;
+  bottom: -12%;
+  height: 72%;
   min-height: 0;
   max-height: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.scene-stage-preview--preview .stage-actor__img {
+  width: auto;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
 }
 
 /* Vista do palco (espetáculo ativo) */
@@ -298,7 +311,7 @@
   cursor: grabbing;
 }
 
-/* Mesmo tamanho do lobby (personagem encapuzado / ator): 60vh, max 85vh — não usar miniatura de preview */
+/* Mesmo tamanho do lobby (avatar do personagem): 60vh, max 85vh — não usar miniatura de preview */
 .stage-actor{
   position:absolute;
   bottom: -10vh;

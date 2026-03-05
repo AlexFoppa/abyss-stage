@@ -254,12 +254,11 @@
   grid-row: 1;
   justify-self: end;
   align-self: start;
-
-  width: 180px;
-  height: 240px;
+  width: var(--avatar-size-book-w);
+  height: var(--avatar-size-book-h);
   overflow: hidden;
-  border-radius: 12px;
-  border: 1px solid rgba(215,178,92,.35);
+  border-radius: var(--avatar-radius-card);
+  border: var(--avatar-border-width) solid var(--avatar-border-color);
   pointer-events: none;
 }
 
@@ -298,7 +297,7 @@
     grid-column: 1;
     grid-row: 1;
     width: 100%;
-    height: 220px;
+    height: var(--avatar-size-book-h-mobile);
     justify-self: stretch;
   }
 
@@ -387,4 +386,57 @@
   margin: 0 0 12px;
   font-size: 0.9rem;
   color: rgba(215, 178, 92, 0.9);
+}
+
+/* Modal Atribuir a jogador (Figurinos) */
+.gm-characters-assign-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.gm-characters-assign-modal {
+  background: var(--bg-card, #1a1a1a);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 360px;
+  width: 100%;
+  max-height: 80vh;
+  overflow: auto;
+}
+.gm-characters-assign-title {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  color: var(--text-main);
+}
+.gm-characters-assign-desc {
+  margin: 0 0 16px;
+  font-size: 0.9rem;
+  opacity: 0.85;
+  color: var(--text-main);
+}
+.gm-characters-assign-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gm-characters-assign-list li {
+  margin: 0;
+}
+.gm-characters-assign-list .ui-btn {
+  width: 100%;
+  text-align: left;
+  justify-content: flex-start;
+}
+.gm-characters-assign-email {
+  font-size: 0.85em;
+  opacity: 0.8;
 }
