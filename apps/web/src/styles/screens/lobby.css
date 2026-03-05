@@ -578,3 +578,50 @@
   color: var(--gold);
   text-shadow: 0 2px 14px rgba(0,0,0,.65);
 }
+
+/* Portão de permissão de microfone (antes de conectar ao lobby) */
+.lobby-mic-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  font-family: var(--font-display);
+}
+.lobby-mic-gate__box {
+  max-width: 420px;
+  width: 100%;
+  padding: 28px 24px;
+  background: linear-gradient(rgba(28, 24, 18, 0.98), rgba(15, 12, 8, 0.98));
+  border: 1px solid var(--gold-border, rgba(215, 178, 92, 0.4));
+  border-radius: var(--radius-md, 12px);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
+}
+.lobby-mic-gate__title {
+  margin: 0 0 14px;
+  font-size: 1.35rem;
+  color: var(--text-main);
+  letter-spacing: 0.04em;
+}
+.lobby-mic-gate__text {
+  margin: 0 0 22px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text-label);
+}
+.lobby-mic-gate__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.lobby-mic-gate__actions .ui-btn {
+  min-width: 140px;
+}
+.lobby-mic-gate__error {
+  margin: 14px 0 0;
+  font-size: 0.9rem;
+  color: #c44;
+}

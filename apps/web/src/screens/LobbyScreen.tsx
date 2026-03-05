@@ -168,6 +168,9 @@ export function LobbyScreen({
   const [menuOpen, setMenuOpen] = useState(true);
   const [audioMenuOpen, setAudioMenuOpen] = useState(false);
   const [micPermission, setMicPermission] = useState<"unknown" | "granted" | "denied">("unknown");
+  /** Portão: pedir permissão de microfone antes de conectar. 'pending' = mostrar tela; 'granted'/'skipped' = pode conectar. */
+  const [micGate, setMicGate] = useState<"pending" | "granted" | "denied" | "skipped">("pending");
+  const [micGateRequesting, setMicGateRequesting] = useState(false);
   const [diagnosticRunning, setDiagnosticRunning] = useState(false);
   const [diagnosticSteps, setDiagnosticSteps] = useState<DiagnosticStep[] | null>(null);
 
@@ -278,21 +281,55 @@ export function LobbyScreen({
   }, [onRoomConnected]);
 
   const didAutoConnect = useRef(false);
+  /** Só conecta automaticamente se o usuário já passou do portão (concedeu ou escolheu continuar sem áudio). */
   useEffect(() => {
+    if (!showMainUI || micGate === "pending" || micGate === "denied") return;
     if (didAutoConnect.current) return;
     didAutoConnect.current = true;
     connectAudio();
-  }, [connectAudio]);
+  }, [showMainUI, micGate, connectAudio]);
 
+  /** Se o navegador já tiver permissão concedida, passar o portão e permitir auto-connect. */
   useEffect(() => {
     if (typeof navigator === "undefined" || !navigator.permissions?.query) return;
     navigator.permissions.query({ name: "microphone" as PermissionDescriptor["name"] }).then(
       (result) => {
         setMicPermission(result.state === "granted" ? "granted" : result.state === "denied" ? "denied" : "unknown");
+        if (result.state === "granted" && micGate === "pending") setMicGate("granted");
         result.onchange = () => setMicPermission(result.state === "granted" ? "granted" : result.state === "denied" ? "denied" : "unknown");
       },
       () => {}
     );
+  }, [micGate]);
+
+  /** Pedir permissão de microfone (gesto do usuário). Se concedida, o useEffect conecta. */
+  const requestMicAndConnect = useCallback(async () => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setMicGate("skipped");
+      return;
+    }
+    setMicGateRequesting(true);
+    setErr(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop());
+      setMicPermission("granted");
+      setMicGate("granted");
+    } catch (e: unknown) {
+      const name = e instanceof Error ? e.name : "";
+      if (name === "NotAllowedError" || (e && typeof (e as { name?: string }).name === "string" && (e as { name: string }).name === "NotAllowedError")) {
+        setMicPermission("denied");
+        setMicGate("denied");
+      } else {
+        setErr(e instanceof Error ? e.message : "Erro ao acessar o microfone.");
+      }
+    } finally {
+      setMicGateRequesting(false);
+    }
+  }, []);
+
+  const skipMicAndConnect = useCallback(() => {
+    setMicGate("skipped");
   }, []);
 
   const audioTooltip =
@@ -632,6 +669,57 @@ export function LobbyScreen({
 
   if (!showMainUI) {
     return audioWidget;
+  }
+
+  /* Portão de microfone: bloquear lobby até o usuário permitir (ou escolher continuar sem áudio) */
+  if (!room && (micGate === "pending" || micGate === "denied")) {
+    return (
+      <>
+        {audioWidget}
+        <div className="lobby-mic-gate" role="dialog" aria-modal="true" aria-labelledby="lobby-mic-gate-title">
+          <div className="lobby-mic-gate__box">
+            <h2 id="lobby-mic-gate-title" className="lobby-mic-gate__title">
+              {micGate === "denied" ? "Microfone bloqueado" : "Permissão de microfone"}
+            </h2>
+            <p className="lobby-mic-gate__text">
+              {micGate === "denied"
+                ? "O microfone foi bloqueado. Sem permissão, você não poderá falar no lobby nem no espetáculo. Permita nas configurações do site (ícone de cadeado na barra de endereço) e atualize a página, ou continue sem áudio."
+                : "Para participar com voz no lobby e no espetáculo, é necessário permitir o uso do microfone. O navegador pedirá a permissão ao clicar em \"Permitir microfone\"."}
+            </p>
+            <div className="lobby-mic-gate__actions">
+              {micGate === "denied" ? (
+                <>
+                  <button
+                    type="button"
+                    className="ui-btn"
+                    onClick={() => setMicGate("pending")}
+                  >
+                    Tentar novamente
+                  </button>
+                  <button
+                    type="button"
+                    className="ui-btn ui-btn--ghost"
+                    onClick={skipMicAndConnect}
+                  >
+                    Continuar sem áudio
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="ui-btn"
+                  onClick={requestMicAndConnect}
+                  disabled={micGateRequesting}
+                >
+                  {micGateRequesting ? "Aguardando permissão…" : "Permitir microfone"}
+                </button>
+              )}
+            </div>
+            {err && <p className="lobby-mic-gate__error">{err}</p>}
+          </div>
+        </div>
+      </>
+    );
   }
 
   return (
