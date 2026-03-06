@@ -12,6 +12,7 @@ class Scene(SQLModel, table=True):
     body: str = Field(default="")
     order_index: int = Field(default=0)
     is_narrative: bool = Field(default=False)
+    narrative_black_start: bool = Field(default=False)
     scenario_id: Optional[str] = Field(default=None, max_length=36)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

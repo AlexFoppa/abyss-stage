@@ -84,10 +84,12 @@ export function ScenarioCropEditor({
   imageUrl,
   crop,
   onChange,
+  showHint = true,
 }: {
   imageUrl: string;
   crop: CropRect | null;
   onChange: (crop: CropRect) => void;
+  showHint?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -253,9 +255,11 @@ export function ScenarioCropEditor({
           </div>
         )}
       </div>
-      <p className="scenario-crop-editor__hint">
-        Arraste o retângulo para mover; use os cantos para redimensionar (proporção 16:9).
-      </p>
+      {showHint && (
+        <p className="scenario-crop-editor__hint">
+          Arraste o retângulo para mover; use os cantos para redimensionar (proporção 16:9).
+        </p>
+      )}
     </div>
   );
 }

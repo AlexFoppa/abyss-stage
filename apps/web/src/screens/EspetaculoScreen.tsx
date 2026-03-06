@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { scenarioCropFromScenario, scenarioImageUrl as getScenarioImageUrl } from "../scenarioCrop";
 import { useAuth } from "../auth/AuthProvider";
-import { SceneStagePreview } from "./SceneStagePreview";
+import { ScenarioBackground, SceneStagePreview } from "./SceneStagePreview";
 import type { GMCharacter } from "../types/character";
 import "../styles/screens/selectCharacter.css";
 import "../styles/screens/story-editor.css";
@@ -15,6 +15,7 @@ type Scene = {
   body: string;
   order_index: number;
   is_narrative: boolean;
+  narrative_black_start: boolean;
   scenario_id: string | null;
 };
 
@@ -27,6 +28,22 @@ type ScenarioOut = {
   crop_height?: number | null;
 };
 type SceneCharactersOut = { character_ids: number[] };
+type NarrativeSlide = {
+  id: string;
+  url: string | null;
+  isBlack: boolean;
+  crop: { x: number; y: number; width: number; height: number } | null;
+  order_index: number | null;
+};
+type SceneImageOut = {
+  order_index: number;
+  storage_key: string;
+  url: string;
+  crop_x?: number | null;
+  crop_y?: number | null;
+  crop_width?: number | null;
+  crop_height?: number | null;
+};
 
 export function EspetaculoScreen({
   onBack,
@@ -35,7 +52,7 @@ export function EspetaculoScreen({
   lobbyConnected = false,
 }: {
   onBack: () => void;
-  onStartShow: (storyId: string, sceneId: string, scenarioId: string | null) => void;
+  onStartShow: (storyId: string, sceneId: string, scenarioId: string | null, narrativeSlides?: NarrativeSlide[]) => void;
   onEditScene?: (storyId: string, sceneId: string) => void;
   /** Quando false, jogadores não recebem o início do espetáculo; botão fica desabilitado até conectar ao lobby. */
   lobbyConnected?: boolean;
@@ -105,6 +122,7 @@ export function EspetaculoScreen({
   const [scenarioCrop, setScenarioCrop] = useState<ReturnType<typeof scenarioCropFromScenario>>(null);
   const [sceneCharacterIds, setSceneCharacterIds] = useState<number[]>([]);
   const [gmCharacters, setGmCharacters] = useState<GMCharacter[]>([]);
+  const [narrativeSlides, setNarrativeSlides] = useState<NarrativeSlide[]>([]);
 
   useEffect(() => {
     if (!selectedStoryId) return;
@@ -125,9 +143,63 @@ export function EspetaculoScreen({
   useEffect(() => {
     if (!activeScene) {
       setScenarioImageUrl(null);
+      setScenarioCrop(null);
       setSceneCharacterIds([]);
+      setNarrativeSlides([]);
       return;
     }
+    if (activeScene.is_narrative) {
+      setScenarioImageUrl(null);
+      setScenarioCrop(null);
+      let cancelled = false;
+      (async () => {
+        try {
+          const list = await api<SceneImageOut[]>(
+            `/api/gm/stories/${selectedStoryId!}/scenes/${activeScene.id}/images`
+          );
+          const imageSlides: NarrativeSlide[] = Array.isArray(list)
+            ? list.map((img) => ({
+                id: `image-${img.order_index}`,
+                url: img.url,
+                isBlack: false,
+                crop:
+                  Number.isFinite(Number(img.crop_x)) &&
+                  Number.isFinite(Number(img.crop_y)) &&
+                  Number.isFinite(Number(img.crop_width)) &&
+                  Number.isFinite(Number(img.crop_height)) &&
+                  Number(img.crop_width) > 0 &&
+                  Number(img.crop_height) > 0
+                    ? {
+                        x: Number(img.crop_x),
+                        y: Number(img.crop_y),
+                        width: Number(img.crop_width),
+                        height: Number(img.crop_height),
+                      }
+                    : null,
+                order_index: img.order_index,
+              }))
+            : [];
+          if (!cancelled) {
+            setNarrativeSlides([
+              ...(activeScene.narrative_black_start
+                ? [{ id: "black-start", url: null, isBlack: true, crop: null, order_index: null }]
+                : []),
+              ...imageSlides,
+            ]);
+          }
+        } catch {
+          if (!cancelled) {
+            setNarrativeSlides(
+              activeScene.narrative_black_start
+                ? [{ id: "black-start", url: null, isBlack: true, crop: null, order_index: null }]
+                : []
+            );
+          }
+        }
+      })();
+      return () => { cancelled = true; };
+    }
+    setNarrativeSlides([]);
     if (activeScene.scenario_id) {
       setScenarioImageUrl(null);
       setScenarioCrop(null);
@@ -153,7 +225,7 @@ export function EspetaculoScreen({
       setScenarioImageUrl(null);
       setScenarioCrop(null);
     }
-  }, [activeScene?.id, activeScene?.scenario_id]);
+  }, [selectedStoryId, activeScene?.id, activeScene?.scenario_id, activeScene?.is_narrative, activeScene?.narrative_black_start]);
 
   useEffect(() => {
     if (!selectedStoryId || !activeScene) {
@@ -279,7 +351,22 @@ export function EspetaculoScreen({
                       <div className="story-editor__preview">
                         <h3 className="story-editor__preview-title">Preview</h3>
                         <div className="story-editor__preview-stage story-editor__preview-stage--narrative">
-                          <p className="story-editor__placeholder">Cena narrativa — sem preview.</p>
+                          {narrativeSlides.length > 0 ? (
+                            <>
+                              {narrativeSlides[0]?.isBlack ? (
+                                <div className="story-editor__preview-black" />
+                              ) : (
+                                <ScenarioBackground
+                                  imageUrl={narrativeSlides[0]?.url ?? null}
+                                  crop={narrativeSlides[0]?.crop ?? undefined}
+                                  className="story-editor__preview-narrative-bg"
+                                />
+                              )}
+                              <span className="espetaculo-narrative-count">{narrativeSlides.length} slide{narrativeSlides.length !== 1 ? "s" : ""}</span>
+                            </>
+                          ) : (
+                            <p className="story-editor__placeholder">Cena narrativa — sem preview.</p>
+                          )}
                         </div>
                       </div>
                     ) : (
@@ -339,7 +426,8 @@ export function EspetaculoScreen({
                       onStartShow(
                         selectedStoryId,
                         selectedSceneId,
-                        scene?.scenario_id ?? null
+                        scene?.scenario_id ?? null,
+                        scene?.is_narrative ? narrativeSlides : undefined
                       );
                     }}
                   >

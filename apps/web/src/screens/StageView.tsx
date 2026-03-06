@@ -40,6 +40,14 @@ type SyncMsg = {
   }>;
 };
 
+type NarrativeSlide = {
+  id: string;
+  url: string | null;
+  isBlack: boolean;
+  crop: { x: number; y: number; width: number; height: number } | null;
+  order_index: number | null;
+};
+
 function EyeOpenIcon({ className }: { className?: string }) {
   return (
     <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -101,6 +109,9 @@ export function StageView({
   sceneId,
   scenarioImageUrl,
   scenarioCrop,
+  narrativeSlides,
+  currentNarrativeIndex,
+  onNarrativeIndexChange,
   isGM,
   gmEmail,
   lobbyParticipants,
@@ -114,6 +125,9 @@ export function StageView({
   sceneId: string;
   scenarioImageUrl: string | null;
   scenarioCrop?: { x: number; y: number; width: number; height: number } | null;
+  narrativeSlides?: NarrativeSlide[];
+  currentNarrativeIndex?: number;
+  onNarrativeIndexChange?: (index: number) => void;
   isGM: boolean;
   gmEmail: string | null;
   lobbyParticipants: LobbyParticipant[];
@@ -439,6 +453,69 @@ export function StageView({
     }
     return map;
   }, [lobbyParticipants]);
+
+  const isNarrativeMode = Array.isArray(narrativeSlides) && narrativeSlides.length > 0;
+  const narrativeIndex = Math.max(0, Math.min(currentNarrativeIndex ?? 0, narrativeSlides?.length ? narrativeSlides.length - 1 : 0));
+  const narrativeSlide = isNarrativeMode ? narrativeSlides![narrativeIndex] : null;
+
+  const publishNarrativeSlide = useCallback(
+    (index: number) => {
+      onNarrativeIndexChange?.(index);
+      try {
+        room?.localParticipant.publishData(
+          new TextEncoder().encode(JSON.stringify({ type: "show/narrative/slide", showId, index })),
+          { reliable: true, topic: "espetaculo" }
+        );
+      } catch {}
+    },
+    [onNarrativeIndexChange, room, showId]
+  );
+
+  if (isNarrativeMode && narrativeSlide) {
+    return (
+      <div className={"stage-view stage-view--narrative" + (isGM ? " stage-view--gm" : "")}>
+        <div className="stage-view__narrative-layer">
+          {narrativeSlide.isBlack ? (
+            <div className="stage-view__narrative-black" />
+          ) : (
+            <ScenarioBackground
+              imageUrl={narrativeSlide.url}
+              crop={narrativeSlide.crop ?? undefined}
+              className="stage-view__narrative-bg"
+            />
+          )}
+        </div>
+        {isGM && (
+          <div className="stage-view__narrative-controls">
+            <button
+              type="button"
+              className="ui-btn ui-btn--ghost stage-view__narrative-btn"
+              disabled={narrativeIndex <= 0}
+              onClick={() => narrativeIndex > 0 && publishNarrativeSlide(narrativeIndex - 1)}
+              aria-label="Imagem anterior"
+            >
+              ← Anterior
+            </button>
+            <span className="stage-view__narrative-indicator" aria-live="polite">
+              {narrativeIndex + 1} / {narrativeSlides!.length}
+            </span>
+            <button
+              type="button"
+              className="ui-btn ui-btn--ghost stage-view__narrative-btn"
+              disabled={narrativeIndex >= narrativeSlides!.length - 1}
+              onClick={() =>
+                narrativeIndex < narrativeSlides!.length - 1 &&
+                publishNarrativeSlide(narrativeIndex + 1)
+              }
+              aria-label="Próxima imagem"
+            >
+              Próxima →
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={"stage-view" + (isGM ? " stage-view--gm" : "")}>

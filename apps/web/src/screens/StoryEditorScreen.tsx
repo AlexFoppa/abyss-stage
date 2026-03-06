@@ -16,7 +16,8 @@ import { api } from "../api";
 import { scenarioCropFromScenario, scenarioImageUrl as getScenarioImageUrl } from "../scenarioCrop";
 import { ScenarioManagerModal, type Scenario } from "./ScenarioManagerModal";
 import { SceneCharactersModal, type GMCharacter } from "./SceneCharactersModal";
-import { SceneStagePreview } from "./SceneStagePreview";
+import { ScenarioBackground, SceneStagePreview } from "./SceneStagePreview";
+import { ScenarioCropEditor } from "./ScenarioCropEditor";
 import { EditCharacterScreen } from "./EditCharacterScreen";
 import type { Character } from "../types/character";
 import { getAvatarUrl } from "../utils/avatar";
@@ -27,6 +28,7 @@ const SCENE_DROP_PREFIX = "scene-drop-";
 const SCENE_CHAR_DROP_PREFIX = "scene-char-drop-";
 const CHAR_DRAG_PREFIX = "char-";
 const SCENE_REORDER_PREFIX = "scene-reorder-";
+const NARRATIVE_IMAGE_REORDER_PREFIX = "narrative-image-reorder-";
 
 /** Converte GMCharacter (campos opcionais) para Character (campos obrigatórios) para EditCharacterScreen. */
 function gmCharToCharacter(c: GMCharacter | null): Character | null {
@@ -191,6 +193,59 @@ function SortableSceneItem({
   );
 }
 
+function SortableNarrativeImageItem({
+  image,
+  isActive,
+  onSelect,
+  onRemove,
+}: {
+  image: SceneImageItem;
+  isActive: boolean;
+  onSelect: () => void;
+  onRemove: () => void;
+}) {
+  const id = NARRATIVE_IMAGE_REORDER_PREFIX + image.order_index;
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id });
+  return (
+    <li
+      ref={setDropRef}
+      className={
+        "story-editor__narrative-images-item" +
+        (isActive ? " story-editor__narrative-images-item--active" : "") +
+        (isDragging ? " story-editor__narrative-images-item--dragging" : "") +
+        (isOver ? " story-editor__narrative-images-item--over" : "")
+      }
+    >
+      <button
+        type="button"
+        className="story-editor__narrative-images-handle"
+        ref={setDragRef}
+        title="Arraste para reordenar"
+        aria-label="Arraste para reordenar"
+        {...listeners}
+        {...attributes}
+      >
+        ≡
+      </button>
+      <button type="button" className="story-editor__narrative-images-main" onClick={onSelect}>
+        <span className="story-editor__narrative-images-thumb-wrap">
+          <img src={image.url} alt="" className="story-editor__narrative-images-thumb" />
+        </span>
+        <span className="story-editor__narrative-images-order">{image.order_index + 1}</span>
+      </button>
+      <button
+        type="button"
+        className="ui-btn ui-btn--ghost story-editor__narrative-images-remove"
+        onClick={onRemove}
+        aria-label="Remover imagem"
+      >
+        Remover
+      </button>
+    </li>
+  );
+}
+
 export type StoryInfo = {
   id: string;
   name: string;
@@ -228,9 +283,29 @@ export type Scene = {
   body: string;
   order_index: number;
   is_narrative: boolean;
+  narrative_black_start: boolean;
   scenario_id: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type SceneImageItem = {
+  order_index: number;
+  storage_key: string;
+  url: string;
+  mime?: string | null;
+  crop_x?: number | null;
+  crop_y?: number | null;
+  crop_width?: number | null;
+  crop_height?: number | null;
+};
+
+type NarrativeSlide = {
+  id: string;
+  url: string | null;
+  isBlack: boolean;
+  crop: { x: number; y: number; width: number; height: number } | null;
+  order_index: number | null;
 };
 
 function ScenePreview({
@@ -239,12 +314,18 @@ function ScenePreview({
   sceneCharacterIds,
   gmCharacters,
   gmEmail,
+  narrativeSlide,
+  narrativeEditable = false,
+  onNarrativeCropChange,
 }: {
   isNormalScene: boolean;
   scenario: Scenario | null;
   sceneCharacterIds: number[];
   gmCharacters: GMCharacter[];
   gmEmail?: string;
+  narrativeSlide?: NarrativeSlide | null;
+  narrativeEditable?: boolean;
+  onNarrativeCropChange?: (crop: { x: number; y: number; width: number; height: number }) => void;
 }) {
   const scenarioBg = getScenarioImageUrl(scenario);
 
@@ -253,7 +334,26 @@ function ScenePreview({
       <div className="story-editor__preview">
         <h2 className="story-editor__preview-title">Preview</h2>
         <div className="story-editor__preview-stage story-editor__preview-stage--narrative">
-          <p className="story-editor__placeholder">Cena narrativa — sem preview.</p>
+          {narrativeSlide?.isBlack ? (
+            <div className="story-editor__preview-black" />
+          ) : narrativeSlide?.url && narrativeEditable && onNarrativeCropChange ? (
+            <div className="story-editor__preview-crop-inline">
+              <ScenarioCropEditor
+                imageUrl={narrativeSlide.url}
+                crop={narrativeSlide.crop}
+                onChange={onNarrativeCropChange}
+                showHint={false}
+              />
+            </div>
+          ) : narrativeSlide?.url ? (
+            <ScenarioBackground
+              imageUrl={narrativeSlide.url}
+              crop={narrativeSlide.crop ?? undefined}
+              className="story-editor__preview-narrative-bg"
+            />
+          ) : (
+            <p className="story-editor__placeholder">Cena narrativa — sem preview.</p>
+          )}
         </div>
       </div>
     );
@@ -319,10 +419,45 @@ export function StoryEditorScreen({
     title: string;
     body: string;
     is_narrative: boolean;
+    narrative_black_start: boolean;
   } | null>(null);
+  const [narrativeSceneImages, setNarrativeSceneImages] = useState<SceneImageItem[]>([]);
+  const [narrativeImagesLoading, setNarrativeImagesLoading] = useState(false);
+  const [narrativeImageUploading, setNarrativeImageUploading] = useState(false);
+  const [narrativePreviewIndex, setNarrativePreviewIndex] = useState(0);
+  const [narrativeDropActive, setNarrativeDropActive] = useState(false);
+  const narrativeImageInputRef = useRef<HTMLInputElement | null>(null);
+  const narrativeCropSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeScene = scenes.find((s) => s.id === activeSceneId) ?? null;
   const sceneDetailsScene = sceneDetailsSceneId ? scenes.find((s) => s.id === sceneDetailsSceneId) ?? null : null;
+  const narrativeSlides: NarrativeSlide[] = [
+    ...(activeScene?.is_narrative && activeScene.narrative_black_start
+      ? [{ id: "black-start", url: null, isBlack: true, crop: null, order_index: null }]
+      : []),
+    ...narrativeSceneImages.map((img) => ({
+      id: `image-${img.order_index}`,
+      url: img.url,
+      isBlack: false,
+      crop:
+        Number.isFinite(Number(img.crop_x)) &&
+        Number.isFinite(Number(img.crop_y)) &&
+        Number.isFinite(Number(img.crop_width)) &&
+        Number.isFinite(Number(img.crop_height)) &&
+        Number(img.crop_width) > 0 &&
+        Number(img.crop_height) > 0
+          ? {
+              x: Number(img.crop_x),
+              y: Number(img.crop_y),
+              width: Number(img.crop_width),
+              height: Number(img.crop_height),
+            }
+          : null,
+      order_index: img.order_index,
+    })),
+  ];
+  const currentNarrativeSlide =
+    narrativeSlides[Math.max(0, Math.min(narrativePreviewIndex, Math.max(0, narrativeSlides.length - 1)))] ?? null;
 
   /** IDs de cenários na história: usados em cenas ou adicionados à história (sem cena ainda). */
   const [addedToStoryScenarioIds, setAddedToStoryScenarioIds] = useState<string[]>([]);
@@ -338,10 +473,11 @@ export function StoryEditorScreen({
     lastSavedState?.sceneId === activeSceneId &&
     (lastSavedState.title !== (activeScene.title ?? "") ||
       lastSavedState.body !== (activeScene.body ?? "") ||
-      lastSavedState.is_narrative !== activeScene.is_narrative)
+      lastSavedState.is_narrative !== activeScene.is_narrative ||
+      lastSavedState.narrative_black_start !== activeScene.narrative_black_start)
   );
 
-  const sceneSnapshotRef = useRef<{ sceneId: string; title: string; body: string; is_narrative: boolean } | null>(null);
+  const sceneSnapshotRef = useRef<{ sceneId: string; title: string; body: string; is_narrative: boolean; narrative_black_start: boolean } | null>(null);
   const activeSceneIdRef = useRef<string | null>(null);
   useEffect(() => {
     activeSceneIdRef.current = activeSceneId;
@@ -353,9 +489,10 @@ export function StoryEditorScreen({
         title: activeScene.title ?? "",
         body: activeScene.body ?? "",
         is_narrative: activeScene.is_narrative,
+        narrative_black_start: activeScene.narrative_black_start,
       };
     }
-  }, [activeSceneId, activeScene?.title, activeScene?.body, activeScene?.is_narrative]);
+  }, [activeSceneId, activeScene?.title, activeScene?.body, activeScene?.is_narrative, activeScene?.narrative_black_start]);
 
   const loadScenarios = useCallback(async () => {
     try {
@@ -395,6 +532,23 @@ export function StoryEditorScreen({
         setSceneCharacterIds(res?.character_ids ?? []);
       } catch {
         setSceneCharacterIds([]);
+      }
+    },
+    [storyId]
+  );
+
+  const loadNarrativeSceneImages = useCallback(
+    async (sceneId: string) => {
+      setNarrativeImagesLoading(true);
+      try {
+        const list = await api<SceneImageItem[]>(
+          `/api/gm/stories/${storyId}/scenes/${sceneId}/images`
+        );
+        setNarrativeSceneImages(Array.isArray(list) ? list : []);
+      } catch {
+        setNarrativeSceneImages([]);
+      } finally {
+        setNarrativeImagesLoading(false);
       }
     },
     [storyId]
@@ -494,12 +648,28 @@ export function StoryEditorScreen({
   }, [activeSceneId, activeScene?.id, activeScene?.is_narrative, loadSceneCharacters]);
 
   useEffect(() => {
+    if (activeSceneId && activeScene?.is_narrative) {
+      loadNarrativeSceneImages(activeSceneId);
+    } else {
+      setNarrativeSceneImages([]);
+    }
+  }, [activeSceneId, activeScene?.is_narrative, loadNarrativeSceneImages]);
+
+  useEffect(() => {
+    setNarrativePreviewIndex((prev) => {
+      if (narrativeSlides.length === 0) return 0;
+      return Math.max(0, Math.min(prev, narrativeSlides.length - 1));
+    });
+  }, [activeSceneId, activeScene?.narrative_black_start, narrativeSceneImages.length]);
+
+  useEffect(() => {
     if (activeSceneId && activeScene) {
       setLastSavedState({
         sceneId: activeSceneId,
         title: activeScene.title ?? "",
         body: activeScene.body ?? "",
         is_narrative: activeScene.is_narrative,
+        narrative_black_start: activeScene.narrative_black_start,
       });
     }
   }, [activeSceneId]);
@@ -513,10 +683,11 @@ export function StoryEditorScreen({
         title: snap.title,
         body: snap.body,
         is_narrative: snap.is_narrative,
+        narrative_black_start: snap.narrative_black_start,
       });
     }, 1500);
     return () => clearTimeout(t);
-  }, [autosaveEnabled, isDirty, activeScene?.title, activeScene?.body, activeScene?.is_narrative, activeSceneId]);
+  }, [autosaveEnabled, isDirty, activeScene?.title, activeScene?.body, activeScene?.is_narrative, activeScene?.narrative_black_start, activeSceneId]);
 
   useEffect(() => {
     if (!sceneDetailsSceneId) {
@@ -545,6 +716,12 @@ export function StoryEditorScreen({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [sceneDetailsSceneId]);
+
+  useEffect(() => {
+    return () => {
+      if (narrativeCropSaveTimeoutRef.current) clearTimeout(narrativeCropSaveTimeoutRef.current);
+    };
+  }, []);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
@@ -655,12 +832,46 @@ export function StoryEditorScreen({
         setErr(msg);
       }
     }
+
+    if (
+      activeId.startsWith(NARRATIVE_IMAGE_REORDER_PREFIX) &&
+      overId.startsWith(NARRATIVE_IMAGE_REORDER_PREFIX) &&
+      activeSceneId
+    ) {
+      const fromOrderIndex = parseInt(activeId.slice(NARRATIVE_IMAGE_REORDER_PREFIX.length), 10);
+      const toOrderIndex = parseInt(overId.slice(NARRATIVE_IMAGE_REORDER_PREFIX.length), 10);
+      if (Number.isNaN(fromOrderIndex) || Number.isNaN(toOrderIndex) || fromOrderIndex === toOrderIndex) return;
+      const fromIndex = narrativeSceneImages.findIndex((img) => img.order_index === fromOrderIndex);
+      const toIndex = narrativeSceneImages.findIndex((img) => img.order_index === toOrderIndex);
+      if (fromIndex === -1 || toIndex === -1) return;
+      const reordered = [...narrativeSceneImages];
+      const [removed] = reordered.splice(fromIndex, 1);
+      reordered.splice(toIndex, 0, removed);
+      setErr(null);
+      try {
+        const updated = await api<SceneImageItem[]>(
+          `/api/gm/stories/${storyId}/scenes/${activeSceneId}/images/order`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ order_indexes: reordered.map((img) => img.order_index) }),
+          }
+        );
+        setNarrativeSceneImages(Array.isArray(updated) ? updated : []);
+      } catch (e: unknown) {
+        const msg =
+          e && typeof (e as { message?: string })?.message === "string"
+            ? (e as { message: string }).message
+            : "Falha ao reordenar imagens";
+        setErr(msg);
+      }
+    }
   }
 
   async function handleUpdateScene(patch: {
     title?: string;
     body?: string;
     is_narrative?: boolean;
+    narrative_black_start?: boolean;
   }): Promise<boolean> {
     if (!activeSceneId || !activeScene) return false;
     setErr(null);
@@ -678,6 +889,7 @@ export function StoryEditorScreen({
         title: updated.title ?? "",
         body: updated.body ?? "",
         is_narrative: updated.is_narrative,
+        narrative_black_start: updated.narrative_black_start,
       });
       return true;
     } catch (e: unknown) {
@@ -698,6 +910,7 @@ export function StoryEditorScreen({
       title: activeScene.title.trim() || activeScene.title,
       body: activeScene.body ?? "",
       is_narrative: activeScene.is_narrative,
+      narrative_black_start: activeScene.narrative_black_start,
     });
   }
 
@@ -708,6 +921,7 @@ export function StoryEditorScreen({
         title: activeScene.title ?? "",
         body: activeScene.body ?? "",
         is_narrative: activeScene.is_narrative,
+        narrative_black_start: activeScene.narrative_black_start,
       });
       if (ok) setActiveSceneId(nextSceneId);
     } else if (!autosaveEnabled && isDirty) {
@@ -724,6 +938,7 @@ export function StoryEditorScreen({
         title: activeScene.title ?? "",
         body: activeScene.body ?? "",
         is_narrative: activeScene.is_narrative,
+        narrative_black_start: activeScene.narrative_black_start,
       });
       if (ok) onBack();
     } else if (!autosaveEnabled && isDirty) {
@@ -753,6 +968,125 @@ export function StoryEditorScreen({
     }
   }
 
+  async function handleNarrativeImageUpload(files: FileList | null) {
+    if (!activeSceneId || !activeScene?.is_narrative || !files?.length) return;
+    setErr(null);
+    setNarrativeImageUploading(true);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!file.type.startsWith("image/")) {
+          setErr("Apenas imagens são permitidas.");
+          break;
+        }
+        const form = new FormData();
+        form.append("file", file);
+        await api(`/api/gm/stories/${storyId}/scenes/${activeSceneId}/images`, {
+          method: "POST",
+          body: form,
+        });
+      }
+      if (activeSceneId) await loadNarrativeSceneImages(activeSceneId);
+    } catch (e: unknown) {
+      const msg =
+        e && typeof (e as { message?: string })?.message === "string"
+          ? (e as { message: string }).message
+          : "Falha ao enviar imagem";
+      setErr(msg);
+    } finally {
+      setNarrativeImageUploading(false);
+      if (narrativeImageInputRef.current) narrativeImageInputRef.current.value = "";
+    }
+  }
+
+  function handleNarrativeFileDrop(e: React.DragEvent<HTMLButtonElement | HTMLDivElement>) {
+    e.preventDefault();
+    setNarrativeDropActive(false);
+    if (e.dataTransfer?.files?.length) {
+      handleNarrativeImageUpload(e.dataTransfer.files);
+    }
+  }
+
+  async function removeNarrativeImage(orderIndex: number) {
+    if (!activeSceneId) return;
+    setErr(null);
+    try {
+      await api(
+        `/api/gm/stories/${storyId}/scenes/${activeSceneId}/images/${orderIndex}`,
+        { method: "DELETE" }
+      );
+      await loadNarrativeSceneImages(activeSceneId);
+    } catch (e: unknown) {
+      const msg =
+        e && typeof (e as { message?: string })?.message === "string"
+          ? (e as { message: string }).message
+          : "Falha ao remover imagem";
+      setErr(msg);
+    }
+  }
+
+  async function toggleNarrativeBlackStart(enabled: boolean) {
+    if (!activeSceneId || !activeScene) return;
+    setScenes((prev) =>
+      prev.map((scene) =>
+        scene.id === activeSceneId ? { ...scene, narrative_black_start: enabled } : scene
+      )
+    );
+    const ok = await handleUpdateScene({
+      is_narrative: activeScene.is_narrative,
+      narrative_black_start: enabled,
+    });
+    if (!ok) {
+      setScenes((prev) =>
+        prev.map((scene) =>
+          scene.id === activeSceneId ? { ...scene, narrative_black_start: !enabled } : scene
+        )
+      );
+    } else if (enabled) {
+      setNarrativePreviewIndex(0);
+    }
+  }
+
+  function updateNarrativeImageCrop(orderIndex: number, crop: { x: number; y: number; width: number; height: number }) {
+    setNarrativeSceneImages((prev) =>
+      prev.map((img) =>
+        img.order_index === orderIndex
+          ? {
+              ...img,
+              crop_x: crop.x,
+              crop_y: crop.y,
+              crop_width: crop.width,
+              crop_height: crop.height,
+            }
+          : img
+      )
+    );
+    if (narrativeCropSaveTimeoutRef.current) clearTimeout(narrativeCropSaveTimeoutRef.current);
+    narrativeCropSaveTimeoutRef.current = setTimeout(async () => {
+      if (!activeSceneId) return;
+      try {
+        await api<SceneImageItem>(
+          `/api/gm/stories/${storyId}/scenes/${activeSceneId}/images/${orderIndex}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              crop_x: crop.x,
+              crop_y: crop.y,
+              crop_width: crop.width,
+              crop_height: crop.height,
+            }),
+          }
+        );
+      } catch (e: unknown) {
+        const msg =
+          e && typeof (e as { message?: string })?.message === "string"
+            ? (e as { message: string }).message
+            : "Falha ao salvar enquadramento da imagem";
+        setErr(msg);
+      }
+    }, 250);
+  }
+
   async function handleCreateScene() {
     const title = window.prompt("Título da nova cena:", "Nova cena");
     if (title == null || !title.trim()) return;
@@ -766,6 +1100,7 @@ export function StoryEditorScreen({
           body: "",
           order_index: scenes.length,
           is_narrative: false,
+        narrative_black_start: false,
           scenario_id: null,
         }),
       });
@@ -794,6 +1129,7 @@ export function StoryEditorScreen({
           body: sceneDetailsScene.body ?? "",
           order_index: scenes.length,
           is_narrative: sceneDetailsScene.is_narrative,
+          narrative_black_start: sceneDetailsScene.narrative_black_start,
           scenario_id: sceneDetailsScene.scenario_id,
         }),
       });
@@ -1103,6 +1439,18 @@ export function StoryEditorScreen({
                   <option value="normal">Normal (cenário + personagens)</option>
                   <option value="narrative">Narrativa (só texto/imagens)</option>
                 </select>
+                {activeScene.is_narrative && (
+                  <div className="story-editor__narrative-options" style={{ marginTop: 12 }}>
+                    <label className="story-editor__autosave-toggle story-editor__narrative-black-toggle">
+                      <input
+                        type="checkbox"
+                        checked={activeScene.narrative_black_start}
+                        onChange={(e) => toggleNarrativeBlackStart(e.target.checked)}
+                      />
+                      <span>Tela preta inicial</span>
+                    </label>
+                  </div>
+                )}
                 <label className="ui-label" style={{ marginTop: 12 }}>
                   Descrição / corpo
                 </label>
@@ -1146,7 +1494,103 @@ export function StoryEditorScreen({
                 sceneCharacterIds={sceneCharacterIds}
                 gmCharacters={gmCharacters}
                 gmEmail={user?.email}
+                narrativeSlide={activeScene.is_narrative ? currentNarrativeSlide : undefined}
+                narrativeEditable={Boolean(activeScene.is_narrative && currentNarrativeSlide && !currentNarrativeSlide.isBlack && currentNarrativeSlide.url)}
+                onNarrativeCropChange={(crop) => {
+                  if (!currentNarrativeSlide || currentNarrativeSlide.order_index == null) return;
+                  updateNarrativeImageCrop(currentNarrativeSlide.order_index, crop);
+                }}
               />
+              {activeScene.is_narrative && (
+                <div className="story-editor__narrative-panel">
+                  <div className="story-editor__narrative-preview-controls">
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn--ghost"
+                      disabled={narrativePreviewIndex <= 0}
+                      onClick={() => setNarrativePreviewIndex((prev) => Math.max(0, prev - 1))}
+                    >
+                      ← Anterior
+                    </button>
+                    <span className="story-editor__narrative-preview-indicator">
+                      {narrativeSlides.length === 0 ? "0 / 0" : `${narrativePreviewIndex + 1} / ${narrativeSlides.length}`}
+                    </span>
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn--ghost"
+                      disabled={narrativePreviewIndex >= narrativeSlides.length - 1}
+                      onClick={() =>
+                        setNarrativePreviewIndex((prev) => Math.min(narrativeSlides.length - 1, prev + 1))
+                      }
+                    >
+                      Próxima →
+                    </button>
+                  </div>
+                  <input
+                    ref={narrativeImageInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="story-editor__narrative-images-input"
+                    onChange={(e) => {
+                      handleNarrativeImageUpload(e.target.files);
+                      e.target.value = "";
+                    }}
+                    aria-label="Selecionar imagens"
+                  />
+                  <button
+                    type="button"
+                    className={
+                      "ui-btn ui-btn--ghost story-editor__narrative-dropzone" +
+                      (narrativeDropActive ? " story-editor__narrative-dropzone--active" : "")
+                    }
+                    disabled={narrativeImageUploading}
+                    onClick={() => narrativeImageInputRef.current?.click()}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      setNarrativeDropActive(true);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setNarrativeDropActive(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                      setNarrativeDropActive(false);
+                    }}
+                    onDrop={handleNarrativeFileDrop}
+                  >
+                    {narrativeImageUploading
+                      ? "Enviando imagens…"
+                      : "Arraste imagem(ns) aqui ou clique para selecionar várias"}
+                  </button>
+                  {narrativeImagesLoading ? (
+                    <p className="story-editor__placeholder">Carregando imagens…</p>
+                  ) : narrativeSceneImages.length === 0 ? (
+                    <p className="story-editor__placeholder">
+                      {activeScene.narrative_black_start
+                        ? "Só a tela preta inicial está ativa."
+                        : "Nenhuma imagem enviada."}
+                    </p>
+                  ) : (
+                    <ul className="story-editor__narrative-images-list">
+                      {narrativeSceneImages.map((img) => (
+                        <SortableNarrativeImageItem
+                          key={img.order_index}
+                          image={img}
+                          isActive={currentNarrativeSlide?.order_index === img.order_index}
+                          onSelect={() => {
+                            const offset = activeScene.narrative_black_start ? 1 : 0;
+                            setNarrativePreviewIndex(img.order_index + offset);
+                          }}
+                          onRemove={() => removeNarrativeImage(img.order_index)}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               {!activeScene.is_narrative && (
                 <div className="story-editor__scene-characters">
                   <label className="ui-label" style={{ marginTop: 12 }}>

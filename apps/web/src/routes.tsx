@@ -37,6 +37,14 @@ type View =
   | "EDIT_CHARACTER"
   | "EDIT_PROFILE";
 
+type NarrativeSlide = {
+  id: string;
+  url: string | null;
+  isBlack: boolean;
+  crop: { x: number; y: number; width: number; height: number } | null;
+  order_index: number | null;
+};
+
 export function Routes() {
   const { user, loading, viewMode, setViewMode, logout } = useAuth();
 
@@ -85,6 +93,8 @@ export function Routes() {
     scenarioId: string | null;
     scenarioImageUrl: string | null;
     scenarioCrop: { x: number; y: number; width: number; height: number } | null;
+    narrativeSlides?: NarrativeSlide[];
+    currentNarrativeIndex?: number;
   }>(null);
   const [showTick, setShowTick] = useState(0);
 
@@ -195,13 +205,30 @@ export function Routes() {
             : typeof msg.scenarioImageUrl === "string"
               ? msg.scenarioImageUrl
               : null;
+        const narrativeSlides = Array.isArray(msg.narrativeSlides)
+          ? msg.narrativeSlides.filter(
+              (slide): slide is NarrativeSlide =>
+                !!slide &&
+                typeof slide === "object" &&
+                typeof (slide as NarrativeSlide).id === "string" &&
+                typeof (slide as NarrativeSlide).isBlack === "boolean"
+            )
+          : Array.isArray(msg.narrativeImageUrls)
+            ? msg.narrativeImageUrls
+                .filter((u): u is string => typeof u === "string")
+                .map((url, index) => ({
+                  id: `legacy-${index}`,
+                  url,
+                  isBlack: false,
+                  crop: null,
+                  order_index: index,
+                }))
+            : undefined;
         const id = typeof msg.showId === "string" ? msg.showId : String(startedAtFromMsg);
         if (!Number.isFinite(startedAtFromMsg) || !storyId || !sceneId) return;
-        /* Log temporário: confirme no console do jogador se esta linha aparece ao mestre abrir as cortinas; pode remover depois. */
         if (typeof console !== "undefined" && console.log) {
           console.log("[espetaculo] show/start received", { storyId, sceneId, from: participant?.identity });
         }
-        /* Sempre atualizar com startedAt: Date.now() para que o countdown de 10s seja correto para quem recebe a mensagem. */
         setShow({
           id,
           startedAt: Date.now(),
@@ -210,7 +237,18 @@ export function Routes() {
           scenarioId,
           scenarioImageUrl,
           scenarioCrop: null,
+          narrativeSlides,
+          currentNarrativeIndex: narrativeSlides?.length ? 0 : undefined,
         });
+        return;
+      }
+      if (msg.type === "show/narrative/slide") {
+        const id = typeof msg.showId === "string" ? msg.showId : null;
+        const index = typeof msg.index === "number" && Number.isFinite(msg.index) ? msg.index : 0;
+        if (!id) return;
+        setShow((prev) =>
+          prev && prev.id === id ? { ...prev, currentNarrativeIndex: index } : prev
+        );
         return;
       }
       if (topic && topic !== "espetaculo") return;
@@ -457,6 +495,11 @@ export function Routes() {
             sceneId={show.sceneId}
             scenarioImageUrl={show.scenarioImageUrl}
             scenarioCrop={show.scenarioCrop ?? null}
+            narrativeSlides={show.narrativeSlides}
+            currentNarrativeIndex={show.currentNarrativeIndex ?? 0}
+            onNarrativeIndexChange={(index) =>
+              setShow((prev) => (prev ? { ...prev, currentNarrativeIndex: index } : prev))
+            }
             isGM={isGM}
             gmEmail={user?.email ?? null}
             lobbyParticipants={displayParticipants}
@@ -544,20 +587,54 @@ export function Routes() {
               setEditingSceneId(sceneId);
               setGmSubView("GM_STORY_EDITOR");
             }}
-            onStartShow={(storyId, sceneId, scenarioId) => {
+            onStartShow={(storyId, sceneId, scenarioId, narrativeSlides) => {
               const startedAt = Date.now();
               const id = String(startedAt);
-              const next = { id, startedAt, storyId, sceneId, scenarioId, scenarioImageUrl: null as string | null, scenarioCrop: null as { x: number; y: number; width: number; height: number } | null };
+              const isNarrative = Array.isArray(narrativeSlides) && narrativeSlides.length > 0;
+              const next = {
+                id,
+                startedAt,
+                storyId,
+                sceneId,
+                scenarioId,
+                scenarioImageUrl: null as string | null,
+                scenarioCrop: null as { x: number; y: number; width: number; height: number } | null,
+                narrativeSlides: isNarrative ? narrativeSlides : undefined,
+                currentNarrativeIndex: isNarrative ? 0 : undefined,
+              };
               setShow(next);
 
               try {
                 liveKitRoom?.localParticipant.publishData(
-                  new TextEncoder().encode(JSON.stringify({ type: "show/start", showId: id, startedAt, storyId, sceneId, scenarioId, scenarioImageUrl: null, scenarioCrop: null })),
+                  new TextEncoder().encode(
+                    JSON.stringify({
+                      type: "show/start",
+                      showId: id,
+                      startedAt,
+                      storyId,
+                      sceneId,
+                      scenarioId,
+                      scenarioImageUrl: null,
+                      scenarioCrop: null,
+                      narrativeSlides: isNarrative ? narrativeSlides : undefined,
+                      isNarrativeScene: isNarrative,
+                    })
+                  ),
                   { reliable: true, topic: "espetaculo" }
                 );
               } catch {}
 
-              if (scenarioId) {
+              if (isNarrative) {
+                setShow((prev) => (prev && prev.id === id ? { ...prev, currentNarrativeIndex: 0 } : prev));
+                try {
+                  liveKitRoom?.localParticipant.publishData(
+                    new TextEncoder().encode(JSON.stringify({ type: "show/narrative/slide", showId: id, index: 0 })),
+                    { reliable: true, topic: "espetaculo" }
+                  );
+                } catch {}
+              }
+
+              if (scenarioId && !isNarrative) {
                 (async () => {
                   try {
                     const s = await api<{ image_storage_key: string | null; crop_x?: number | null; crop_y?: number | null; crop_width?: number | null; crop_height?: number | null }>(`/api/gm/scenarios/${scenarioId}`);

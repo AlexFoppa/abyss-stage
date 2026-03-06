@@ -11,6 +11,7 @@ from apps.api.backend.models.scene_character import SceneCharacter  # noqa: F401
 from apps.api.backend.models.story_character import StoryCharacter  # noqa: F401 - registra tabela para create_all
 from apps.api.backend.models.character import Character  # noqa: F401 - registra tabela para create_all
 from apps.api.backend.models.character_image import CharacterImage  # noqa: F401 - registra tabela para create_all
+from apps.api.backend.models.scene_image import SceneImage  # noqa: F401 - registra tabela para create_all
 
 # arquivo SQLite local (na raiz do repo). Pode mudar depois.
 DATABASE_URL = "sqlite:///./abyss.db"
@@ -51,6 +52,12 @@ def init_db() -> None:
             conn.execute(text("DROP TABLE IF EXISTS scene"))
             conn.commit()
         r = conn.execute(text(
+            "SELECT COUNT(*) FROM pragma_table_info('scene') WHERE name = 'narrative_black_start'"
+        )).scalar()
+        if r is not None and r == 0:
+            conn.execute(text("ALTER TABLE scene ADD COLUMN narrative_black_start BOOLEAN DEFAULT 0"))
+            conn.commit()
+        r = conn.execute(text(
             "SELECT COUNT(*) FROM pragma_table_info('scenario') WHERE name = 'name'"
         )).scalar()
         if r is not None and r == 0:
@@ -73,6 +80,13 @@ def init_db() -> None:
                 conn.commit()
         except Exception:
             pass
+        for col in ("crop_x", "crop_y", "crop_width", "crop_height"):
+            r = conn.execute(text(
+                f"SELECT COUNT(*) FROM pragma_table_info('scene_image') WHERE name = '{col}'"
+            )).scalar()
+            if r is not None and r == 0:
+                conn.execute(text(f"ALTER TABLE scene_image ADD COLUMN {col} FLOAT"))
+                conn.commit()
     SQLModel.metadata.create_all(engine)
     # scene_character: criada por create_all; sem checagem de schema antigo
 

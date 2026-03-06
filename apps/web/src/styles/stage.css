@@ -297,6 +297,61 @@
   pointer-events: auto;
 }
 
+/* Modo narrativa: uma imagem em tela cheia + controles do mestre */
+.stage-view--narrative {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.stage-view__narrative-layer {
+  position: absolute;
+  inset: 0;
+}
+.stage-view__narrative-bg {
+  position: absolute;
+  inset: 0;
+  background: #1a1a1a;
+}
+.stage-view__narrative-black {
+  position: absolute;
+  inset: 0;
+  background: #000;
+}
+.stage-view__narrative-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.stage-view__narrative-controls {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 8px;
+  z-index: 10;
+  pointer-events: auto;
+}
+.stage-view__narrative-btn {
+  color: #fff;
+  padding: 6px 12px;
+}
+.stage-view__narrative-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.stage-view__narrative-indicator {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.9);
+  min-width: 4ch;
+  text-align: center;
+}
+
 .stage-view__actors{
   position:absolute;
   inset:0;
