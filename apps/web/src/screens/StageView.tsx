@@ -143,8 +143,15 @@ export function StageView({
   const posRef = useRef<Record<number, number>>({});
   const [selectedCharacterIdsLocal, setSelectedCharacterIdsLocal] = useState<number[]>([]);
   const [selectedCharacterIdsRemote, setSelectedCharacterIdsRemote] = useState<number[]>([]);
+  const [narrativeLayerA, setNarrativeLayerA] = useState<NarrativeSlide | null>(null);
+  const [narrativeLayerB, setNarrativeLayerB] = useState<NarrativeSlide | null>(null);
+  const [activeNarrativeLayer, setActiveNarrativeLayer] = useState<"a" | "b">("a");
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const draggedRecentlyRef = useRef(false);
   const syncSentForShowIdRef = useRef<string | null>(null);
+  const renderedNarrativeSlideRef = useRef<NarrativeSlide | null>(null);
+  const narrativeFadeTimeoutRef = useRef<number | null>(null);
+  const narrativeFadeRafRef = useRef<number | null>(null);
 
   const lobbyCharacterIdsKey = useMemo(
     () =>
@@ -158,6 +165,15 @@ export function StageView({
   useEffect(() => {
     posRef.current = posByCharId;
   }, [posByCharId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = () => setPrefersReducedMotion(media.matches);
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
 
   const fetchCharactersForGM = useCallback(async () => {
     if (!storyId || !sceneId) return;
@@ -458,6 +474,66 @@ export function StageView({
   const narrativeIndex = Math.max(0, Math.min(currentNarrativeIndex ?? 0, narrativeSlides?.length ? narrativeSlides.length - 1 : 0));
   const narrativeSlide = isNarrativeMode ? narrativeSlides![narrativeIndex] : null;
 
+  useEffect(() => {
+    if (!isNarrativeMode || !narrativeSlide) {
+      renderedNarrativeSlideRef.current = null;
+      setNarrativeLayerA(null);
+      setNarrativeLayerB(null);
+      setActiveNarrativeLayer("a");
+      return;
+    }
+    const previous = renderedNarrativeSlideRef.current;
+    if (!previous) {
+      renderedNarrativeSlideRef.current = narrativeSlide;
+      setNarrativeLayerA(narrativeSlide);
+      setNarrativeLayerB(null);
+      setActiveNarrativeLayer("a");
+      return;
+    }
+    if (previous.id === narrativeSlide.id) {
+      if (activeNarrativeLayer === "a") setNarrativeLayerA(narrativeSlide);
+      else setNarrativeLayerB(narrativeSlide);
+      return;
+    }
+    if (narrativeFadeTimeoutRef.current != null) window.clearTimeout(narrativeFadeTimeoutRef.current);
+    if (narrativeFadeRafRef.current != null) window.cancelAnimationFrame(narrativeFadeRafRef.current);
+    renderedNarrativeSlideRef.current = narrativeSlide;
+    if (prefersReducedMotion) {
+      if (activeNarrativeLayer === "a") {
+        setNarrativeLayerA(narrativeSlide);
+        setNarrativeLayerB(null);
+      } else {
+        setNarrativeLayerB(narrativeSlide);
+        setNarrativeLayerA(null);
+      }
+      return;
+    }
+    const oldLayer = activeNarrativeLayer;
+    const nextLayer = oldLayer === "a" ? "b" : "a";
+    if (nextLayer === "a") setNarrativeLayerA(narrativeSlide);
+    else setNarrativeLayerB(narrativeSlide);
+    narrativeFadeRafRef.current = window.requestAnimationFrame(() => {
+      setActiveNarrativeLayer(nextLayer);
+      narrativeFadeRafRef.current = null;
+    });
+    narrativeFadeTimeoutRef.current = window.setTimeout(() => {
+      if (oldLayer === "a") setNarrativeLayerA(null);
+      else setNarrativeLayerB(null);
+      narrativeFadeTimeoutRef.current = null;
+    }, 900);
+    return () => {
+      if (narrativeFadeTimeoutRef.current != null) window.clearTimeout(narrativeFadeTimeoutRef.current);
+      if (narrativeFadeRafRef.current != null) window.cancelAnimationFrame(narrativeFadeRafRef.current);
+    };
+  }, [activeNarrativeLayer, isNarrativeMode, narrativeSlide, prefersReducedMotion]);
+
+  useEffect(() => {
+    return () => {
+      if (narrativeFadeTimeoutRef.current != null) window.clearTimeout(narrativeFadeTimeoutRef.current);
+      if (narrativeFadeRafRef.current != null) window.cancelAnimationFrame(narrativeFadeRafRef.current);
+    };
+  }, []);
+
   const publishNarrativeSlide = useCallback(
     (index: number) => {
       onNarrativeIndexChange?.(index);
@@ -471,20 +547,98 @@ export function StageView({
     [onNarrativeIndexChange, room, showId]
   );
 
-  if (isNarrativeMode && narrativeSlide) {
+  function narrativeMotionVars(slide: NarrativeSlide) {
+    const seed = slide.id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const dirX = seed % 2 === 0 ? 1 : -1;
+    const dirY = seed % 3 === 0 ? 1 : -1;
+    return {
+      ["--pan-start-x" as const]: `${-0.8 * dirX}%`,
+      ["--pan-end-x" as const]: `${0.8 * dirX}%`,
+      ["--pan-start-y" as const]: `${-0.5 * dirY}%`,
+      ["--pan-end-y" as const]: `${0.5 * dirY}%`,
+    };
+  }
+
+  function renderNarrativeSlide(slide: NarrativeSlide, className: string) {
+    if (slide.isBlack) {
+      return <div className={className + " stage-view__narrative-black"} />;
+    }
+    const crop = slide.crop;
+    const validCrop =
+      crop &&
+      Number.isFinite(crop.x) &&
+      Number.isFinite(crop.y) &&
+      crop.width > 0 &&
+      crop.width <= 1 &&
+      crop.height > 0 &&
+      crop.height <= 1;
+    if (!validCrop) {
+      return (
+        <div className={className + " stage-view__narrative-bg"}>
+          <img
+            src={slide.url || ""}
+            alt=""
+            aria-hidden
+            className="stage-view__narrative-media"
+            style={narrativeMotionVars(slide)}
+          />
+        </div>
+      );
+    }
+    const w = crop.width;
+    const h = crop.height;
+    const imgWidth = `${(100 / w).toFixed(2)}%`;
+    const imgHeight = `${(100 / h).toFixed(2)}%`;
+    const left = `${(-(crop.x / w) * 100).toFixed(2)}%`;
+    const top = `${(-(crop.y / h) * 100).toFixed(2)}%`;
+    return (
+      <div className={className + " stage-view__narrative-bg"}>
+        <img
+          src={slide.url || ""}
+          alt=""
+          aria-hidden
+          className="stage-view__narrative-media"
+          style={{
+            width: imgWidth,
+            height: imgHeight,
+            left,
+            top,
+            ...narrativeMotionVars(slide),
+          }}
+        />
+      </div>
+    );
+  }
+
+  const visibleNarrativeSlide = activeNarrativeLayer === "a" ? narrativeLayerA : narrativeLayerB;
+
+  if (isNarrativeMode && visibleNarrativeSlide) {
     return (
       <div className={"stage-view stage-view--narrative" + (isGM ? " stage-view--gm" : "")}>
-        <div className="stage-view__narrative-layer">
-          {narrativeSlide.isBlack ? (
-            <div className="stage-view__narrative-black" />
-          ) : (
-            <ScenarioBackground
-              imageUrl={narrativeSlide.url}
-              crop={narrativeSlide.crop ?? undefined}
-              className="stage-view__narrative-bg"
-            />
-          )}
-        </div>
+        {narrativeLayerA && (
+          <div
+            className={
+              "stage-view__narrative-layer " +
+              (activeNarrativeLayer === "a"
+                ? "stage-view__narrative-layer--visible"
+                : "stage-view__narrative-layer--hidden")
+            }
+          >
+            {renderNarrativeSlide(narrativeLayerA, "")}
+          </div>
+        )}
+        {narrativeLayerB && (
+          <div
+            className={
+              "stage-view__narrative-layer " +
+              (activeNarrativeLayer === "b"
+                ? "stage-view__narrative-layer--visible"
+                : "stage-view__narrative-layer--hidden")
+            }
+          >
+            {renderNarrativeSlide(narrativeLayerB, "")}
+          </div>
+        )}
         {isGM && (
           <div className="stage-view__narrative-controls">
             <button

@@ -307,10 +307,22 @@
 .stage-view__narrative-layer {
   position: absolute;
   inset: 0;
+  opacity: 0;
+  transition: opacity 900ms cubic-bezier(.33, 0, .15, 1);
+  will-change: opacity;
+}
+.stage-view__narrative-layer--visible {
+  opacity: 1;
+  z-index: 1;
+}
+.stage-view__narrative-layer--hidden {
+  opacity: 0;
+  z-index: 0;
 }
 .stage-view__narrative-bg {
   position: absolute;
   inset: 0;
+  overflow: hidden;
   background: #1a1a1a;
 }
 .stage-view__narrative-black {
@@ -318,10 +330,16 @@
   inset: 0;
   background: #000;
 }
-.stage-view__narrative-img {
+.stage-view__narrative-media {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  object-position: center center;
+  transform: translate3d(var(--pan-start-x, 0%), var(--pan-start-y, 0%), 0) scale(1.035);
+  animation: stageNarrativeDrift 14s ease-in-out infinite alternate;
+  will-change: transform;
 }
 .stage-view__narrative-controls {
   position: absolute;
@@ -350,6 +368,25 @@
   color: rgba(255, 255, 255, 0.9);
   min-width: 4ch;
   text-align: center;
+}
+
+@keyframes stageNarrativeDrift {
+  from {
+    transform: translate3d(var(--pan-start-x, 0%), var(--pan-start-y, 0%), 0) scale(1.035);
+  }
+  to {
+    transform: translate3d(var(--pan-end-x, 0%), var(--pan-end-y, 0%), 0) scale(1.045);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-view__narrative-layer {
+    transition: none;
+  }
+  .stage-view__narrative-media {
+    animation: none;
+    transform: none;
+  }
 }
 
 .stage-view__actors{
