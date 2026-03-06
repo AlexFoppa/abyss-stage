@@ -52,7 +52,7 @@ export function EspetaculoScreen({
   lobbyConnected = false,
 }: {
   onBack: () => void;
-  onStartShow: (storyId: string, sceneId: string, scenarioId: string | null, narrativeSlides?: NarrativeSlide[]) => void;
+  onStartShow: (storyId: string, sceneId: string) => void;
   onEditScene?: (storyId: string, sceneId: string) => void;
   /** Quando false, jogadores não recebem o início do espetáculo; botão fica desabilitado até conectar ao lobby. */
   lobbyConnected?: boolean;
@@ -422,13 +422,7 @@ export function EspetaculoScreen({
                     disabled={!canOpenCurtains}
                     onClick={() => {
                       if (!canOpenCurtains || !selectedStoryId || !selectedSceneId) return;
-                      const scene = scenes.find((s) => s.id === selectedSceneId);
-                      onStartShow(
-                        selectedStoryId,
-                        selectedSceneId,
-                        scene?.scenario_id ?? null,
-                        scene?.is_narrative ? narrativeSlides : undefined
-                      );
+                      onStartShow(selectedStoryId, selectedSceneId);
                     }}
                   >
                     Abrir as cortinas

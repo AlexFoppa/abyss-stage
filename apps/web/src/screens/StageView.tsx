@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { api } from "../api";
 import { RoomEvent, type Room } from "livekit-client";
 import type { LobbyParticipant } from "./LobbyScreen";
@@ -13,6 +13,7 @@ type CharacterOnStage = {
   id: number;
   name: string;
   imageUrl: string | null;
+  notes?: string;
   /** true = NPC (acende quando mestre fala por ele); false = PC (acende quando o jogador dono fala ou quando mestre está falando por ele). */
   isNPC: boolean;
 };
@@ -48,6 +49,19 @@ type NarrativeSlide = {
   order_index: number | null;
 };
 
+type SceneTransitionFrame =
+  | {
+      sceneId: string;
+      mode: "narrative";
+      narrativeSlide: NarrativeSlide | null;
+    }
+  | {
+      sceneId: string;
+      mode: "scenario";
+      scenarioImageUrl: string | null;
+      scenarioCrop: { x: number; y: number; width: number; height: number } | null;
+    };
+
 function EyeOpenIcon({ className }: { className?: string }) {
   return (
     <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -68,6 +82,15 @@ function SpeakForIcon({ className }: { className?: string }) {
   return (
     <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" />
+      <path d="M12 8h.01" />
     </svg>
   );
 }
@@ -115,7 +138,7 @@ export function StageView({
   isGM,
   gmEmail,
   lobbyParticipants,
-  lobbyCharacterIdsKey: lobbyCharacterIdsKeyFromParent,
+  lobbyCharacterIdsKey: _lobbyCharacterIdsKeyFromParent,
   speakingByIdentity,
 }: {
   room: Room | null;
@@ -143,28 +166,35 @@ export function StageView({
   const posRef = useRef<Record<number, number>>({});
   const [selectedCharacterIdsLocal, setSelectedCharacterIdsLocal] = useState<number[]>([]);
   const [selectedCharacterIdsRemote, setSelectedCharacterIdsRemote] = useState<number[]>([]);
+  const [openCharacterNotesId, setOpenCharacterNotesId] = useState<number | null>(null);
   const [narrativeLayerA, setNarrativeLayerA] = useState<NarrativeSlide | null>(null);
   const [narrativeLayerB, setNarrativeLayerB] = useState<NarrativeSlide | null>(null);
   const [activeNarrativeLayer, setActiveNarrativeLayer] = useState<"a" | "b">("a");
+  const [sceneTransitionFrame, setSceneTransitionFrame] = useState<SceneTransitionFrame | null>(null);
+  const [sceneTransitionVisible, setSceneTransitionVisible] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const draggedRecentlyRef = useRef(false);
-  const syncSentForShowIdRef = useRef<string | null>(null);
   const renderedNarrativeSlideRef = useRef<NarrativeSlide | null>(null);
   const narrativeFadeTimeoutRef = useRef<number | null>(null);
   const narrativeFadeRafRef = useRef<number | null>(null);
-
-  const lobbyCharacterIdsKey = useMemo(
-    () =>
-      lobbyCharacterIdsKeyFromParent ??
-      [...new Set((lobbyParticipants || []).map((p) => p.character_id).filter((id): id is number => id != null))]
-        .sort((a, b) => a - b)
-        .join(","),
-    [lobbyCharacterIdsKeyFromParent, lobbyParticipants]
-  );
+  const sceneTransitionTimeoutRef = useRef<number | null>(null);
+  const sceneTransitionRafRef = useRef<number | null>(null);
+  const currentSceneFrameRef = useRef<SceneTransitionFrame | null>(null);
+  void _lobbyCharacterIdsKeyFromParent;
 
   useEffect(() => {
     posRef.current = posByCharId;
   }, [posByCharId]);
+
+  useEffect(() => {
+    setCharacters([]);
+    setVisibleForPlayer({});
+    setAnimByCharId({});
+    setPosByCharId({});
+    setSelectedCharacterIdsLocal([]);
+    setSelectedCharacterIdsRemote([]);
+    setOpenCharacterNotesId(null);
+  }, [sceneId]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
@@ -212,6 +242,7 @@ export function StageView({
             id: gmChar.id,
             name: gmChar.name,
             imageUrl,
+            notes: gmChar.notes ?? "",
             isNPC,
           });
           continue;
@@ -221,6 +252,7 @@ export function StageView({
             id,
             name: lobby.character_name ?? "Personagem",
             imageUrl: getAvatarUrl({ character_image_url: lobby.character_image_url }),
+            notes: "",
             isNPC: false,
           });
         }
@@ -316,7 +348,8 @@ export function StageView({
           return [...byId.values()];
         });
         if (typeof raw.xPct === "number" && Number.isFinite(raw.xPct)) {
-          setPosByCharId((prev) => ({ ...prev, [id]: raw.xPct }));
+          const nextXPct = raw.xPct;
+          setPosByCharId((prev) => ({ ...prev, [id]: nextXPct }));
         }
 
         setVisibleForPlayer((prev) => ({ ...prev, [id]: !!m.visible }));
@@ -364,9 +397,8 @@ export function StageView({
   }, [characters]);
 
   useEffect(() => {
-    if (!isGM || phase !== "stage" || !room || showId === syncSentForShowIdRef.current) return;
+    if (!isGM || phase !== "stage" || !room) return;
     const t = window.setTimeout(() => {
-      syncSentForShowIdRef.current = showId;
       const payload: SyncMsg = {
         type: "show/sync",
         showId,
@@ -387,7 +419,7 @@ export function StageView({
       } catch {}
     }, 600);
     return () => clearTimeout(t);
-  }, [isGM, phase, room, showId, charactersDeduped, visibleForPlayer, posByCharId]);
+  }, [isGM, phase, room, sceneId, showId, charactersDeduped, visibleForPlayer, posByCharId]);
 
   useEffect(() => {
     if (!isGM) return;
@@ -475,6 +507,49 @@ export function StageView({
   const narrativeSlide = isNarrativeMode ? narrativeSlides![narrativeIndex] : null;
 
   useEffect(() => {
+    const nextFrame: SceneTransitionFrame = isNarrativeMode
+      ? {
+          sceneId,
+          mode: "narrative",
+          narrativeSlide,
+        }
+      : {
+          sceneId,
+          mode: "scenario",
+          scenarioImageUrl,
+          scenarioCrop: scenarioCrop ?? null,
+        };
+    const previousFrame = currentSceneFrameRef.current;
+    if (previousFrame && previousFrame.sceneId !== sceneId) {
+      if (sceneTransitionTimeoutRef.current != null) window.clearTimeout(sceneTransitionTimeoutRef.current);
+      if (sceneTransitionRafRef.current != null) window.cancelAnimationFrame(sceneTransitionRafRef.current);
+      if (prefersReducedMotion) {
+        setSceneTransitionFrame(null);
+        setSceneTransitionVisible(false);
+      } else {
+        setSceneTransitionFrame(previousFrame);
+        setSceneTransitionVisible(true);
+        sceneTransitionRafRef.current = window.requestAnimationFrame(() => {
+          setSceneTransitionVisible(false);
+          sceneTransitionRafRef.current = null;
+        });
+        sceneTransitionTimeoutRef.current = window.setTimeout(() => {
+          setSceneTransitionFrame(null);
+          sceneTransitionTimeoutRef.current = null;
+        }, 900);
+      }
+    }
+    currentSceneFrameRef.current = nextFrame;
+  }, [isNarrativeMode, narrativeSlide, prefersReducedMotion, scenarioCrop, scenarioImageUrl, sceneId]);
+
+  useEffect(() => {
+    return () => {
+      if (sceneTransitionTimeoutRef.current != null) window.clearTimeout(sceneTransitionTimeoutRef.current);
+      if (sceneTransitionRafRef.current != null) window.cancelAnimationFrame(sceneTransitionRafRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isNarrativeMode || !narrativeSlide) {
       renderedNarrativeSlideRef.current = null;
       setNarrativeLayerA(null);
@@ -547,7 +622,7 @@ export function StageView({
     [onNarrativeIndexChange, room, showId]
   );
 
-  function narrativeMotionVars(slide: NarrativeSlide) {
+  function narrativeMotionVars(slide: NarrativeSlide): CSSProperties {
     const seed = slide.id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
     const dirX = seed % 2 === 0 ? 1 : -1;
     const dirY = seed % 3 === 0 ? 1 : -1;
@@ -556,7 +631,7 @@ export function StageView({
       ["--pan-end-x" as const]: `${0.8 * dirX}%`,
       ["--pan-start-y" as const]: `${-0.5 * dirY}%`,
       ["--pan-end-y" as const]: `${0.5 * dirY}%`,
-    };
+    } as CSSProperties;
   }
 
   function renderNarrativeSlide(slide: NarrativeSlide, className: string) {
@@ -607,6 +682,29 @@ export function StageView({
           }}
         />
       </div>
+    );
+  }
+
+  function renderSceneTransitionFrame(frame: SceneTransitionFrame) {
+    if (frame.mode === "narrative") {
+      const slide = frame.narrativeSlide;
+      if (!slide || slide.isBlack) {
+        return <div className="stage-view__scene-transition-fill stage-view__scene-transition-fill--black" />;
+      }
+      return (
+        <ScenarioBackground
+          imageUrl={slide.url}
+          crop={slide.crop ?? undefined}
+          className="stage-view__scene-transition-fill"
+        />
+      );
+    }
+    return (
+      <ScenarioBackground
+        imageUrl={frame.scenarioImageUrl}
+        crop={frame.scenarioCrop ?? undefined}
+        className="stage-view__scene-transition-fill"
+      />
     );
   }
 
@@ -667,6 +765,18 @@ export function StageView({
             </button>
           </div>
         )}
+        {sceneTransitionFrame && (
+          <div
+            className={
+              "stage-view__scene-transition-layer " +
+              (sceneTransitionVisible
+                ? "stage-view__scene-transition-layer--visible"
+                : "stage-view__scene-transition-layer--hidden")
+            }
+          >
+            {renderSceneTransitionFrame(sceneTransitionFrame)}
+          </div>
+        )}
       </div>
     );
   }
@@ -710,13 +820,13 @@ export function StageView({
                 style={{ left: `${x}%` }}
                 onMouseDown={(e) => {
                   if (!isGM) return;
-                  if ((e.target as HTMLElement).closest(".stage-actor__eye-btn, .stage-actor__select-btn")) return;
+                  if ((e.target as HTMLElement).closest(".stage-actor__eye-btn, .stage-actor__select-btn, .stage-actor__note-btn, .stage-actor__notes")) return;
                   e.preventDefault();
                   dragRef.current = { characterId: c.id, startClientX: e.clientX, startXPct: x };
                 }}
                 onClick={(e) => {
                   if (!isGM) return;
-                  if ((e.target as HTMLElement).closest(".stage-actor__eye-btn, .stage-actor__select-btn")) return;
+                  if ((e.target as HTMLElement).closest(".stage-actor__eye-btn, .stage-actor__select-btn, .stage-actor__note-btn, .stage-actor__notes")) return;
                   if (draggedRecentlyRef.current) return;
                   setSelectedCharacterIdsLocal((prev) => {
                     const has = prev.includes(c.id);
@@ -743,6 +853,19 @@ export function StageView({
                 />
                 {isGM && (
                   <>
+                    <button
+                      type="button"
+                      className={"stage-actor__note-btn" + (openCharacterNotesId === c.id ? " is-active" : "")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenCharacterNotesId((prev) => (prev === c.id ? null : c.id));
+                      }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      title="Ler notas do personagem"
+                      aria-label={`Ler notas de ${c.name}`}
+                    >
+                      <InfoIcon />
+                    </button>
                     <button
                       type="button"
                       className={"stage-actor__select-btn" + (selected ? " is-selected" : "")}
@@ -800,6 +923,12 @@ export function StageView({
                     >
                       {visibleToPlayer ? <EyeOpenIcon /> : <EyeClosedIcon />}
                     </button>
+                    {openCharacterNotesId === c.id && (
+                      <div className="stage-actor__notes" onMouseDown={(e) => e.stopPropagation()}>
+                        <div className="stage-actor__notes-title">{c.name}</div>
+                        <div className="stage-actor__notes-body">{c.notes?.trim() ? c.notes : "Sem notas."}</div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -810,6 +939,18 @@ export function StageView({
       {isGM && phase !== "stage" && (
         <div className="stage-view__gm-bar">
           <span style={{ color: "white", opacity: 0.85 }}>Abrindo o palco…</span>
+        </div>
+      )}
+      {sceneTransitionFrame && (
+        <div
+          className={
+            "stage-view__scene-transition-layer " +
+            (sceneTransitionVisible
+              ? "stage-view__scene-transition-layer--visible"
+              : "stage-view__scene-transition-layer--hidden")
+          }
+        >
+          {renderSceneTransitionFrame(sceneTransitionFrame)}
         </div>
       )}
     </div>

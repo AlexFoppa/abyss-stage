@@ -19,7 +19,9 @@ import { StoryListScreen } from "./screens/StoryListScreen";
 import { StoryEditorScreen } from "./screens/StoryEditorScreen";
 import { EspetaculoScreen } from "./screens/EspetaculoScreen";
 import { StageView } from "./screens/StageView";
+import { SceneStagePreview, ScenarioBackground } from "./screens/SceneStagePreview";
 import { EditProfileScreen } from "./screens/EditProfileScreen";
+import type { GMCharacter } from "./types/character";
 import { getAvatarUrl } from "./utils/avatar";
 
 type View =
@@ -43,6 +45,45 @@ type NarrativeSlide = {
   isBlack: boolean;
   crop: { x: number; y: number; width: number; height: number } | null;
   order_index: number | null;
+};
+
+type ShowSceneRecord = {
+  id: string;
+  story_id: string;
+  title: string;
+  body: string;
+  order_index: number;
+  is_narrative: boolean;
+  narrative_black_start: boolean;
+  scenario_id: string | null;
+};
+
+type ShowSceneSummary = {
+  id: string;
+  title: string;
+  is_narrative: boolean;
+};
+
+type ShowSceneState = {
+  storyId: string;
+  sceneId: string;
+  scenarioId: string | null;
+  scenarioImageUrl: string | null;
+  scenarioCrop: { x: number; y: number; width: number; height: number } | null;
+  narrativeSlides?: NarrativeSlide[];
+  currentNarrativeIndex?: number;
+  sceneTitle: string;
+  sceneBody: string;
+  isNarrativeScene: boolean;
+  storyScenes: ShowSceneSummary[];
+};
+
+type ScenePreviewState = {
+  mode: "normal" | "narrative";
+  scenarioImageUrl: string | null;
+  scenarioCrop: { x: number; y: number; width: number; height: number } | null;
+  narrativePreviewSlide?: NarrativeSlide | null;
+  sceneCharacterIds: number[];
 };
 
 export function Routes() {
@@ -95,8 +136,30 @@ export function Routes() {
     scenarioCrop: { x: number; y: number; width: number; height: number } | null;
     narrativeSlides?: NarrativeSlide[];
     currentNarrativeIndex?: number;
+    sceneTitle: string;
+    sceneBody: string;
+    isNarrativeScene: boolean;
+    storyScenes: ShowSceneSummary[];
   }>(null);
   const [showTick, setShowTick] = useState(0);
+  const [showSceneMenuOpen, setShowSceneMenuOpen] = useState(false);
+  const [showSceneMenuPos, setShowSceneMenuPos] = useState({ left: 24, top: 24 });
+  const showSceneMenuDragRef = useRef<{
+    startX: number;
+    startY: number;
+    startLeft: number;
+    startTop: number;
+    fromTrigger: boolean;
+    didMove: boolean;
+  } | null>(null);
+  const [sceneInfoOpen, setSceneInfoOpen] = useState(false);
+  const [sceneInfoDraft, setSceneInfoDraft] = useState({ title: "", body: "" });
+  const [sceneInfoSaving, setSceneInfoSaving] = useState(false);
+  const [showSceneSwitching, setShowSceneSwitching] = useState(false);
+  const [previewHoverSceneId, setPreviewHoverSceneId] = useState<string | null>(null);
+  const [previewBySceneId, setPreviewBySceneId] = useState<Record<string, ScenePreviewState | undefined>>({});
+  const [previewLoadingSceneId, setPreviewLoadingSceneId] = useState<string | null>(null);
+  const [showMenuCharacters, setShowMenuCharacters] = useState<GMCharacter[]>([]);
 
   const [liveKitRoom, setLiveKitRoom] = useState<Room | null>(null);
   const [localSpeaking, setLocalSpeaking] = useState(false);
@@ -144,6 +207,146 @@ export function Routes() {
     return () => clearInterval(t);
   }, [show?.id]);
 
+  const loadStoryScenes = useCallback(async (storyId: string) => {
+    const scenes = await api<ShowSceneRecord[]>(`/api/gm/stories/${storyId}/scenes`);
+    return Array.isArray(scenes)
+      ? [...scenes].sort((a, b) => a.order_index - b.order_index)
+      : [];
+  }, []);
+
+  const loadNarrativeSlides = useCallback(async (storyId: string, scene: ShowSceneRecord) => {
+    const list = await api<Array<{
+      order_index: number;
+      storage_key: string;
+      url: string;
+      crop_x?: number | null;
+      crop_y?: number | null;
+      crop_width?: number | null;
+      crop_height?: number | null;
+    }>>(`/api/gm/stories/${storyId}/scenes/${scene.id}/images`);
+    const imageSlides: NarrativeSlide[] = Array.isArray(list)
+      ? list.map((img) => ({
+          id: `image-${img.order_index}`,
+          url: img.url,
+          isBlack: false,
+          crop:
+            Number.isFinite(Number(img.crop_x)) &&
+            Number.isFinite(Number(img.crop_y)) &&
+            Number.isFinite(Number(img.crop_width)) &&
+            Number.isFinite(Number(img.crop_height)) &&
+            Number(img.crop_width) > 0 &&
+            Number(img.crop_height) > 0
+              ? {
+                  x: Number(img.crop_x),
+                  y: Number(img.crop_y),
+                  width: Number(img.crop_width),
+                  height: Number(img.crop_height),
+                }
+              : null,
+          order_index: img.order_index,
+        }))
+      : [];
+    return [
+      ...(scene.narrative_black_start
+        ? [{ id: "black-start", url: null, isBlack: true, crop: null, order_index: null }]
+        : []),
+      ...imageSlides,
+    ];
+  }, []);
+
+  const buildShowSceneState = useCallback(
+    async (storyId: string, sceneId: string, existingScenes?: ShowSceneRecord[]) => {
+      const scenes = existingScenes ?? (await loadStoryScenes(storyId));
+      const scene = scenes.find((item) => item.id === sceneId);
+      if (!scene) throw new Error("Cena não encontrada");
+
+      const base: ShowSceneState = {
+        storyId,
+        sceneId: scene.id,
+        scenarioId: scene.scenario_id,
+        scenarioImageUrl: null,
+        scenarioCrop: null,
+        narrativeSlides: undefined,
+        currentNarrativeIndex: undefined,
+        sceneTitle: scene.title,
+        sceneBody: scene.body,
+        isNarrativeScene: scene.is_narrative,
+        storyScenes: scenes.map((item) => ({
+          id: item.id,
+          title: item.title,
+          is_narrative: item.is_narrative,
+        })),
+      };
+
+      if (scene.is_narrative) {
+        const slides = await loadNarrativeSlides(storyId, scene);
+        return {
+          ...base,
+          narrativeSlides: slides,
+          currentNarrativeIndex: slides.length > 0 ? 0 : undefined,
+        } satisfies ShowSceneState;
+      }
+
+      if (scene.scenario_id) {
+        const scenario = await api<{
+          image_storage_key: string | null;
+          crop_x?: number | null;
+          crop_y?: number | null;
+          crop_width?: number | null;
+          crop_height?: number | null;
+        }>(`/api/gm/scenarios/${scene.scenario_id}`);
+        return {
+          ...base,
+          scenarioImageUrl: scenarioImageUrl(scenario),
+          scenarioCrop: scenarioCropFromScenario(scenario),
+        } satisfies ShowSceneState;
+      }
+
+      return base;
+    },
+    [loadNarrativeSlides, loadStoryScenes]
+  );
+
+  const loadScenePreview = useCallback(
+    async (storyId: string, sceneId: string) => {
+      const scenes = await loadStoryScenes(storyId);
+      const scene = scenes.find((item) => item.id === sceneId);
+      if (!scene) throw new Error("Cena não encontrada");
+      if (scene.is_narrative) {
+        const slides = await loadNarrativeSlides(storyId, scene);
+        return {
+          mode: "narrative",
+          scenarioImageUrl: null,
+          scenarioCrop: null,
+          narrativePreviewSlide: slides[0] ?? null,
+          sceneCharacterIds: [],
+        } satisfies ScenePreviewState;
+      }
+      let scenarioImage = null;
+      let crop = null;
+      if (scene.scenario_id) {
+        const scenario = await api<{
+          image_storage_key: string | null;
+          crop_x?: number | null;
+          crop_y?: number | null;
+          crop_width?: number | null;
+          crop_height?: number | null;
+        }>(`/api/gm/scenarios/${scene.scenario_id}`);
+        scenarioImage = scenarioImageUrl(scenario);
+        crop = scenarioCropFromScenario(scenario);
+      }
+      const chars = await api<{ character_ids: number[] }>(`/api/gm/stories/${storyId}/scenes/${sceneId}/characters`);
+      return {
+        mode: "normal",
+        scenarioImageUrl: scenarioImage,
+        scenarioCrop: crop,
+        narrativePreviewSlide: null,
+        sceneCharacterIds: chars.character_ids ?? [],
+      } satisfies ScenePreviewState;
+    },
+    [loadNarrativeSlides, loadStoryScenes]
+  );
+
   const showPhase = useMemo(() => {
     if (!show) return null;
     const countdownMs = 10_000;
@@ -166,6 +369,73 @@ export function Routes() {
 
   const espetaculoPhase =
     showPhase === "sliding" || showPhase === "half" || showPhase === "stage" ? showPhase : null;
+
+  useEffect(() => {
+    if (!show) {
+      setSceneInfoDraft({ title: "", body: "" });
+      setShowSceneMenuOpen(false);
+      setSceneInfoOpen(false);
+      setPreviewHoverSceneId(null);
+      return;
+    }
+    setSceneInfoDraft({ title: show.sceneTitle, body: show.sceneBody });
+  }, [show?.sceneId, show?.sceneTitle, show?.sceneBody]);
+
+  useEffect(() => {
+    if (!show || !isGM) {
+      setShowMenuCharacters([]);
+      return;
+    }
+    let cancelled = false;
+    api<GMCharacter[]>("/api/gm/characters")
+      .then((list) => {
+        if (!cancelled) setShowMenuCharacters(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (!cancelled) setShowMenuCharacters([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [show?.storyId, isGM]);
+
+  useEffect(() => {
+    setPreviewBySceneId({});
+    setPreviewHoverSceneId(null);
+    setPreviewLoadingSceneId(null);
+  }, [show?.storyId]);
+
+  useEffect(() => {
+    const DRAG_THRESHOLD = 8;
+    const onMove = (e: MouseEvent) => {
+      const drag = showSceneMenuDragRef.current;
+      if (!drag) return;
+      const dx = e.clientX - drag.startX;
+      const dy = e.clientY - drag.startY;
+      if (!drag.didMove && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
+        drag.didMove = true;
+      }
+      if (!drag.didMove) return;
+      setShowSceneMenuPos({
+        left: Math.max(0, drag.startLeft + dx),
+        top: Math.max(0, drag.startTop + dy),
+      });
+    };
+    const onUp = () => {
+      const drag = showSceneMenuDragRef.current;
+      if (drag?.fromTrigger && !drag.didMove) {
+        setShowSceneMenuOpen((open) => !open);
+      }
+      showSceneMenuDragRef.current = null;
+    };
+    const opts = { capture: true } as const;
+    window.addEventListener("mousemove", onMove, opts);
+    window.addEventListener("mouseup", onUp, opts);
+    return () => {
+      window.removeEventListener("mousemove", onMove, opts);
+      window.removeEventListener("mouseup", onUp, opts);
+    };
+  }, []);
 
   /* Ao final da contagem, jogador sai de seleção/criar/editar personagem para ver o palco. */
   useEffect(() => {
@@ -192,6 +462,23 @@ export function Routes() {
       }
       if (!msg || typeof msg !== "object") return;
 
+      const sceneTitle =
+        typeof msg.sceneTitle === "string" ? msg.sceneTitle : "";
+      const sceneBody =
+        typeof msg.sceneBody === "string" ? msg.sceneBody : "";
+      const isNarrativeScene = typeof msg.isNarrativeScene === "boolean" ? msg.isNarrativeScene : false;
+      const storyScenes = Array.isArray(msg.storyScenes)
+        ? msg.storyScenes
+            .filter(
+              (scene: unknown): scene is ShowSceneSummary =>
+                !!scene &&
+                typeof scene === "object" &&
+                typeof (scene as ShowSceneSummary).id === "string" &&
+                typeof (scene as ShowSceneSummary).title === "string" &&
+                typeof (scene as ShowSceneSummary).is_narrative === "boolean"
+            )
+        : [];
+
       /* show/start: processar sempre (topic pode não vir no receptor em algumas versões/setups). */
       if (msg.type === "show/start") {
         const startedAtFromMsg = typeof msg.startedAt === "number" ? msg.startedAt : Number(msg.startedAt);
@@ -205,9 +492,26 @@ export function Routes() {
             : typeof msg.scenarioImageUrl === "string"
               ? msg.scenarioImageUrl
               : null;
+        const rawCrop = msg.scenarioCrop;
+        const scenarioCrop =
+          rawCrop &&
+          typeof rawCrop === "object" &&
+          typeof (rawCrop as { x?: unknown }).x === "number" &&
+          typeof (rawCrop as { y?: unknown }).y === "number" &&
+          typeof (rawCrop as { width?: unknown }).width === "number" &&
+          typeof (rawCrop as { height?: unknown }).height === "number" &&
+          (rawCrop as { width: number }).width > 0 &&
+          (rawCrop as { height: number }).height > 0
+            ? {
+                x: (rawCrop as { x: number }).x,
+                y: (rawCrop as { y: number }).y,
+                width: (rawCrop as { width: number }).width,
+                height: (rawCrop as { height: number }).height,
+              }
+            : null;
         const narrativeSlides = Array.isArray(msg.narrativeSlides)
           ? msg.narrativeSlides.filter(
-              (slide): slide is NarrativeSlide =>
+              (slide: unknown): slide is NarrativeSlide =>
                 !!slide &&
                 typeof slide === "object" &&
                 typeof (slide as NarrativeSlide).id === "string" &&
@@ -215,8 +519,8 @@ export function Routes() {
             )
           : Array.isArray(msg.narrativeImageUrls)
             ? msg.narrativeImageUrls
-                .filter((u): u is string => typeof u === "string")
-                .map((url, index) => ({
+                .filter((u: unknown): u is string => typeof u === "string")
+                .map((url: string, index: number) => ({
                   id: `legacy-${index}`,
                   url,
                   isBlack: false,
@@ -236,10 +540,79 @@ export function Routes() {
           sceneId,
           scenarioId,
           scenarioImageUrl,
-          scenarioCrop: null,
+          scenarioCrop,
           narrativeSlides,
           currentNarrativeIndex: narrativeSlides?.length ? 0 : undefined,
+          sceneTitle,
+          sceneBody,
+          isNarrativeScene,
+          storyScenes,
         });
+        return;
+      }
+      if (msg.type === "show/scene/change") {
+        const id = typeof msg.showId === "string" ? msg.showId : null;
+        const storyId = typeof msg.storyId === "string" ? msg.storyId : null;
+        const sceneId = typeof msg.sceneId === "string" ? msg.sceneId : null;
+        const scenarioId =
+          msg.scenarioId == null ? null : typeof msg.scenarioId === "string" ? msg.scenarioId : null;
+        const scenarioImageUrl =
+          msg.scenarioImageUrl == null
+            ? null
+            : typeof msg.scenarioImageUrl === "string"
+              ? msg.scenarioImageUrl
+              : null;
+        const rawCrop = msg.scenarioCrop;
+        const scenarioCrop =
+          rawCrop &&
+          typeof rawCrop === "object" &&
+          typeof (rawCrop as { x?: unknown }).x === "number" &&
+          typeof (rawCrop as { y?: unknown }).y === "number" &&
+          typeof (rawCrop as { width?: unknown }).width === "number" &&
+          typeof (rawCrop as { height?: unknown }).height === "number" &&
+          (rawCrop as { width: number }).width > 0 &&
+          (rawCrop as { height: number }).height > 0
+            ? {
+                x: (rawCrop as { x: number }).x,
+                y: (rawCrop as { y: number }).y,
+                width: (rawCrop as { width: number }).width,
+                height: (rawCrop as { height: number }).height,
+              }
+            : null;
+        const narrativeSlides = Array.isArray(msg.narrativeSlides)
+          ? msg.narrativeSlides.filter(
+              (slide: unknown): slide is NarrativeSlide =>
+                !!slide &&
+                typeof slide === "object" &&
+                typeof (slide as NarrativeSlide).id === "string" &&
+                typeof (slide as NarrativeSlide).isBlack === "boolean"
+            )
+          : undefined;
+        const currentNarrativeIndex =
+          typeof msg.currentNarrativeIndex === "number" && Number.isFinite(msg.currentNarrativeIndex)
+            ? msg.currentNarrativeIndex
+            : narrativeSlides?.length
+              ? 0
+              : undefined;
+        if (!id || !storyId || !sceneId) return;
+        setShow((prev) =>
+          prev && prev.id === id
+            ? {
+                ...prev,
+                storyId,
+                sceneId,
+                scenarioId,
+                scenarioImageUrl,
+                scenarioCrop,
+                narrativeSlides,
+                currentNarrativeIndex,
+                sceneTitle,
+                sceneBody,
+                isNarrativeScene,
+                storyScenes: storyScenes.length > 0 ? storyScenes : prev.storyScenes,
+              }
+            : prev
+        );
         return;
       }
       if (msg.type === "show/narrative/slide") {
@@ -476,6 +849,134 @@ export function Routes() {
     ];
   }
 
+  const publishShowPayload = useCallback(
+    (type: "show/start" | "show/scene/change", showId: string, startedAt: number, sceneState: ShowSceneState) => {
+      try {
+        liveKitRoom?.localParticipant.publishData(
+          new TextEncoder().encode(
+            JSON.stringify({
+              type,
+              showId,
+              startedAt,
+              storyId: sceneState.storyId,
+              sceneId: sceneState.sceneId,
+              scenarioId: sceneState.scenarioId,
+              scenarioImageUrl: sceneState.scenarioImageUrl,
+              scenarioCrop: sceneState.scenarioCrop,
+              narrativeSlides: sceneState.narrativeSlides,
+              currentNarrativeIndex: sceneState.currentNarrativeIndex,
+              sceneTitle: sceneState.sceneTitle,
+              sceneBody: sceneState.sceneBody,
+              isNarrativeScene: sceneState.isNarrativeScene,
+              storyScenes: sceneState.storyScenes,
+            })
+          ),
+          { reliable: true, topic: "espetaculo" }
+        );
+      } catch {}
+    },
+    [liveKitRoom]
+  );
+
+  const handleStartShow = useCallback(
+    async (storyId: string, sceneId: string) => {
+      const startedAt = Date.now();
+      const id = String(startedAt);
+      const sceneState = await buildShowSceneState(storyId, sceneId);
+      setShow({
+        id,
+        startedAt,
+        ...sceneState,
+      });
+      publishShowPayload("show/start", id, startedAt, sceneState);
+      if (sceneState.narrativeSlides?.length) {
+        try {
+          liveKitRoom?.localParticipant.publishData(
+            new TextEncoder().encode(JSON.stringify({ type: "show/narrative/slide", showId: id, index: 0 })),
+            { reliable: true, topic: "espetaculo" }
+          );
+        } catch {}
+      }
+    },
+    [buildShowSceneState, liveKitRoom, publishShowPayload]
+  );
+
+  const handleChangeShowScene = useCallback(
+    async (sceneId: string) => {
+      if (!show || showSceneSwitching || sceneId === show.sceneId) return;
+      setShowSceneSwitching(true);
+      try {
+        const sceneState = await buildShowSceneState(show.storyId, sceneId);
+        setShow((prev) =>
+          prev && prev.id === show.id
+            ? {
+                ...prev,
+                ...sceneState,
+              }
+            : prev
+        );
+        publishShowPayload("show/scene/change", show.id, show.startedAt, sceneState);
+        if (sceneState.narrativeSlides?.length) {
+          try {
+            liveKitRoom?.localParticipant.publishData(
+              new TextEncoder().encode(JSON.stringify({ type: "show/narrative/slide", showId: show.id, index: 0 })),
+              { reliable: true, topic: "espetaculo" }
+            );
+          } catch {}
+        }
+      } finally {
+        setShowSceneSwitching(false);
+      }
+    },
+    [buildShowSceneState, liveKitRoom, publishShowPayload, show, showSceneSwitching]
+  );
+
+  const handlePreviewHover = useCallback(
+    async (sceneId: string) => {
+      if (!show || previewBySceneId[sceneId] || previewLoadingSceneId === sceneId) return;
+      setPreviewLoadingSceneId(sceneId);
+      try {
+        const preview = await loadScenePreview(show.storyId, sceneId);
+        setPreviewBySceneId((prev) => ({ ...prev, [sceneId]: preview }));
+      } catch {
+        setPreviewBySceneId((prev) => ({ ...prev, [sceneId]: undefined }));
+      } finally {
+        setPreviewLoadingSceneId((current) => (current === sceneId ? null : current));
+      }
+    },
+    [loadScenePreview, previewBySceneId, previewLoadingSceneId, show]
+  );
+
+  const handleSaveSceneInfo = useCallback(async () => {
+    if (!show) return;
+    setSceneInfoSaving(true);
+    try {
+      const updated = await api<ShowSceneRecord>(`/api/gm/stories/${show.storyId}/scenes/${show.sceneId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title: sceneInfoDraft.title,
+          body: sceneInfoDraft.body,
+        }),
+      });
+      setShow((prev) =>
+        prev && prev.id === show.id
+          ? {
+              ...prev,
+              sceneTitle: updated.title,
+              sceneBody: updated.body,
+              storyScenes: prev.storyScenes.map((scene) =>
+                scene.id === updated.id ? { ...scene, title: updated.title } : scene
+              ),
+            }
+          : prev
+      );
+    } finally {
+      setSceneInfoSaving(false);
+    }
+  }, [sceneInfoDraft.body, sceneInfoDraft.title, show]);
+
+  const hoveredPreview = previewHoverSceneId ? previewBySceneId[previewHoverSceneId] : undefined;
+
   return (
     <StageLayout
       logged={logged}
@@ -523,25 +1024,214 @@ export function Routes() {
       {isGM &&
         show &&
         createPortal(
-          <div className="espetaculo-interrupt-wrap" aria-label="Controle do espetáculo">
-            <button
-              type="button"
-              className="ui-btn ui-btn--ghost"
-              onClick={() => {
-                if (!show) return;
-                const msg = { type: "show/cancel", showId: show.id };
-                try {
-                  liveKitRoom?.localParticipant.publishData(
-                    new TextEncoder().encode(JSON.stringify(msg)),
-                    { reliable: true, topic: "espetaculo" }
-                  );
-                } catch {}
-                setShow(null);
-              }}
-            >
-              Interromper o espetáculo
-            </button>
-          </div>,
+          <>
+            <div className="espetaculo-interrupt-wrap" aria-label="Controle do espetáculo">
+              <button
+                type="button"
+                className="ui-btn ui-btn--ghost"
+                onClick={() => {
+                  if (!show) return;
+                  const msg = { type: "show/cancel", showId: show.id };
+                  try {
+                    liveKitRoom?.localParticipant.publishData(
+                      new TextEncoder().encode(JSON.stringify(msg)),
+                      { reliable: true, topic: "espetaculo" }
+                    );
+                  } catch {}
+                  setShow(null);
+                  setShowSceneMenuOpen(false);
+                  setSceneInfoOpen(false);
+                }}
+              >
+                Interromper o espetáculo
+              </button>
+            </div>
+
+            <div className="show-scene-menu" style={{ left: showSceneMenuPos.left, top: showSceneMenuPos.top }}>
+              <button
+                type="button"
+                className="show-scene-menu__trigger"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  showSceneMenuDragRef.current = {
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    startLeft: showSceneMenuPos.left,
+                    startTop: showSceneMenuPos.top,
+                    fromTrigger: true,
+                    didMove: false,
+                  };
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                aria-expanded={showSceneMenuOpen}
+                aria-label={showSceneMenuOpen ? "Recolher menu de cenas" : "Abrir menu de cenas"}
+                title={showSceneMenuOpen ? "Recolher ou arrastar" : "Cenas - clique para abrir ou arraste para mover"}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M8 6h13" />
+                  <path d="M8 12h13" />
+                  <path d="M8 18h13" />
+                  <path d="M3 6h.01" />
+                  <path d="M3 12h.01" />
+                  <path d="M3 18h.01" />
+                </svg>
+              </button>
+              <div className={"show-scene-menu__panel" + (showSceneMenuOpen ? " show-scene-menu__panel--open" : "")}>
+                <div
+                  className="show-scene-menu__drag-handle"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showSceneMenuDragRef.current = {
+                      startX: e.clientX,
+                      startY: e.clientY,
+                      startLeft: showSceneMenuPos.left,
+                      startTop: showSceneMenuPos.top,
+                      fromTrigger: false,
+                      didMove: false,
+                    };
+                  }}
+                  title="Arraste para mover"
+                >
+                  <span className="show-scene-menu__drag-dots">⋯</span>
+                  <span className="show-scene-menu__panel-title">Cenas</span>
+                </div>
+                <div className="show-scene-menu__body">
+                  {show.storyScenes.map((scene) => (
+                    <button
+                      key={scene.id}
+                      type="button"
+                      className={
+                        "show-scene-menu__item" +
+                        (scene.id === show.sceneId ? " is-active" : "") +
+                        (showSceneSwitching ? " is-busy" : "")
+                      }
+                      disabled={showSceneSwitching && scene.id !== show.sceneId}
+                      onClick={() => handleChangeShowScene(scene.id)}
+                    >
+                      <span className="show-scene-menu__item-text">
+                        <span className="show-scene-menu__item-title">{scene.title || "(sem título)"}</span>
+                        <span className="show-scene-menu__item-sub">
+                          {scene.is_narrative ? "Narrativa" : "Cena"}
+                        </span>
+                      </span>
+                      <div
+                        className="show-scene-menu__preview-wrap"
+                        onMouseEnter={() => {
+                          setPreviewHoverSceneId(scene.id);
+                          void handlePreviewHover(scene.id);
+                        }}
+                        onMouseLeave={() => {
+                          setPreviewHoverSceneId((current) => (current === scene.id ? null : current));
+                        }}
+                      >
+                        <span className="show-scene-menu__preview-icon" aria-hidden>
+                          i
+                        </span>
+                        {previewHoverSceneId === scene.id && (
+                          <div className="show-scene-menu__preview-card" role="tooltip">
+                            {previewLoadingSceneId === scene.id && !hoveredPreview ? (
+                              <span className="show-scene-menu__preview-empty">Carregando preview...</span>
+                            ) : hoveredPreview ? (
+                              <>
+                                <span className="show-scene-menu__preview-title">{scene.title || "(sem título)"}</span>
+                                <div className="show-scene-menu__preview-stage">
+                                  {hoveredPreview.mode === "narrative" ? (
+                                    hoveredPreview.narrativePreviewSlide ? (
+                                      hoveredPreview.narrativePreviewSlide.isBlack ? (
+                                        <span className="show-scene-menu__preview-black" />
+                                      ) : (
+                                        <ScenarioBackground
+                                          imageUrl={hoveredPreview.narrativePreviewSlide.url}
+                                          crop={hoveredPreview.narrativePreviewSlide.crop ?? undefined}
+                                          className="show-scene-menu__preview-bg"
+                                        />
+                                      )
+                                    ) : (
+                                      <span className="show-scene-menu__preview-empty">Sem preview</span>
+                                    )
+                                  ) : (
+                                    <SceneStagePreview
+                                      scenarioImageUrl={hoveredPreview.scenarioImageUrl}
+                                      scenarioCrop={hoveredPreview.scenarioCrop}
+                                      sceneCharacterIds={hoveredPreview.sceneCharacterIds}
+                                      gmCharacters={showMenuCharacters}
+                                      gmEmail={user?.email ?? undefined}
+                                      variant="preview"
+                                    />
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <span className="show-scene-menu__preview-empty">Sem preview</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="show-scene-info">
+              <button
+                type="button"
+                className={"show-scene-info__trigger" + (sceneInfoOpen ? " is-active" : "")}
+                onClick={() => setSceneInfoOpen((open) => !open)}
+                aria-expanded={sceneInfoOpen}
+                aria-label={sceneInfoOpen ? "Fechar informações da cena" : "Abrir informações da cena"}
+                title="Informações da cena"
+              >
+                i
+              </button>
+              {sceneInfoOpen && (
+                <div className="show-scene-info__panel">
+                  <div className="show-scene-info__header">
+                    <span className="show-scene-info__title">Cena atual</span>
+                  </div>
+                  <label className="show-scene-info__label">
+                    <span>Título</span>
+                    <input
+                      className="ui-field"
+                      value={sceneInfoDraft.title}
+                      onChange={(e) => setSceneInfoDraft((prev) => ({ ...prev, title: e.target.value }))}
+                    />
+                  </label>
+                  <label className="show-scene-info__label">
+                    <span>Descrição</span>
+                    <textarea
+                      className="ui-field show-scene-info__textarea"
+                      value={sceneInfoDraft.body}
+                      onChange={(e) => setSceneInfoDraft((prev) => ({ ...prev, body: e.target.value }))}
+                    />
+                  </label>
+                  <div className="show-scene-info__actions">
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn--ghost"
+                      disabled={sceneInfoSaving}
+                      onClick={() => setSceneInfoDraft({ title: show.sceneTitle, body: show.sceneBody })}
+                    >
+                      Desfazer
+                    </button>
+                    <button
+                      type="button"
+                      className="ui-btn"
+                      disabled={sceneInfoSaving}
+                      onClick={() => void handleSaveSceneInfo()}
+                    >
+                      {sceneInfoSaving ? "Salvando..." : "Salvar"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>,
           document.body
         )}
       {logged && (
@@ -587,69 +1277,8 @@ export function Routes() {
               setEditingSceneId(sceneId);
               setGmSubView("GM_STORY_EDITOR");
             }}
-            onStartShow={(storyId, sceneId, scenarioId, narrativeSlides) => {
-              const startedAt = Date.now();
-              const id = String(startedAt);
-              const isNarrative = Array.isArray(narrativeSlides) && narrativeSlides.length > 0;
-              const next = {
-                id,
-                startedAt,
-                storyId,
-                sceneId,
-                scenarioId,
-                scenarioImageUrl: null as string | null,
-                scenarioCrop: null as { x: number; y: number; width: number; height: number } | null,
-                narrativeSlides: isNarrative ? narrativeSlides : undefined,
-                currentNarrativeIndex: isNarrative ? 0 : undefined,
-              };
-              setShow(next);
-
-              try {
-                liveKitRoom?.localParticipant.publishData(
-                  new TextEncoder().encode(
-                    JSON.stringify({
-                      type: "show/start",
-                      showId: id,
-                      startedAt,
-                      storyId,
-                      sceneId,
-                      scenarioId,
-                      scenarioImageUrl: null,
-                      scenarioCrop: null,
-                      narrativeSlides: isNarrative ? narrativeSlides : undefined,
-                      isNarrativeScene: isNarrative,
-                    })
-                  ),
-                  { reliable: true, topic: "espetaculo" }
-                );
-              } catch {}
-
-              if (isNarrative) {
-                setShow((prev) => (prev && prev.id === id ? { ...prev, currentNarrativeIndex: 0 } : prev));
-                try {
-                  liveKitRoom?.localParticipant.publishData(
-                    new TextEncoder().encode(JSON.stringify({ type: "show/narrative/slide", showId: id, index: 0 })),
-                    { reliable: true, topic: "espetaculo" }
-                  );
-                } catch {}
-              }
-
-              if (scenarioId && !isNarrative) {
-                (async () => {
-                  try {
-                    const s = await api<{ image_storage_key: string | null; crop_x?: number | null; crop_y?: number | null; crop_width?: number | null; crop_height?: number | null }>(`/api/gm/scenarios/${scenarioId}`);
-                    const scenarioImageUrlRes = scenarioImageUrl(s);
-                    const scenarioCropRes = scenarioCropFromScenario(s);
-                    setShow((prev) => (prev && prev.id === id ? { ...prev, scenarioImageUrl: scenarioImageUrlRes, scenarioCrop: scenarioCropRes } : prev));
-                    try {
-                      liveKitRoom?.localParticipant.publishData(
-                        new TextEncoder().encode(JSON.stringify({ type: "show/scenario", showId: id, scenarioImageUrl: scenarioImageUrlRes, scenarioCrop: scenarioCropRes })),
-                        { reliable: true, topic: "espetaculo" }
-                      );
-                    } catch {}
-                  } catch {}
-                })();
-              }
+            onStartShow={(storyId, sceneId) => {
+              void handleStartShow(storyId, sceneId);
             }}
           />
         )
@@ -713,7 +1342,15 @@ export function Routes() {
           onEdit={(c) => {
             setEditingReturnGmView("GM_CHARACTERS");
             setEditingFromGM(true);
-            setEditingCharacter(c);
+            setEditingCharacter({
+              id: c.id,
+              name: c.name,
+              concept: c.concept ?? "",
+              system: c.system ?? "",
+              backstory: c.backstory ?? "",
+              notes: c.notes ?? "",
+              systems: c.systems,
+            });
             setSubView("EDIT_CHARACTER");
           }}
           onCreate={() => {
@@ -759,13 +1396,21 @@ export function Routes() {
             setSelectedCharacter({
               id: c.id,
               name: c.name,
-              system: c.system,
+              system: c.system ?? "",
               imageUrl: getAvatarUrl(c),
             });
             setSubView("LOBBY");
           }}
           onEdit={(c) => {
-            setEditingCharacter(c);
+            setEditingCharacter({
+              id: c.id,
+              name: c.name,
+              concept: c.concept ?? "",
+              system: c.system ?? "",
+              backstory: c.backstory ?? "",
+              notes: c.notes ?? "",
+              systems: c.systems,
+            });
             setSubView("EDIT_CHARACTER");
           }}
         />
