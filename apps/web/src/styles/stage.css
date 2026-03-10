@@ -607,7 +607,6 @@
   width: min(320px, 88vw);
   opacity: 1;
   pointer-events: auto;
-  overflow: visible;
 }
 .show-scene-menu__drag-handle{
   display: flex;
@@ -636,8 +635,7 @@
   gap: 8px;
   padding: 12px;
   max-height: min(70vh, 560px);
-  overflow-y: auto;
-  overflow-x: visible;
+  overflow: auto;
 }
 .show-scene-menu__item{
   position: relative;
@@ -713,6 +711,13 @@
   background: linear-gradient(rgba(20, 17, 14, 0.95), rgba(9, 7, 5, 0.96));
   box-shadow: 0 10px 24px rgba(0,0,0,.45);
   z-index: 3;
+}
+.show-scene-menu__preview-card--portal{
+  position: fixed;
+  z-index: 100002;
+  width: min(320px, 46vw);
+  max-width: 420px;
+  transform: none;
 }
 .show-scene-menu__preview-title{
   display: block;

@@ -157,9 +157,12 @@ export function Routes() {
   const [sceneInfoSaving, setSceneInfoSaving] = useState(false);
   const [showSceneSwitching, setShowSceneSwitching] = useState(false);
   const [previewHoverSceneId, setPreviewHoverSceneId] = useState<string | null>(null);
+  const [previewCardRect, setPreviewCardRect] = useState<DOMRect | null>(null);
   const [previewBySceneId, setPreviewBySceneId] = useState<Record<string, ScenePreviewState | undefined>>({});
   const [previewLoadingSceneId, setPreviewLoadingSceneId] = useState<string | null>(null);
   const [showMenuCharacters, setShowMenuCharacters] = useState<GMCharacter[]>([]);
+  const previewTriggerRef = useRef<HTMLDivElement | null>(null);
+  const closePreviewTimeoutRef = useRef<number | null>(null);
 
   const [liveKitRoom, setLiveKitRoom] = useState<Room | null>(null);
   const [localSpeaking, setLocalSpeaking] = useState(false);
@@ -976,6 +979,46 @@ export function Routes() {
   }, [sceneInfoDraft.body, sceneInfoDraft.title, show]);
 
   const hoveredPreview = previewHoverSceneId ? previewBySceneId[previewHoverSceneId] : undefined;
+  const hoveredScene = show?.storyScenes.find((s) => s.id === previewHoverSceneId);
+
+  const scheduleClosePreview = useCallback(() => {
+    if (closePreviewTimeoutRef.current != null) window.clearTimeout(closePreviewTimeoutRef.current);
+    closePreviewTimeoutRef.current = window.setTimeout(() => {
+      setPreviewHoverSceneId(null);
+      setPreviewCardRect(null);
+      closePreviewTimeoutRef.current = null;
+    }, 220);
+  }, []);
+
+  const cancelClosePreview = useCallback(() => {
+    if (closePreviewTimeoutRef.current != null) {
+      window.clearTimeout(closePreviewTimeoutRef.current);
+      closePreviewTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!previewHoverSceneId || !previewTriggerRef.current) {
+      setPreviewCardRect(null);
+      return;
+    }
+    const el = previewTriggerRef.current;
+    const update = () => setPreviewCardRect(el.getBoundingClientRect());
+    update();
+    const onScrollOrResize = () => update();
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [previewHoverSceneId]);
+
+  useEffect(() => {
+    return () => {
+      if (closePreviewTimeoutRef.current != null) window.clearTimeout(closePreviewTimeoutRef.current);
+    };
+  }, []);
 
   return (
     <StageLayout
@@ -1121,62 +1164,76 @@ export function Routes() {
                       </span>
                       <div
                         className="show-scene-menu__preview-wrap"
-                        onMouseEnter={() => {
+                        onMouseEnter={(e) => {
+                          cancelClosePreview();
+                          previewTriggerRef.current = e.currentTarget;
                           setPreviewHoverSceneId(scene.id);
                           void handlePreviewHover(scene.id);
                         }}
-                        onMouseLeave={() => {
-                          setPreviewHoverSceneId((current) => (current === scene.id ? null : current));
-                        }}
+                        onMouseLeave={() => scheduleClosePreview()}
                       >
                         <span className="show-scene-menu__preview-icon" aria-hidden>
                           i
                         </span>
-                        {previewHoverSceneId === scene.id && (
-                          <div className="show-scene-menu__preview-card" role="tooltip">
-                            {previewLoadingSceneId === scene.id && !hoveredPreview ? (
-                              <span className="show-scene-menu__preview-empty">Carregando preview...</span>
-                            ) : hoveredPreview ? (
-                              <>
-                                <span className="show-scene-menu__preview-title">{scene.title || "(sem título)"}</span>
-                                <div className="show-scene-menu__preview-stage">
-                                  {hoveredPreview.mode === "narrative" ? (
-                                    hoveredPreview.narrativePreviewSlide ? (
-                                      hoveredPreview.narrativePreviewSlide.isBlack ? (
-                                        <span className="show-scene-menu__preview-black" />
-                                      ) : (
-                                        <ScenarioBackground
-                                          imageUrl={hoveredPreview.narrativePreviewSlide.url}
-                                          crop={hoveredPreview.narrativePreviewSlide.crop ?? undefined}
-                                          className="show-scene-menu__preview-bg"
-                                        />
-                                      )
-                                    ) : (
-                                      <span className="show-scene-menu__preview-empty">Sem preview</span>
-                                    )
-                                  ) : (
-                                    <SceneStagePreview
-                                      scenarioImageUrl={hoveredPreview.scenarioImageUrl}
-                                      scenarioCrop={hoveredPreview.scenarioCrop}
-                                      sceneCharacterIds={hoveredPreview.sceneCharacterIds}
-                                      gmCharacters={showMenuCharacters}
-                                      gmEmail={user?.email ?? undefined}
-                                      variant="preview"
-                                    />
-                                  )}
-                                </div>
-                              </>
-                            ) : (
-                              <span className="show-scene-menu__preview-empty">Sem preview</span>
-                            )}
-                          </div>
-                        )}
                       </div>
                     </button>
                   ))}
                 </div>
               </div>
             </div>
+
+            {previewHoverSceneId && previewCardRect &&
+              createPortal(
+                <div
+                  className="show-scene-menu__preview-card show-scene-menu__preview-card--portal"
+                  style={{
+                    left: previewCardRect.right + 10,
+                    top: Math.max(8, previewCardRect.top + previewCardRect.height / 2 - 180),
+                  }}
+                  role="tooltip"
+                  onMouseEnter={cancelClosePreview}
+                  onMouseLeave={scheduleClosePreview}
+                >
+                  {previewLoadingSceneId === previewHoverSceneId && !hoveredPreview ? (
+                    <span className="show-scene-menu__preview-empty">Carregando preview...</span>
+                  ) : hoveredPreview ? (
+                    <>
+                      <span className="show-scene-menu__preview-title">
+                        {hoveredScene?.title || "(sem título)"}
+                      </span>
+                      <div className="show-scene-menu__preview-stage">
+                        {hoveredPreview.mode === "narrative" ? (
+                          hoveredPreview.narrativePreviewSlide ? (
+                            hoveredPreview.narrativePreviewSlide.isBlack ? (
+                              <span className="show-scene-menu__preview-black" />
+                            ) : (
+                              <ScenarioBackground
+                                imageUrl={hoveredPreview.narrativePreviewSlide.url}
+                                crop={hoveredPreview.narrativePreviewSlide.crop ?? undefined}
+                                className="show-scene-menu__preview-bg"
+                              />
+                            )
+                          ) : (
+                            <span className="show-scene-menu__preview-empty">Sem preview</span>
+                          )
+                        ) : (
+                          <SceneStagePreview
+                            scenarioImageUrl={hoveredPreview.scenarioImageUrl}
+                            scenarioCrop={hoveredPreview.scenarioCrop}
+                            sceneCharacterIds={hoveredPreview.sceneCharacterIds}
+                            gmCharacters={showMenuCharacters}
+                            gmEmail={user?.email ?? undefined}
+                            variant="preview"
+                          />
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <span className="show-scene-menu__preview-empty">Sem preview</span>
+                  )}
+                </div>,
+                document.body
+              )}
 
             <div className="show-scene-info">
               <button
