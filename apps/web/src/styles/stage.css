@@ -746,6 +746,37 @@
   text-transform: uppercase;
   letter-spacing: .08em;
 }
+.show-scene-menu__improviso {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(215,178,92,.18);
+  background: rgba(0,0,0,.28);
+  color: var(--text-main);
+  cursor: pointer;
+  user-select: none;
+}
+.show-scene-menu__improviso--in-handle {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.show-scene-menu__improviso:hover {
+  border-color: rgba(215,178,92,.35);
+  background: rgba(0,0,0,.45);
+}
+.show-scene-menu__improviso input {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: rgba(215,178,92,.9);
+}
+.show-scene-menu__improviso-label {
+  font-size: 12px;
+  color: rgba(255,255,255,.9);
+  white-space: nowrap;
+}
 .show-scene-menu__preview-wrap{
   position: relative;
   display: inline-flex;
@@ -869,6 +900,20 @@
   justify-content: flex-end;
   gap: 8px;
 }
+.show-scene-info__header--improviso {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(215,178,92,.2);
+}
+.show-scene-info__improviso-desc {
+  margin-top: 6px;
+}
+.show-scene-info__improviso-desc .show-scene-info__textarea {
+  min-height: 80px;
+  resize: vertical;
+  background: rgba(0,0,0,.25);
+  color: rgba(255,255,255,.88);
+}
 
 .stage-actor__note-btn{
   position: absolute;
@@ -928,5 +973,198 @@
   white-space: pre-wrap;
   font-size: 13px;
   line-height: 1.45;
+}
+
+/* --- Modo improviso (só GM): barras retráteis e zonas de drop --- */
+.improviso-bar {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(215, 178, 92, 0.4);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  max-height: 70vh;
+  transition: width 0.2s ease, min-width 0.2s ease;
+}
+.improviso-bar--left {
+  left: 12px;
+}
+.improviso-bar--right {
+  right: 12px;
+}
+.improviso-bar--left:not(.improviso-bar--open) {
+  min-width: 48px;
+  width: 48px;
+}
+.improviso-bar--right:not(.improviso-bar--open) {
+  min-width: 48px;
+  width: 48px;
+}
+.improviso-bar--open {
+  min-width: 140px;
+  width: 200px;
+}
+.improviso-bar__handle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.improviso-bar__handle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.improviso-bar__handle-icon {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  opacity: 0.9;
+}
+.improviso-bar__handle-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.improviso-bar__content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.improviso-bar__placeholder {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 4px 0;
+}
+.improviso-bar__thumbs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.improviso-bar__thumb {
+  cursor: grab;
+  flex-shrink: 0;
+}
+.improviso-bar__thumb:active {
+  cursor: grabbing;
+}
+.improviso-bar__thumb--dragging {
+  opacity: 0.6;
+}
+.improviso-bar__scenario-thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 6px 6px 10px;
+  background: #000;
+  border: 1px solid rgba(215, 178, 92, 0.45);
+  border-radius: 4px;
+  color: rgba(215, 178, 92, 0.95);
+  font-size: 0.7rem;
+  text-align: center;
+}
+.improviso-bar__scenario-thumb-img-wrap {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.5);
+  margin-bottom: 6px;
+}
+.improviso-bar__scenario-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.improviso-bar__scenario-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  color: rgba(215, 178, 92, 0.7);
+}
+.improviso-bar__scenario-thumb-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.improviso-bar__char-thumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.8rem;
+}
+.improviso-bar__char-thumb-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+/* Zona de drop única no palco (modo improviso): cenário + personagens na mesma área */
+.improviso-drop {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed rgba(215, 178, 92, 0.35);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  transition: border-color 0.2s, background 0.2s;
+  pointer-events: none;
+}
+.improviso-drop * {
+  pointer-events: none;
+}
+.improviso-drop--stage {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+}
+.improviso-drop--over {
+  border-color: rgba(215, 178, 92, 0.8);
+  background: rgba(0, 0, 0, 0.4);
+}
+.improviso-drop--disabled {
+  opacity: 0.6;
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.improviso-drop__hint {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.85);
+  text-align: center;
+  padding: 8px 12px;
+}
+.stage-view .improviso-drop {
+  pointer-events: auto;
+}
+.stage-view .improviso-drop.improviso-drop--disabled {
+  pointer-events: none;
 }
 

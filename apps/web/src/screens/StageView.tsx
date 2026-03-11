@@ -1,10 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  DndContext,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  rectIntersection,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import { api } from "../api";
 import { RoomEvent, type Room } from "livekit-client";
 import type { LobbyParticipant } from "./LobbyScreen";
 import { ScenarioBackground } from "./SceneStagePreview";
 import type { GMCharacter } from "../types/character";
 import { getAvatarUrl } from "../utils/avatar";
+import { scenarioCropFromScenario, scenarioImageUrl as getScenarioImageUrlFromScenario } from "../scenarioCrop";
 
 type SceneCharactersOut = { character_ids: number[] };
 
@@ -95,6 +107,81 @@ function InfoIcon({ className }: { className?: string }) {
   );
 }
 
+const IMPROV_SCENARIO_PREFIX = "improv-scenario-";
+const IMPROV_CHAR_PREFIX = "improv-char-";
+const IMPROV_DROP_STAGE = "improv-drop-stage";
+
+type ImprovScenario = {
+  id: string;
+  name: string;
+  description?: string | null;
+  image_storage_key: string | null;
+  crop_x?: number | null;
+  crop_y?: number | null;
+  crop_width?: number | null;
+  crop_height?: number | null;
+};
+
+function ImprovScenarioThumb({
+  scenario,
+}: {
+  scenario: ImprovScenario;
+}) {
+  const id = IMPROV_SCENARIO_PREFIX + scenario.id;
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
+  const imgUrl = getScenarioImageUrlFromScenario(scenario);
+  return (
+    <span
+      ref={setNodeRef}
+      className={"improviso-bar__thumb improviso-bar__scenario-thumb" + (isDragging ? " improviso-bar__thumb--dragging" : "")}
+      title="Arraste ao palco para trocar o cenário."
+      {...listeners}
+      {...attributes}
+    >
+      <span className="improviso-bar__scenario-thumb-img-wrap">
+        {imgUrl ? (
+          <img src={imgUrl} alt="" className="improviso-bar__scenario-thumb-img" />
+        ) : (
+          <span className="improviso-bar__scenario-thumb-placeholder">Sem imagem</span>
+        )}
+      </span>
+      <span className="improviso-bar__scenario-thumb-name">{scenario.name || "(sem nome)"}</span>
+    </span>
+  );
+}
+
+function ImprovCharacterThumb({ character }: { character: GMCharacter }) {
+  const id = IMPROV_CHAR_PREFIX + character.id;
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={"improviso-bar__thumb improviso-bar__char-thumb" + (isDragging ? " improviso-bar__thumb--dragging" : "")}
+      title="Arraste à área à esquerda para trazer o personagem (oculto para o público)."
+      {...listeners}
+      {...attributes}
+    >
+      <img src={getAvatarUrl(character ?? undefined)} alt="" className="improviso-bar__char-thumb-avatar" />
+      <span>{character.name}</span>
+    </div>
+  );
+}
+
+function ImprovStageDropZone({
+  disabled,
+  children,
+}: {
+  disabled: boolean;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: IMPROV_DROP_STAGE, disabled });
+  return (
+    <div ref={setNodeRef} className={"improviso-drop improviso-drop--stage" + (disabled ? " improviso-drop--disabled" : "") + (isOver ? " improviso-drop--over" : "")}>
+      {children}
+    </div>
+  );
+}
+
 function defaultPositionsForCharacters(characters: CharacterOnStage[]): Record<number, number> {
   const npc = characters.filter((c) => c.isNPC);
   const pc = characters.filter((c) => !c.isNPC);
@@ -142,6 +229,11 @@ export function StageView({
   speakingByIdentity,
   playerExpressionSlot = 0,
   resolvedParticipantImageByCharacterId,
+  improvisationMode = false,
+  isNarrativeScene = false,
+  improvisationScenarios = [],
+  improvisationCharacters = [],
+  onScenarioChange,
 }: {
   room: Room | null;
   showId: string;
@@ -162,6 +254,25 @@ export function StageView({
   playerExpressionSlot?: number;
   /** URL da imagem por character_id (override/current); mesma lógica do lobby. */
   resolvedParticipantImageByCharacterId?: Record<number, string>;
+  /** Modo improviso (só GM): barras de cenário e personagem + drop zones. */
+  improvisationMode?: boolean;
+  isNarrativeScene?: boolean;
+  improvisationScenarios?: Array<{
+    id: string;
+    name: string;
+    image_storage_key: string | null;
+    crop_x?: number | null;
+    crop_y?: number | null;
+    crop_width?: number | null;
+    crop_height?: number | null;
+  }>;
+  improvisationCharacters?: GMCharacter[];
+  onScenarioChange?: (payload: {
+    scenarioImageUrl: string | null;
+    scenarioCrop: { x: number; y: number; width: number; height: number } | null;
+    scenarioId?: string | null;
+    scenarioDescription?: string | null;
+  }) => void;
 }) {
   const [characters, setCharacters] = useState<CharacterOnStage[]>([]);
   const [visibleForPlayer, setVisibleForPlayer] = useState<Record<number, boolean>>({});
@@ -180,6 +291,8 @@ export function StageView({
   const [sceneTransitionVisible, setSceneTransitionVisible] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [playerExpressionMenuOpen, setPlayerExpressionMenuOpen] = useState(false);
+  const [scenariosBarOpen, setScenariosBarOpen] = useState(true);
+  const [charactersBarOpen, setCharactersBarOpen] = useState(true);
   const draggedRecentlyRef = useRef(false);
   const renderedNarrativeSlideRef = useRef<NarrativeSlide | null>(null);
   const narrativeFadeTimeoutRef = useRef<number | null>(null);
@@ -264,7 +377,12 @@ export function StageView({
           });
         }
       }
-      setCharacters([...byId.values()]);
+      setCharacters((prev) => {
+        const fromApi = [...byId.values()];
+        const apiIds = new Set(fromApi.map((c) => c.id));
+        const keptFromPrev = prev.filter((c) => !apiIds.has(c.id));
+        return [...fromApi, ...keptFromPrev];
+      });
     } catch {
       setCharacters([]);
     }
@@ -402,6 +520,90 @@ export function StageView({
     for (const c of characters) byId.set(c.id, c);
     return [...byId.values()];
   }, [characters]);
+
+  const improvSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  const handleImprovDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const overId = String(over.id);
+      const activeId = String(active.id);
+      if (overId !== IMPROV_DROP_STAGE) return;
+
+      if (activeId.startsWith(IMPROV_SCENARIO_PREFIX)) {
+        if (isNarrativeScene) return;
+        const scenarioId = activeId.slice(IMPROV_SCENARIO_PREFIX.length);
+        const scenario = improvisationScenarios.find((s) => s.id === scenarioId);
+        if (scenario && onScenarioChange) {
+          const url = getScenarioImageUrlFromScenario(scenario);
+          const crop = scenarioCropFromScenario(scenario);
+          onScenarioChange({
+            scenarioImageUrl: url,
+            scenarioCrop: crop,
+            scenarioId: scenario.id,
+            scenarioDescription: scenario.description ?? null,
+          });
+        }
+        return;
+      }
+
+      if (activeId.startsWith(IMPROV_CHAR_PREFIX)) {
+        const characterId = parseInt(activeId.slice(IMPROV_CHAR_PREFIX.length), 10);
+        if (!Number.isFinite(characterId)) return;
+        const gmChar = improvisationCharacters.find((c) => c.id === characterId);
+        if (!gmChar) return;
+        const isNPC = gmChar.kind === "NPC" || (!!gmEmail && gmChar.owner_email === gmEmail);
+        const imageUrl = getAvatarUrl(gmChar);
+        const newChar: CharacterOnStage = {
+          id: gmChar.id,
+          name: gmChar.name,
+          imageUrl,
+          notes: gmChar.notes ?? "",
+          isNPC,
+        };
+        const existing = characters.find((c) => c.id === characterId);
+        if (existing) {
+          setPosByCharId((prev) => ({ ...prev, [characterId]: 10 }));
+          setVisibleForPlayer((prev) => ({ ...prev, [characterId]: false }));
+        } else {
+          setCharacters((prev) => {
+            const without = prev.filter((c) => c.id !== characterId);
+            const next = [...without, newChar];
+            const byId = new Map(next.map((c) => [c.id, c]));
+            return [...byId.values()];
+          });
+          setPosByCharId((prev) => ({ ...prev, [characterId]: 10 }));
+          setVisibleForPlayer((prev) => ({ ...prev, [characterId]: false }));
+        }
+        const msg: VisibilityMsg = {
+          type: "show/actor/visible",
+          showId,
+          actor: { id: characterId, name: gmChar.name, side: isNPC ? "NPC" : "PC", imageUrl, xPct: 10 },
+          visible: false,
+        };
+        try {
+          room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
+            reliable: true,
+            topic: "espetaculo",
+          });
+        } catch {}
+      }
+    },
+    [
+      improvisationScenarios,
+      improvisationCharacters,
+      onScenarioChange,
+      characters,
+      gmEmail,
+      showId,
+      room,
+      isNarrativeScene,
+    ]
+  );
 
   useEffect(() => {
     if (!isGM || phase !== "stage" || !room) return;
@@ -788,13 +990,22 @@ export function StageView({
     );
   }
 
-  return (
+  const stageContent = (
     <div className={"stage-view" + (isGM ? " stage-view--gm" : "")}>
       <ScenarioBackground
         imageUrl={scenarioImageUrl}
         crop={scenarioCrop ?? undefined}
         className="stage-view__scenario"
       />
+      {isGM && improvisationMode && (
+        <ImprovStageDropZone disabled={false}>
+          <span className="improviso-drop__hint">
+            {isNarrativeScene
+              ? "Solte um personagem aqui para trazê-lo (oculto)"
+              : "Solte cenário para trocar ou personagem para trazer (oculto)"}
+          </span>
+        </ImprovStageDropZone>
+      )}
       <div className="stage-view__grid" aria-hidden="true">
         <div className="stage-view__col stage-view__col--1" />
         <div className="stage-view__col stage-view__col--2" />
@@ -1007,4 +1218,72 @@ export function StageView({
       )}
     </div>
   );
+
+  if (isGM && improvisationMode) {
+    return (
+      <DndContext sensors={improvSensors} collisionDetection={rectIntersection} onDragEnd={handleImprovDragEnd}>
+        {stageContent}
+        <div
+          className={
+            "improviso-bar improviso-bar--scenarios improviso-bar--left" +
+            (scenariosBarOpen ? " improviso-bar--open" : "")
+          }
+          aria-label="Barra de cenários (improviso)"
+        >
+          <button
+            type="button"
+            className="improviso-bar__handle"
+            onClick={() => setScenariosBarOpen((o) => !o)}
+            aria-expanded={scenariosBarOpen}
+            aria-label={scenariosBarOpen ? "Recolher barra de cenários" : "Expandir barra de cenários"}
+          >
+            <span className="improviso-bar__handle-icon" aria-hidden>{scenariosBarOpen ? "▼" : "▶"}</span>
+            <span className="improviso-bar__handle-label">Cenários</span>
+          </button>
+          {scenariosBarOpen && (
+            <div className="improviso-bar__content">
+              {isNarrativeScene ? (
+                <p className="improviso-bar__placeholder">Cena narrativa — sem cenário.</p>
+              ) : (
+                <div className="improviso-bar__thumbs">
+                  {improvisationScenarios.map((sc) => (
+                    <ImprovScenarioThumb key={sc.id} scenario={sc} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div
+          className={
+            "improviso-bar improviso-bar--characters improviso-bar--right" +
+            (charactersBarOpen ? " improviso-bar--open" : "")
+          }
+          aria-label="Barra de personagens (improviso)"
+        >
+          <button
+            type="button"
+            className="improviso-bar__handle"
+            onClick={() => setCharactersBarOpen((o) => !o)}
+            aria-expanded={charactersBarOpen}
+            aria-label={charactersBarOpen ? "Recolher barra de personagens" : "Expandir barra de personagens"}
+          >
+            <span className="improviso-bar__handle-icon" aria-hidden>{charactersBarOpen ? "▼" : "▶"}</span>
+            <span className="improviso-bar__handle-label">Personagens</span>
+          </button>
+          {charactersBarOpen && (
+            <div className="improviso-bar__content">
+              <div className="improviso-bar__thumbs">
+                {improvisationCharacters.map((c) => (
+                  <ImprovCharacterThumb key={c.id} character={c} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </DndContext>
+    );
+  }
+
+  return stageContent;
 }

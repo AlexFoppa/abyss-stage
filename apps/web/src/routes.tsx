@@ -144,6 +144,22 @@ export function Routes() {
   const [showTick, setShowTick] = useState(0);
   const [showSceneMenuOpen, setShowSceneMenuOpen] = useState(false);
   const [showSceneMenuPos, setShowSceneMenuPos] = useState({ left: 24, top: 24 });
+  const [improvisationMode, setImprovisationMode] = useState(false);
+  const [improvisationScenarios, setImprovisationScenarios] = useState<
+    Array<{
+      id: string;
+      name: string;
+      image_storage_key: string | null;
+      crop_x?: number | null;
+      crop_y?: number | null;
+      crop_width?: number | null;
+      crop_height?: number | null;
+    }>
+  >([]);
+  const [improvisationCharacters, setImprovisationCharacters] = useState<GMCharacter[]>([]);
+  /** Cenário atual no improviso: id e descrição (do drag ou da cena), para o painel (i) e "Salvar como nova cena". */
+  const [improvisationScenarioId, setImprovisationScenarioId] = useState<string | null>(null);
+  const [improvisationScenarioDescription, setImprovisationScenarioDescription] = useState<string>("");
   const showSceneMenuDragRef = useRef<{
     startX: number;
     startY: number;
@@ -155,6 +171,7 @@ export function Routes() {
   const [sceneInfoOpen, setSceneInfoOpen] = useState(false);
   const [sceneInfoDraft, setSceneInfoDraft] = useState({ title: "", body: "" });
   const [sceneInfoSaving, setSceneInfoSaving] = useState(false);
+  const [sceneSaveAsNewSaving, setSceneSaveAsNewSaving] = useState(false);
   const [showSceneSwitching, setShowSceneSwitching] = useState(false);
   const [previewHoverSceneId, setPreviewHoverSceneId] = useState<string | null>(null);
   const [previewCardRect, setPreviewCardRect] = useState<DOMRect | null>(null);
@@ -814,6 +831,70 @@ export function Routes() {
     };
   }, [selectedCharacter?.id, isGM]);
 
+  useEffect(() => {
+    if (!show || !improvisationMode || !isGM) {
+      setImprovisationScenarios([]);
+      setImprovisationCharacters([]);
+      return;
+    }
+    let cancelled = false;
+    type ScenarioForImprov = {
+      id: string;
+      name: string;
+      description?: string | null;
+      image_storage_key: string | null;
+      crop_x?: number | null;
+      crop_y?: number | null;
+      crop_width?: number | null;
+      crop_height?: number | null;
+    };
+    Promise.all([
+      api<ScenarioForImprov[]>(`/api/gm/scenarios`),
+      api<GMCharacter[]>("/api/gm/characters"),
+    ])
+      .then(([scenariosRes, gmCharsRes]) => {
+        if (cancelled) return;
+        const scenarios = Array.isArray(scenariosRes) ? scenariosRes : [];
+        setImprovisationScenarios(scenarios);
+        const gmChars = Array.isArray(gmCharsRes) ? gmCharsRes : [];
+        setImprovisationCharacters(gmChars);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setImprovisationScenarios([]);
+          setImprovisationCharacters([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [show?.id, show?.storyId, improvisationMode, isGM]);
+
+  useEffect(() => {
+    if (!show?.scenarioId || !isGM) {
+      setImprovisationScenarioId(show?.scenarioId ?? null);
+      setImprovisationScenarioDescription("");
+      return;
+    }
+    let cancelled = false;
+    api<{ id: string; description?: string | null }>(`/api/gm/scenarios/${show.scenarioId}`)
+      .then((sc) => {
+        if (!cancelled) {
+          setImprovisationScenarioId(sc.id);
+          setImprovisationScenarioDescription(sc.description?.trim() ?? "");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setImprovisationScenarioId(show.scenarioId);
+          setImprovisationScenarioDescription("");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [show?.scenarioId, show?.id, isGM]);
+
   const fetchLobby = useCallback(() => {
     if (!user) return;
     api<{ participants: LobbyParticipant[] }>("/api/lobby")
@@ -1195,6 +1276,39 @@ export function Routes() {
     }
   }, [sceneInfoDraft.body, sceneInfoDraft.title, show]);
 
+  const handleSaveSceneAsNew = useCallback(async () => {
+    if (!show) return;
+    setSceneSaveAsNewSaving(true);
+    try {
+      const scenarioId = show.scenarioId ?? improvisationScenarioId;
+      const created = await api<ShowSceneRecord>(`/api/gm/stories/${show.storyId}/scenes`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Improviso",
+          body: improvisationScenarioDescription.trim() || show.sceneBody || "",
+          order_index: show.storyScenes.length,
+          is_narrative: false,
+          narrative_black_start: false,
+          scenario_id: scenarioId,
+        }),
+      });
+      setShow((prev) =>
+        prev && prev.id === show.id
+          ? {
+              ...prev,
+              storyScenes: [
+                ...prev.storyScenes,
+                { id: created.id, title: created.title, is_narrative: created.is_narrative },
+              ],
+            }
+          : prev
+      );
+      await handleChangeShowScene(created.id);
+    } finally {
+      setSceneSaveAsNewSaving(false);
+    }
+  }, [show, improvisationScenarioId, improvisationScenarioDescription, handleChangeShowScene]);
+
   const hoveredPreview = previewHoverSceneId ? previewBySceneId[previewHoverSceneId] : undefined;
   const hoveredScene = show?.storyScenes.find((s) => s.id === previewHoverSceneId);
 
@@ -1268,6 +1382,28 @@ export function Routes() {
             speakingByIdentity={speakingByIdentity}
             playerExpressionSlot={isGM ? undefined : currentExpressionSlot}
             resolvedParticipantImageByCharacterId={resolvedParticipantImageByCharacterId}
+            improvisationMode={improvisationMode}
+            isNarrativeScene={show.isNarrativeScene}
+            improvisationScenarios={improvisationScenarios}
+            improvisationCharacters={improvisationCharacters}
+            onScenarioChange={({ scenarioImageUrl: url, scenarioCrop: crop, scenarioId: sid, scenarioDescription: desc }) => {
+              setShow((prev) => (prev ? { ...prev, scenarioImageUrl: url, scenarioCrop: crop ?? null } : prev));
+              if (sid != null) setImprovisationScenarioId(sid);
+              if (desc != null) setImprovisationScenarioDescription(desc);
+              try {
+                liveKitRoom?.localParticipant.publishData(
+                  new TextEncoder().encode(
+                    JSON.stringify({
+                      type: "show/scenario",
+                      showId: show.id,
+                      scenarioImageUrl: url,
+                      scenarioCrop: crop ?? undefined,
+                    })
+                  ),
+                  { reliable: true, topic: "espetaculo" }
+                );
+              } catch {}
+            }}
           />
         ) : null
       }
@@ -1361,6 +1497,15 @@ export function Routes() {
                 >
                   <span className="show-scene-menu__drag-dots">⋯</span>
                   <span className="show-scene-menu__panel-title">Cenas</span>
+                  <label className="show-scene-menu__improviso show-scene-menu__improviso--in-handle">
+                    <input
+                      type="checkbox"
+                      checked={improvisationMode}
+                      onChange={(e) => setImprovisationMode(e.target.checked)}
+                      aria-label="Modo improviso"
+                    />
+                    <span className="show-scene-menu__improviso-label">Improviso</span>
+                  </label>
                 </div>
                 <div className="show-scene-menu__body">
                   {show.storyScenes.map((scene) => (
@@ -1504,6 +1649,31 @@ export function Routes() {
                       {sceneInfoSaving ? "Salvando..." : "Salvar"}
                     </button>
                   </div>
+                  {improvisationMode && (
+                    <>
+                      <div className="show-scene-info__header show-scene-info__header--improviso">
+                        <span className="show-scene-info__title">Improviso</span>
+                      </div>
+                      <div className="show-scene-info__improviso-desc">
+                        <textarea
+                          className="ui-field show-scene-info__textarea"
+                          readOnly
+                          value={improvisationScenarioDescription || "—"}
+                          aria-label="Texto do cenário (improviso)"
+                        />
+                      </div>
+                      <div className="show-scene-info__actions">
+                        <button
+                          type="button"
+                          className="ui-btn"
+                          disabled={sceneSaveAsNewSaving}
+                          onClick={() => void handleSaveSceneAsNew()}
+                        >
+                          {sceneSaveAsNewSaving ? "Salvando..." : "Salvar como nova cena"}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
