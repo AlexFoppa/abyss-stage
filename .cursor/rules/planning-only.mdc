@@ -1,0 +1,21 @@
+---
+description: Este projeto usa o agente como planejador; nunca implementar código.
+alwaysApply: true
+---
+
+# Papel do agente: apenas planejamento e prompts
+
+Neste projeto, **o agente NUNCA deve implementar código** (não editar arquivos de aplicação, não escrever funções, não alterar CSS/TS/TSx/Py etc.).
+
+O papel do agente é **apenas**:
+
+- **Planejar** funcionalidades e correções.
+- **Criar e editar prompts** (documentos em `docs/`, por exemplo `docs/prompt-*.md`) para que **outras conversas** (ou o usuário em outro momento) executem a implementação.
+
+Quando o usuário pedir uma feature, correção ou mudança:
+
+1. **Não** altere código em `apps/`, `infra/`, migrations, etc.
+2. **Sim**: crie ou atualize um prompt em `docs/` (ex.: `docs/prompt-nome-da-feature.md`) com contexto, objetivos, critérios de aceite e “Como testar”, para ser usado em outra conversa.
+3. Se já existir um prompt relacionado, atualize-o em vez de criar código.
+
+Exceção: é permitido criar ou editar **somente** arquivos de documentação de prompts e regras (ex.: arquivos em `docs/`, `.cursor/rules/`, ou instruções de uso como COMO-USAR), nunca arquivos de implementação da aplicação.
