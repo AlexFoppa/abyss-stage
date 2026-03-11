@@ -26,6 +26,7 @@ _LOBBY_TTL = 90
 
 class LobbyMeIn(BaseModel):
     character_id: Optional[int] = None
+    expression_slot: Optional[int] = None  # 0-9, default 0 (Padrão)
 
 
 class LobbyParticipantOut(BaseModel):
@@ -35,6 +36,9 @@ class LobbyParticipantOut(BaseModel):
     character_id: Optional[int]
     character_name: Optional[str]
     character_image_url: Optional[str]
+    expression_slot: Optional[int] = None  # slot de expressão em exibição (0-9)
+    """Mapa slot (0-9) → URL da imagem, para exibir override/current em qualquer slot."""
+    character_image_by_slot: Optional[dict[int, str]] = None
     user_email: Optional[str] = None
     user_name: Optional[str] = None
 
@@ -43,37 +47,70 @@ class LobbyOut(BaseModel):
     participants: list[LobbyParticipantOut]
 
 
-def _get_character_for_lobby(
+def _get_character_name_for_lobby(
     session: Session, character_id: int, user_id: int
-) -> Optional[tuple[str, Optional[str], Optional[str]]]:
-    """Retorna (name, image_url, image_rev) se o personagem existir e for do usuário."""
+) -> Optional[str]:
+    """Retorna o nome do personagem se existir e for do usuário (PC)."""
     row = session.exec(
         text(
             """
-            SELECT c.id, c.name
+            SELECT c.name
             FROM character c
             WHERE c.id = :cid AND c.kind = 'PC' AND c.owner_user_id = :uid
             """
         ),
         params={"cid": character_id, "uid": user_id},
     ).first()
-    if not row:
-        return None
-    name = str(row[1] or "")
-    img_row = session.exec(
+    return str(row[0] or "") if row else None
+
+
+def _get_character_image_url_for_slot(
+    session: Session, character_id: int, slot: int
+) -> Optional[str]:
+    """Retorna a URL da imagem do personagem no slot dado (0-9). Fallback para slot 0 se não houver imagem."""
+    for try_slot in (slot, 0):
+        img_row = session.exec(
+            text(
+                """
+                SELECT storage_key, created_at
+                FROM character_image
+                WHERE character_id = :cid AND slot = :s
+                LIMIT 1
+                """
+            ),
+            params={"cid": character_id, "s": try_slot},
+        ).first()
+        if img_row and img_row[0]:
+            base = f"/api/uploads/{str(img_row[0]).lstrip('/')}"
+            rev = str(img_row[1]) if img_row[1] else None
+            return f"{base}?rev={rev}" if rev else base
+    return None
+
+
+def _get_character_image_urls_by_slot(
+    session: Session, character_id: int
+) -> dict[int, str]:
+    """Retorna um mapa slot (0-9) → URL para todas as imagens do personagem (apenas slots com imagem)."""
+    rows = session.exec(
         text(
             """
-            SELECT storage_key, created_at
+            SELECT slot, storage_key, created_at
             FROM character_image
-            WHERE character_id = :cid AND slot = 0
-            LIMIT 1
+            WHERE character_id = :cid
+            ORDER BY slot ASC
             """
         ),
         params={"cid": character_id},
-    ).first()
-    if not img_row or not img_row[0]:
-        return (name, None, None)
-    return (name, f"/api/uploads/{str(img_row[0]).lstrip('/')}", str(img_row[1]) if img_row[1] else None)
+    ).all()
+    result: dict[int, str] = {}
+    for r in rows:
+        if not r or r[1] is None:
+            continue
+        slot = int(r[0])
+        base = f"/api/uploads/{str(r[1]).lstrip('/')}"
+        rev = str(r[2]) if r[2] else None
+        result[slot] = f"{base}?rev={rev}" if rev else base
+    return result
 
 
 @router.post("/me")
@@ -82,23 +119,35 @@ def lobby_me(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    """Registra minha presença no lobby, opcionalmente com o personagem selecionado."""
+    """Registra minha presença no lobby, opcionalmente com o personagem selecionado e slot de expressão."""
     identity = "gm" if current_user.role == Role.GM else f"player-{current_user.id}"
     is_gm = current_user.role == Role.GM
     character_id: Optional[int] = body.character_id
     character_name: Optional[str] = None
     character_image_url: Optional[str] = None
-    character_image_rev: Optional[str] = None
+
+    # expression_slot: 0-9, default 0. Se enviado, validar; senão manter atual ou 0.
+    expression_slot = 0
+    if body.expression_slot is not None:
+        if not (0 <= body.expression_slot <= 9):
+            raise HTTPException(
+                status_code=400,
+                detail="expression_slot deve ser um inteiro entre 0 e 9.",
+            )
+        expression_slot = body.expression_slot
+    else:
+        existing = _LOBBY_STORE.get(current_user.id)
+        if existing and existing.get("character_id") == character_id:
+            expression_slot = existing.get("expression_slot", 0)
+        # ao trocar de personagem ou entrar sem dados prévios, fica 0
 
     if not is_gm and character_id is not None:
-        info = _get_character_for_lobby(session, character_id, current_user.id)
-        if not info:
+        character_name = _get_character_name_for_lobby(session, character_id, current_user.id)
+        if character_name is None:
             raise HTTPException(status_code=404, detail="Personagem não encontrado ou não é seu.")
-        character_name, img_url, img_rev = info
-        if img_url and img_rev:
-            character_image_url = f"{img_url}?rev={img_rev}"
-        else:
-            character_image_url = img_url
+        character_image_url = _get_character_image_url_for_slot(session, character_id, expression_slot)
+    else:
+        expression_slot = 0  # sem personagem: slot não se aplica
 
     display_name = (getattr(current_user, "name", None) or "").strip() or (getattr(current_user, "email", None) or "")
     now = time.time()
@@ -109,6 +158,7 @@ def lobby_me(
         "character_id": character_id,
         "character_name": character_name,
         "character_image_url": character_image_url,
+        "expression_slot": expression_slot,
         "user_email": getattr(current_user, "email", None) or None,
         "user_name": display_name or None,
         "updated_at": now,
@@ -142,8 +192,17 @@ async def _livekit_identities_in_room(room: str = "lobby") -> Optional[Set[str]]
         return None
 
 
+def _participant_image_by_slot(
+    session: Session, character_id: Optional[int]
+) -> Optional[dict[int, str]]:
+    if character_id is None:
+        return None
+    urls = _get_character_image_urls_by_slot(session, character_id)
+    return urls if urls else None
+
+
 @router.get("", response_model=LobbyOut)
-async def get_lobby():
+async def get_lobby(session: Session = Depends(get_session)):
     """Lista quem está no lobby. Presença = quem está na sala LiveKit; metadados (personagem) do store.
     Se a API LiveKit não estiver disponível, usa só o store com TTL (fallback)."""
     now = time.time()
@@ -158,6 +217,7 @@ async def get_lobby():
             character_id: Optional[int] = None
             character_name: Optional[str] = None
             character_image_url: Optional[str] = None
+            expression_slot: Optional[int] = None
             user_email: Optional[str] = None
             user_name: Optional[str] = None
             for data in _LOBBY_STORE.values():
@@ -166,6 +226,7 @@ async def get_lobby():
                     character_id = data.get("character_id")
                     character_name = data.get("character_name")
                     character_image_url = data.get("character_image_url")
+                    expression_slot = data.get("expression_slot")
                     user_email = data.get("user_email")
                     user_name = data.get("user_name")
                     break
@@ -174,6 +235,7 @@ async def get_lobby():
                     user_id = int(identity.split("-", 1)[1])
                 except (ValueError, IndexError):
                     pass
+            character_image_by_slot = _participant_image_by_slot(session, character_id)
             participants.append(
                 LobbyParticipantOut(
                     user_id=user_id,
@@ -182,6 +244,8 @@ async def get_lobby():
                     character_id=character_id,
                     character_name=character_name,
                     character_image_url=character_image_url,
+                    expression_slot=expression_slot,
+                    character_image_by_slot=character_image_by_slot,
                     user_email=user_email,
                     user_name=user_name,
                 )
@@ -205,6 +269,8 @@ async def get_lobby():
             character_id=data.get("character_id"),
             character_name=data.get("character_name"),
             character_image_url=data.get("character_image_url"),
+            expression_slot=data.get("expression_slot"),
+            character_image_by_slot=_participant_image_by_slot(session, data.get("character_id")),
             user_email=data.get("user_email"),
             user_name=data.get("user_name"),
         )

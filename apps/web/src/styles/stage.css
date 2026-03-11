@@ -297,6 +297,71 @@
   pointer-events: auto;
 }
 
+/* Menu retrátil do jogador: expressões do avatar (só no modo espetáculo, não-GM) */
+.stage-view__player-expression {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.stage-view__player-expression-trigger {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 1.5rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, border-color 0.2s;
+}
+.stage-view__player-expression-trigger:hover {
+  background: rgba(0, 0, 0, 0.7);
+  border-color: rgba(255, 255, 255, 0.7);
+}
+.stage-view__player-expression-trigger.is-open {
+  background: rgba(0, 0, 0, 0.75);
+  border-color: rgba(255, 255, 255, 0.9);
+}
+.stage-view__player-expression-panel {
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  padding: 10px 4px;
+  min-width: 200px;
+  max-height: 70vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+.stage-view__player-expression-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.95rem;
+}
+.stage-view__player-expression-item--current {
+  font-weight: bold;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+}
+.stage-view__player-expression-emoji {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+.stage-view__player-expression-text {
+  flex: 1;
+}
+
 /* Modo narrativa: uma imagem em tela cheia + controles do mestre */
 .stage-view--narrative {
   display: flex;

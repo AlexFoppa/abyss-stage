@@ -516,6 +516,29 @@
   transform: scale(1);
   filter: drop-shadow(0 22px 40px rgba(0,0,0,.60)) brightness(1) contrast(1);
 }
+/* Brilho discreto ao fixar a expressão (segurar tecla 0–9 ≥ 1s) */
+.lobby-actor--expression-fixed{
+  animation: lobby-actor-expression-fixed 0.5s ease-out;
+}
+@keyframes lobby-actor-expression-fixed{
+  0%{
+    filter: drop-shadow(0 22px 40px rgba(0,0,0,.6)) drop-shadow(0 0 12px rgba(255,220,150,.7)) brightness(0.9) contrast(0.92);
+  }
+  100%{
+    filter: drop-shadow(0 22px 40px rgba(0,0,0,.60)) brightness(0.65) contrast(0.92);
+  }
+}
+.lobby-actor--expression-fixed.lobby-actor--speaking{
+  animation: lobby-actor-expression-fixed-speaking 0.5s ease-out;
+}
+@keyframes lobby-actor-expression-fixed-speaking{
+  0%{
+    filter: drop-shadow(0 22px 40px rgba(0,0,0,.6)) drop-shadow(0 0 12px rgba(255,220,150,.7)) brightness(1) contrast(1);
+  }
+  100%{
+    filter: drop-shadow(0 22px 40px rgba(0,0,0,.60)) brightness(1) contrast(1);
+  }
+}
 /* Dentro do grid do lobby, avatares em linha: não usar posição absoluta para não sobrepor */
 .lobby-actors .lobby-actor{
   position: relative;

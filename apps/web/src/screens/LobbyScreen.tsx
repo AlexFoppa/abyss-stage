@@ -139,6 +139,10 @@ export type LobbyParticipant = {
   character_id: number | null;
   character_name: string | null;
   character_image_url: string | null;
+  /** Slot de expressão em exibição (0-9). Padrão 1 = Padrão. */
+  expression_slot?: number | null;
+  /** Mapa slot (0-9) → URL; para exibir override/current em qualquer slot. */
+  character_image_by_slot?: Record<number, string> | null;
   /** E-mail do usuário; usado como fallback de exibição. */
   user_email?: string | null;
   /** Nome de exibição do jogador (name or email); usado na lista do lobby. */

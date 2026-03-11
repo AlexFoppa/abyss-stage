@@ -188,6 +188,23 @@ export function Routes() {
   const [actorOffsets, setActorOffsets] = useState<Record<string, number>>({});
   const actorDragRef = useRef<{ identity: string; startX: number; startOffset: number } | null>(null);
 
+  /* Expressão 0–9: slot de armazenamento (0=Padrão, 1=Assustado, … 9=Off). Tecla 1→slot 0, tecla 0→slot 9. */
+  const [currentExpressionSlot, setCurrentExpressionSlot] = useState(0); // 0 = Padrão
+  const [temporaryOverride, setTemporaryOverride] = useState<{ slot: number; until: number } | null>(null);
+  /** Timestamp em que a expressão foi fixada (para brilho discreto no avatar). */
+  const [expressionJustFixedAt, setExpressionJustFixedAt] = useState<number | null>(null);
+  /** Override temporário por identity (recebido via LiveKit). */
+  const [expressionOverrideByIdentity, setExpressionOverrideByIdentity] = useState<
+    Record<string, { slot: number; until: number }>
+  >({});
+  /** Slot atual por identity (recebido via LiveKit expression/current). */
+  const [expressionCurrentByIdentity, setExpressionCurrentByIdentity] = useState<Record<string, number>>({});
+  const expressionKeyDownRef = useRef<{ key: string; slot: number; time: number } | null>(null);
+  const expressionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const expressionInitializedFromLobbyRef = useRef(false);
+  /** Slot → URL para o personagem local (antes do GET /lobby devolver character_image_by_slot). */
+  const [localCharacterImageBySlot, setLocalCharacterImageBySlot] = useState<Record<number, string>>({});
+
   const view: View = useMemo(() => {
     if (loading) return "LOGIN";
     if (!user) return "LOGIN";
@@ -465,6 +482,25 @@ export function Routes() {
       }
       if (!msg || typeof msg !== "object") return;
 
+      /* Expressão: sincronização em tempo real (override 2s e current). */
+      if (msg.type === "expression/override") {
+        const identity = typeof msg.identity === "string" ? msg.identity : participant?.identity;
+        const slot = typeof msg.slot === "number" && msg.slot >= 0 && msg.slot <= 9 ? msg.slot : 0;
+        const until = typeof msg.until === "number" && Number.isFinite(msg.until) ? msg.until : Date.now() + 1000;
+        if (identity) {
+          setExpressionOverrideByIdentity((prev) => ({ ...prev, [identity]: { slot, until } }));
+        }
+        return;
+      }
+      if (msg.type === "expression/current") {
+        const identity = typeof msg.identity === "string" ? msg.identity : participant?.identity;
+        const expression_slot = typeof msg.expression_slot === "number" && msg.expression_slot >= 0 && msg.expression_slot <= 9 ? msg.expression_slot : 0;
+        if (identity) {
+          setExpressionCurrentByIdentity((prev) => ({ ...prev, [identity]: expression_slot }));
+        }
+        return;
+      }
+
       const sceneTitle =
         typeof msg.sceneTitle === "string" ? msg.sceneTitle : "";
       const sceneBody =
@@ -733,6 +769,51 @@ export function Routes() {
   }, [logged, liveKitRoom]);
 
   const isLobbyView = view === "LOBBY";
+  const localIdentity = user ? `player-${user.id}` : null;
+  useEffect(() => {
+    if (!user || !localIdentity) return;
+    if (selectedCharacter?.id == null) {
+      expressionInitializedFromLobbyRef.current = false;
+      return;
+    }
+    const me = lobbyParticipants.find((p) => p.identity === localIdentity);
+    if (me?.expression_slot != null && typeof me.expression_slot === "number" && !expressionInitializedFromLobbyRef.current) {
+      expressionInitializedFromLobbyRef.current = true;
+      setCurrentExpressionSlot(me.expression_slot >= 0 && me.expression_slot <= 9 ? me.expression_slot : 0);
+    }
+  }, [lobbyParticipants, localIdentity, user, selectedCharacter?.id]);
+  useEffect(() => {
+    if (selectedCharacter?.id == null) expressionInitializedFromLobbyRef.current = false;
+  }, [selectedCharacter?.id]);
+
+  useEffect(() => {
+    const cid = selectedCharacter?.id;
+    if (cid == null || isGM) {
+      setLocalCharacterImageBySlot({});
+      return;
+    }
+    let cancelled = false;
+    api<Array<{ slot: number; storage_key: string; created_at?: string | null }>>(`/api/me/characters/${cid}/images`)
+      .then((list) => {
+        if (cancelled || !Array.isArray(list)) return;
+        const map: Record<number, string> = {};
+        for (const row of list) {
+          const sk = (row.storage_key ?? "").replace(/^\/+/, "");
+          if (!sk) continue;
+          const base = `/api/uploads/${sk}`;
+          const rev = row.created_at ?? undefined;
+          map[row.slot] = rev ? `${base}?rev=${rev}` : base;
+        }
+        setLocalCharacterImageBySlot(map);
+      })
+      .catch(() => {
+        if (!cancelled) setLocalCharacterImageBySlot({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCharacter?.id, isGM]);
+
   const fetchLobby = useCallback(() => {
     if (!user) return;
     api<{ participants: LobbyParticipant[] }>("/api/lobby")
@@ -755,7 +836,10 @@ export function Routes() {
     const heartbeat = () => {
       api("/api/lobby/me", {
         method: "POST",
-        body: JSON.stringify({ character_id: selectedCharacter?.id ?? null }),
+        body: JSON.stringify({
+          character_id: selectedCharacter?.id ?? null,
+          expression_slot: currentExpressionSlot,
+        }),
       })
         .then(() => fetchLobby())
         .catch(() => {});
@@ -763,7 +847,102 @@ export function Routes() {
     heartbeat();
     const t = setInterval(heartbeat, 25000);
     return () => clearInterval(t);
-  }, [isLobbyView, user, selectedCharacter?.id, fetchLobby]);
+  }, [isLobbyView, user, selectedCharacter?.id, currentExpressionSlot, fetchLobby]);
+
+  const fixExpressionAndSync = useCallback(
+    (slot: number) => {
+      setCurrentExpressionSlot(slot);
+      setTemporaryOverride(null);
+      setExpressionJustFixedAt(Date.now());
+      expressionKeyDownRef.current = null;
+      if (expressionTimerRef.current) {
+        clearTimeout(expressionTimerRef.current);
+        expressionTimerRef.current = null;
+      }
+      api("/api/lobby/me", {
+        method: "POST",
+        body: JSON.stringify({
+          character_id: selectedCharacter?.id ?? null,
+          expression_slot: slot,
+        }),
+      })
+        .then(() => fetchLobby())
+        .catch(() => {});
+      try {
+        const identity = liveKitRoom?.localParticipant?.identity;
+        if (identity) {
+          liveKitRoom?.localParticipant.publishData(
+            new TextEncoder().encode(JSON.stringify({ type: "expression/current", identity, expression_slot: slot })),
+            { reliable: true, topic: "lobby" }
+          );
+        }
+      } catch {}
+    },
+    [liveKitRoom, selectedCharacter?.id, fetchLobby]
+  );
+
+  const EXPRESSION_DURATION_MS = 1000; /* 1s: tempo do override (toque) e do segurar para fixar */
+  const expressionKeysActive =
+    isLobbyView || (effectiveRole === "PLAYER" && !!show && (showPhase === "half" || showPhase === "stage"));
+  useEffect(() => {
+    if (expressionJustFixedAt == null) return;
+    const t = setTimeout(() => setExpressionJustFixedAt(null), 500);
+    return () => clearTimeout(t);
+  }, [expressionJustFixedAt]);
+
+  useEffect(() => {
+    if (!expressionKeysActive || !user) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) return;
+      const key = e.key;
+      if (key.length !== 1 || key < "0" || key > "9") return;
+      if (e.repeat) return;
+      const keyNum = parseInt(key, 10);
+      const slot = (keyNum + 9) % 10;
+      const now = Date.now();
+      const until = now + EXPRESSION_DURATION_MS;
+      expressionKeyDownRef.current = { key, slot, time: now };
+      setTemporaryOverride({ slot, until });
+      try {
+        const identity = liveKitRoom?.localParticipant?.identity;
+        if (identity) {
+          liveKitRoom?.localParticipant.publishData(
+            new TextEncoder().encode(JSON.stringify({ type: "expression/override", identity, slot, until })),
+            { reliable: true, topic: "lobby" }
+          );
+        }
+      } catch {}
+      if (expressionTimerRef.current) clearTimeout(expressionTimerRef.current);
+      expressionTimerRef.current = setTimeout(() => {
+        expressionTimerRef.current = null;
+        const ref = expressionKeyDownRef.current;
+        if (ref?.key === key) {
+          fixExpressionAndSync(slot);
+        } else {
+          setTemporaryOverride(null);
+        }
+      }, EXPRESSION_DURATION_MS);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      const key = e.key;
+      if (key.length !== 1 || key < "0" || key > "9") return;
+      const ref = expressionKeyDownRef.current;
+      if (ref?.key === key) {
+        const slot = ref.slot;
+        if (Date.now() - ref.time >= EXPRESSION_DURATION_MS) {
+          fixExpressionAndSync(slot);
+        }
+        expressionKeyDownRef.current = null;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    window.addEventListener("keyup", onKeyUp, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, { capture: true });
+      window.removeEventListener("keyup", onKeyUp, { capture: true });
+    };
+  }, [expressionKeysActive, user, fixExpressionAndSync, liveKitRoom, EXPRESSION_DURATION_MS]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -851,6 +1030,44 @@ export function Routes() {
       },
     ];
   }
+
+  /** Única fonte da lógica de expressão: slot efetivo + URL por personagem (lobby e espetáculo). */
+  const resolvedParticipantImageByCharacterId = useMemo(() => {
+    const now = Date.now();
+    const map: Record<number, string> = {};
+    const defaultImg = "/assets/jogador_default.png";
+    for (const p of displayParticipants) {
+      if (p.is_gm || p.character_id == null) continue;
+      const isLocal = localIdentity != null && p.identity === localIdentity;
+      const effectiveSlot = isLocal
+        ? (temporaryOverride && now < temporaryOverride.until ? temporaryOverride.slot : currentExpressionSlot)
+        : (() => {
+            const override = expressionOverrideByIdentity[p.identity];
+            if (override && now < override.until) return override.slot;
+            return expressionCurrentByIdentity[p.identity] ?? p.expression_slot ?? 0;
+          })();
+      const slotMap =
+        isLocal && Object.keys(localCharacterImageBySlot).length > 0
+          ? localCharacterImageBySlot
+          : p.character_image_by_slot ?? undefined;
+      const url =
+        slotMap != null && slotMap[effectiveSlot] != null
+          ? slotMap[effectiveSlot]
+          : slotMap != null && slotMap[0] != null
+            ? slotMap[0]
+            : (p.character_image_url || defaultImg);
+      map[p.character_id] = url;
+    }
+    return map;
+  }, [
+    displayParticipants,
+    localIdentity,
+    currentExpressionSlot,
+    temporaryOverride,
+    expressionOverrideByIdentity,
+    expressionCurrentByIdentity,
+    localCharacterImageBySlot,
+  ]);
 
   const publishShowPayload = useCallback(
     (type: "show/start" | "show/scene/change", showId: string, startedAt: number, sceneState: ShowSceneState) => {
@@ -1049,6 +1266,8 @@ export function Routes() {
             lobbyParticipants={displayParticipants}
             lobbyCharacterIdsKey={lobbyCharacterIdsKeyStable}
             speakingByIdentity={speakingByIdentity}
+            playerExpressionSlot={isGM ? undefined : currentExpressionSlot}
+            resolvedParticipantImageByCharacterId={resolvedParticipantImageByCharacterId}
           />
         ) : null
       }
@@ -1506,11 +1725,18 @@ export function Routes() {
                 .filter((p) => !p.is_gm)
                 .slice(0, 6)
                 .map((p) => {
+                  const isLocal = localIdentity != null && p.identity === localIdentity;
+                  const imageUrl =
+                    p.character_id != null && resolvedParticipantImageByCharacterId[p.character_id] != null
+                      ? resolvedParticipantImageByCharacterId[p.character_id]
+                      : (p.character_image_url || "/assets/jogador_default.png");
                   const isSpeaking = liveKitRoom
                     ? p.identity === liveKitRoom.localParticipant.identity
                       ? localSpeaking
                       : (speakingByIdentity[p.identity] ?? false)
                     : false;
+                  const showExpressionFixedGlow =
+                    isLocal && expressionJustFixedAt != null && Date.now() - expressionJustFixedAt < 500;
                   const offset = actorOffsets[p.identity] ?? 0;
                   const displayLabel = (p.user_name ?? p.user_email ?? "").trim() || null;
                   const altText =
@@ -1532,8 +1758,12 @@ export function Routes() {
                       }}
                     >
                       <img
-                        className={"lobby-actor" + (isSpeaking ? " lobby-actor--speaking" : "")}
-                        src={p.character_image_url || "/assets/jogador_default.png"}
+                        className={
+                          "lobby-actor" +
+                          (isSpeaking ? " lobby-actor--speaking" : "") +
+                          (showExpressionFixedGlow ? " lobby-actor--expression-fixed" : "")
+                        }
+                        src={imageUrl}
                         alt={altText}
                         draggable={false}
                       />

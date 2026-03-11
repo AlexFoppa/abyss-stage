@@ -38,6 +38,8 @@ type CandelaOut = {
   equipment: { id?: number; text: string }[];
   illumination_keys: { id?: number; text: string }[];
   ability_ids: number[];
+  role_power_ids: number[];
+  specialty_power_id: number | null;
 };
 
 const ACTION_KEYS: CandelaAction["action_key"][] = [
@@ -120,7 +122,7 @@ export function CharacterScreen({
   const SLOT_MIN = 0;
   const SLOT_MAX = 9;
 
-  /** Número exibido e rótulo por slot interno: antigo 0→1 Padrão, … antigo 9→0 Off */
+  /** Rótulos indexados pelo número exibido ao usuário: 0=Off, 1=Padrão, 2=Assustado, …, 9=Atordoado/Incapacitado. */
   const SLOT_LABELS: Record<number, string> = {
     0: "Off",
     1: "Padrão",
@@ -130,12 +132,12 @@ export function CharacterScreen({
     5: "Ferido / com dor",
     6: "Personalizado 1",
     7: "Personalizado 2",
-    8: "Personalizado 3",
+    8: "Pesquisando",
     9: "Atordoado/Incapacitado",
   };
 
   const visibleSlot = useMemo(() => clampInt(imgIndex, SLOT_MIN, SLOT_MAX), [imgIndex]);
-  const slotDisplayNum = (visibleSlot + 1) % 10;
+  const slotDisplayNum = visibleSlot === 9 ? 0 : visibleSlot + 1;
   const slotLabel = SLOT_LABELS[slotDisplayNum] ?? String(visibleSlot);
 
   const imageBySlot = useMemo(() => {
@@ -174,6 +176,8 @@ export function CharacterScreen({
   const [specialtyAbilities, setSpecialtyAbilities] = useState<CandelaAbility[]>([]);
   const [lastAppliedSpecialtyId, setLastAppliedSpecialtyId] = useState<number | null>(null);
   const [candelaSheetExists, setCandelaSheetExists] = useState<boolean | null>(null);
+  const [rolePowerIds, setRolePowerIds] = useState<number[]>([]);
+  const [specialtyPowerId, setSpecialtyPowerId] = useState<number | null>(null);
 
   const isCandela = selectedSystem === "candela_obscura";
   const candelaAlreadyExists = candelaSheetExists === true;
@@ -198,7 +202,8 @@ export function CharacterScreen({
   const [savedSnapshot, setSavedSnapshot] = useState(snapshot);
   const isDirty = snapshot !== savedSnapshot;
  
-  async function refreshImages() {
+  /** @param preserveSlot se fornecido, mantém esse slot visível após atualizar a lista (ex.: após upload no slot atual) */
+  async function refreshImages(preserveSlot?: number) {
     if (mode !== "edit") return;
     if (!character?.id) return;
 
@@ -217,7 +222,9 @@ export function CharacterScreen({
         })?.slot ?? 0;
 
       setImages(norm);
-      setImgIndex(clampInt(defaultSlot, 0, 9));
+      const slotToShow =
+        preserveSlot !== undefined ? clampInt(preserveSlot, SLOT_MIN, SLOT_MAX) : defaultSlot;
+      setImgIndex(slotToShow);
       setImgRevision((r) => r + 1);
     } catch (e: any) {
       // no GM, erros de imagem não devem bloquear a edição
@@ -292,6 +299,8 @@ export function CharacterScreen({
           ability_ids: data.ability_ids || [],
         });
 
+        setRolePowerIds(data.role_power_ids ?? []);
+        setSpecialtyPowerId(data.specialty_power_id ?? null);
         setLastAppliedSpecialtyId(data.specialty_id);
       } catch (e: any) {
         if (cancelled) return;
@@ -330,6 +339,8 @@ export function CharacterScreen({
     setSelectedSystem("");
     setRoleId("");
     setSpecialtyId("");
+    setRolePowerIds([]);
+    setSpecialtyPowerId(null);
     setCandelaDraft(emptyCandelaDraft());
     setRoleAbilities([]);
     setSpecialtyAbilities([]);
@@ -554,6 +565,8 @@ export function CharacterScreen({
       equipment: candelaDraft.equipment,
       illumination_keys: candelaDraft.illumination_keys,
       ability_ids: candelaDraft.ability_ids,
+      role_power_ids: rolePowerIds,
+      specialty_power_id: specialtyPowerId,
     };
   }
  
@@ -630,6 +643,52 @@ export function CharacterScreen({
 
       setSavedSnapshot(snapshot);
       onCreated?.(created);
+      onBack();
+    } catch (e: any) {
+      const msg =
+        typeof e?.message === "string"
+          ? e.message
+          : typeof e?.body?.detail === "string"
+            ? e.body.detail
+            : "Falha ao salvar";
+      setErr(msg);
+    }
+  }
+
+  /** Em edição com sistema selecionado: persiste base (name, concept, backstory, notes) e depois a ficha do sistema. Evita perda de dados quando o usuário edita base + Candela e clica uma vez em Salvar. */
+  async function saveBaseThenSystem() {
+    setErr(null);
+    if (!character?.id) return setErr("Nenhum personagem selecionado.");
+    if (!name.trim()) return setErr("Nome é obrigatório");
+    if (selectedSystem === "candela_obscura") {
+      const v = validateCandelaBeforeSave();
+      if (v) return setErr(v);
+      if (mode === "edit" && candelaSheetExists === null) {
+        return setErr("Carregando estado da ficha Candela… tente novamente em 1s.");
+      }
+    }
+
+    try {
+      await api<Character>(`${basePrefix}/${character!.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name, concept, backstory, notes }),
+      });
+
+      if (selectedSystem === "candela_obscura") {
+        const method = candelaAlreadyExists ? "PUT" : "POST";
+        await api(`${basePrefix}/${character!.id}/systems/candela_obscura`, {
+          method,
+          body: JSON.stringify(candelaPayload()),
+        });
+        setCandelaSheetExists(true);
+      } else if (selectedSystem) {
+        await api(`${basePrefix}/${character!.id}/systems/${selectedSystem}`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+      }
+
+      setSavedSnapshot(snapshot);
       onBack();
     } catch (e: any) {
       const msg =
@@ -762,7 +821,7 @@ export function CharacterScreen({
                 mode === "create"
                   ? createBaseAndMaybeSystem
                   : selectedSystem
-                    ? addSystemToExisting
+                    ? saveBaseThenSystem
                     : saveBaseEdits
               }
               disabled={
@@ -882,7 +941,7 @@ export function CharacterScreen({
                         setErr(null);
                         try {
                           await api(`${basePrefix}/${character.id}/images`, { method: "POST", body: fd });
-                          await refreshImages();
+                          await refreshImages(visibleSlot);
                         } catch (e: any) {
                           setErr(e?.message || "Falha no upload");
                         } finally {

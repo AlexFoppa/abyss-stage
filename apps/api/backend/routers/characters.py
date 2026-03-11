@@ -81,7 +81,7 @@ class CandelaUpsertIn(BaseModel):
     role_id: int
     specialty_id: int
 
-    # candela_character_sheet (sem backstory/notes aqui)
+    # candela_character_sheet. backstory/notes: fonte única em character; não usar candela_character_sheet.backstory/notes.
     pronouns: str = ""
     circle: str = ""
     style: str = ""

@@ -140,6 +140,8 @@ export function StageView({
   lobbyParticipants,
   lobbyCharacterIdsKey: _lobbyCharacterIdsKeyFromParent,
   speakingByIdentity,
+  playerExpressionSlot = 0,
+  resolvedParticipantImageByCharacterId,
 }: {
   room: Room | null;
   showId: string;
@@ -156,6 +158,10 @@ export function StageView({
   lobbyParticipants: LobbyParticipant[];
   lobbyCharacterIdsKey?: string;
   speakingByIdentity: Record<string, boolean>;
+  /** Slot de expressão atual do jogador (0–9); só para !isGM, para destacar no menu. */
+  playerExpressionSlot?: number;
+  /** URL da imagem por character_id (override/current); mesma lógica do lobby. */
+  resolvedParticipantImageByCharacterId?: Record<number, string>;
 }) {
   const [characters, setCharacters] = useState<CharacterOnStage[]>([]);
   const [visibleForPlayer, setVisibleForPlayer] = useState<Record<number, boolean>>({});
@@ -173,6 +179,7 @@ export function StageView({
   const [sceneTransitionFrame, setSceneTransitionFrame] = useState<SceneTransitionFrame | null>(null);
   const [sceneTransitionVisible, setSceneTransitionVisible] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [playerExpressionMenuOpen, setPlayerExpressionMenuOpen] = useState(false);
   const draggedRecentlyRef = useRef(false);
   const renderedNarrativeSlideRef = useRef<NarrativeSlide | null>(null);
   const narrativeFadeTimeoutRef = useRef<number | null>(null);
@@ -844,7 +851,7 @@ export function StageView({
               >
                 <img
                   className="stage-actor__img"
-                  src={c.imageUrl || "/assets/jogador_default.png"}
+                  src={resolvedParticipantImageByCharacterId?.[c.id] ?? c.imageUrl ?? "/assets/jogador_default.png"}
                   alt=""
                   draggable={false}
                   onError={(e) => {
@@ -951,6 +958,51 @@ export function StageView({
           }
         >
           {renderSceneTransitionFrame(sceneTransitionFrame)}
+        </div>
+      )}
+
+      {!isGM && (
+        <div className="stage-view__player-expression">
+          <button
+            type="button"
+            className={"stage-view__player-expression-trigger" + (playerExpressionMenuOpen ? " is-open" : "")}
+            onClick={() => setPlayerExpressionMenuOpen((o) => !o)}
+            aria-expanded={playerExpressionMenuOpen}
+            aria-label={playerExpressionMenuOpen ? "Recolher expressões do avatar" : "Ver expressões do avatar"}
+            title={playerExpressionMenuOpen ? "Recolher" : "Expressões do avatar"}
+          >
+            🎭
+          </button>
+          {playerExpressionMenuOpen && (
+            <div className="stage-view__player-expression-panel" role="dialog" aria-label="Expressões do avatar">
+              {( [
+                { slot: 0, label: "Padrão", emoji: "🙂" },
+                { slot: 1, label: "Assustado", emoji: "😱" },
+                { slot: 2, label: "Rindo", emoji: "😂" },
+                { slot: 3, label: "Furioso", emoji: "😠" },
+                { slot: 4, label: "Ferido / com dor", emoji: "🤕" },
+                { slot: 5, label: "Personalizado 1", emoji: "🎭" },
+                { slot: 6, label: "Personalizado 2", emoji: "🎭" },
+                { slot: 7, label: "Pesquisando", emoji: "🤔" },
+                { slot: 8, label: "Atordoado/Incapacitado", emoji: "😵" },
+                { slot: 9, label: "Off", emoji: "👤" },
+              ] as const ).map(({ slot, label, emoji }) => {
+                const isCurrent = playerExpressionSlot === slot;
+                const displayNum = slot === 9 ? 0 : slot + 1;
+                return (
+                  <div
+                    key={slot}
+                    className={"stage-view__player-expression-item" + (isCurrent ? " stage-view__player-expression-item--current" : "")}
+                  >
+                    <span className="stage-view__player-expression-emoji" aria-hidden>{emoji}</span>
+                    <span className="stage-view__player-expression-text">
+                      {displayNum} – {label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
