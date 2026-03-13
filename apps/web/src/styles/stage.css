@@ -297,6 +297,262 @@
   pointer-events: auto;
 }
 
+/* Barra de dados no topo do palco (espetáculo half/stage) */
+.stage-dice-bar {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%) translateY(-100%);
+  width: 33.333%;
+  min-width: 480px;
+  max-width: 560px;
+  z-index: 10;
+  pointer-events: none;
+  transition: transform 0.4s cubic-bezier(0.33, 1, 0.68, 1);
+}
+.stage-dice-bar--visible {
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+.stage-dice-bar--hidden {
+  transform: translateX(-50%) translateY(-100%);
+  pointer-events: none;
+}
+/* Fundo de pedra */
+.stage-dice-bar__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: linear-gradient(165deg, #4a4540 0%, #3d3834 18%, #2f2b28 45%, #252220 100%);
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 4px 20px rgba(0, 0, 0, 0.5);
+}
+.stage-dice-bar__dice-area {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  perspective: 120px;
+  min-width: 0;
+}
+.stage-dice-bar__slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 2px;
+  transition: background 0.2s, box-shadow 0.2s;
+  flex-shrink: 0;
+}
+.stage-dice-bar__slot:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.stage-dice-bar__slot:focus-visible {
+  outline: 2px solid rgba(255, 220, 120, 0.7);
+  outline-offset: 2px;
+}
+.stage-dice-bar__slot--empty .stage-dice-bar__die-wrap {
+  border: 2px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.stage-dice-bar__slot--active .stage-dice-bar__die-wrap {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+.stage-dice-bar__die-wrap {
+  width: 67px;
+  height: 67px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: visible;
+  transition: box-shadow 0.4s ease;
+}
+.stage-dice-bar__die-img {
+  width: 67px;
+  height: 67px;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+  transition: filter 0.25s ease;
+}
+/* Aura discreta após a rolagem (some ao clicar em quantidade ou dourado) */
+.stage-dice-bar__die-wrap--aura-moss {
+  box-shadow:
+    0 0 12px 4px rgba(56, 112, 67, 0.7),
+    0 0 22px 6px rgba(74, 93, 74, 0.45),
+    0 0 32px 8px rgba(60, 120, 70, 0.25);
+  animation: stage-dice-aura-pulse 2s ease-in-out infinite;
+}
+/* 4 e 5: aura cobra coral — anel com faixas alternadas verde musgo e vinho */
+.stage-dice-bar__die-wrap--aura-coral {
+  animation: stage-dice-aura-pulse 2s ease-in-out infinite;
+}
+.stage-dice-bar__die-wrap--aura-coral::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(56, 112, 67, 0.85) 0deg 45deg,
+    rgba(114, 47, 55, 0.85) 45deg 90deg,
+    rgba(74, 93, 74, 0.85) 90deg 135deg,
+    rgba(92, 42, 48, 0.85) 135deg 180deg,
+    rgba(56, 112, 67, 0.85) 180deg 225deg,
+    rgba(114, 47, 55, 0.85) 225deg 270deg,
+    rgba(74, 93, 74, 0.85) 270deg 315deg,
+    rgba(92, 42, 48, 0.85) 315deg 360deg
+  );
+  filter: blur(8px);
+  z-index: -1;
+  pointer-events: none;
+}
+.stage-dice-bar__die-wrap--aura-wine {
+  box-shadow:
+    0 0 12px 4px rgba(114, 47, 55, 0.7),
+    0 0 22px 6px rgba(92, 42, 48, 0.5),
+    0 0 32px 8px rgba(72, 30, 38, 0.3);
+  animation: stage-dice-aura-pulse 2s ease-in-out infinite;
+}
+/* Resultado misto (tem 4 e tem 5): aura ao redor da área dos dados (dourado + vinho, estilo coral) */
+.stage-dice-bar__dice-area--coral {
+  position: relative;
+  border-radius: 12px;
+  padding: 6px;
+  margin: -6px;
+  box-shadow:
+    0 0 20px 6px rgba(160, 128, 64, 0.4),
+    0 0 28px 8px rgba(114, 47, 55, 0.4),
+    inset 0 0 20px 2px rgba(139, 115, 85, 0.1),
+    inset 0 0 20px 2px rgba(114, 47, 55, 0.08);
+  animation: stage-dice-coral-pulse 2.5s ease-in-out infinite;
+}
+@keyframes stage-dice-aura-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.02); }
+}
+@keyframes stage-dice-coral-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.92; }
+}
+/* Filtro cinzento para slots inativos (placeholder) */
+.stage-dice-bar__die-img--grey {
+  filter: grayscale(1) brightness(0.7) contrast(0.9);
+}
+/* Efeito dourado via CSS (sem imagens separadas) */
+.stage-dice-bar__die-img--golden {
+  filter: sepia(0.9) saturate(2.2) hue-rotate(8deg) brightness(1.05) contrast(1.05);
+}
+.stage-dice-bar__die-img--grey.stage-dice-bar__die-img--golden {
+  filter: grayscale(1) brightness(0.7) contrast(0.9);
+}
+.stage-dice-bar__die-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+}
+.stage-dice-bar__die-placeholder::before {
+  content: "?";
+}
+/* Animação de rolagem: dados “tumblando” (as faces mudam via estado a cada ~120ms) */
+.stage-dice-bar__slot--rolling .stage-dice-bar__die-wrap {
+  animation: stage-dice-tumble 0.15s ease-in-out infinite;
+  transform-style: preserve-3d;
+}
+.stage-dice-bar__slot--rolling .stage-dice-bar__die-img {
+  animation: stage-dice-bounce 0.15s ease-in-out infinite;
+}
+@keyframes stage-dice-tumble {
+  0%, 100% { transform: rotateY(0deg) scale(1); }
+  50% { transform: rotateY(180deg) scale(1.05); }
+}
+@keyframes stage-dice-bounce {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.06); }
+}
+.stage-dice-bar__golden {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+}
+.stage-dice-bar__golden input {
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: rgba(215, 178, 92, 0.9);
+}
+.stage-dice-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.stage-dice-bar__visibility-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+}
+.stage-dice-bar__visibility-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.stage-dice-bar__visibility-btn:focus-visible {
+  outline: 2px solid rgba(255, 220, 120, 0.7);
+  outline-offset: 2px;
+}
+.stage-dice-bar__eye-icon {
+  flex-shrink: 0;
+}
+.stage-dice-bar__roll-btn {
+  padding: 8px 18px;
+  font-size: 0.95rem;
+  min-width: 80px;
+}
+.stage-dice-bar__roll-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-dice-bar {
+    transition: none;
+  }
+  .stage-dice-bar__slot--rolling .stage-dice-bar__die-wrap,
+  .stage-dice-bar__slot--rolling .stage-dice-bar__die-img {
+    animation: none;
+  }
+}
+
 /* Menu retrátil do jogador: expressões do avatar (só no modo espetáculo, não-GM) */
 .stage-view__player-expression {
   position: absolute;

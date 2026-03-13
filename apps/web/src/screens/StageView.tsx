@@ -51,7 +51,17 @@ type SyncMsg = {
     xPct?: number;
     visible: boolean;
   }>;
+  /** Barra de dados: visível para jogadores, quantidade, dourado por slot, último resultado, auras visíveis. */
+  diceVisible?: boolean;
+  diceCount?: number;
+  diceGolden?: boolean[];
+  diceLastResult?: number[];
+  diceShowAuras?: boolean;
 };
+
+type DiceVisibleMsg = { type: "show/dice/visible"; showId: string; visible: boolean };
+type DiceConfigMsg = { type: "show/dice/config"; showId: string; count: number; golden: boolean[] };
+type DiceRollMsg = { type: "show/dice/roll"; showId: string; values: number[] };
 
 type NarrativeSlide = {
   id: string;
@@ -293,6 +303,16 @@ export function StageView({
   const [playerExpressionMenuOpen, setPlayerExpressionMenuOpen] = useState(false);
   const [scenariosBarOpen, setScenariosBarOpen] = useState(true);
   const [charactersBarOpen, setCharactersBarOpen] = useState(true);
+  /* Barra de dados no topo: visível para jogadores (GM controla), count 1–6, golden por slot, rolagem e resultado. */
+  const [diceVisibleForPlayers, setDiceVisibleForPlayers] = useState(false);
+  const [diceCount, setDiceCount] = useState(1);
+  const [diceGolden, setDiceGolden] = useState<boolean[]>([false, false, false, false, false, false]);
+  const [diceRolling, setDiceRolling] = useState(false);
+  const [diceValues, setDiceValues] = useState<number[] | null>(null);
+  const [diceDisplayValues, setDiceDisplayValues] = useState<number[]>([1, 1, 1, 1, 1, 1]);
+  const [diceShowAuras, setDiceShowAuras] = useState(false);
+  const diceRollIntervalRef = useRef<number | null>(null);
+  const diceRollTimeoutRef = useRef<number | null>(null);
   const draggedRecentlyRef = useRef(false);
   const renderedNarrativeSlideRef = useRef<NarrativeSlide | null>(null);
   const narrativeFadeTimeoutRef = useRef<number | null>(null);
@@ -449,6 +469,20 @@ export function StageView({
         setCharacters(list);
         setVisibleForPlayer(visible);
         setPosByCharId((prev) => ({ ...prev, ...pos }));
+        if (typeof m.diceVisible === "boolean") setDiceVisibleForPlayers(m.diceVisible);
+        if (typeof m.diceCount === "number" && m.diceCount >= 1 && m.diceCount <= 6) setDiceCount(m.diceCount);
+        if (Array.isArray(m.diceGolden) && m.diceGolden.length === 6) setDiceGolden(m.diceGolden.map((g) => !!g));
+        if (Array.isArray(m.diceLastResult) && m.diceLastResult.length > 0) {
+          setDiceValues(m.diceLastResult);
+          setDiceDisplayValues((prev) => {
+            const next = [...prev];
+            m.diceLastResult!.forEach((v, i) => {
+              if (i < 6 && v >= 1 && v <= 6) next[i] = v;
+            });
+            return next;
+          });
+        }
+        if (typeof m.diceShowAuras === "boolean") setDiceShowAuras(m.diceShowAuras);
         return;
       }
 
@@ -507,6 +541,10 @@ export function StageView({
             ? m.selectedNpcIds.filter((x) => typeof x === "number")
             : [];
         setSelectedCharacterIdsRemote(ids);
+      } else if ((msg as { type?: string }).type === "show/dice/visible") {
+        const m = msg as DiceVisibleMsg;
+        if (m.showId !== showId) return;
+        setDiceVisibleForPlayers(!!m.visible);
       }
     };
     room.on(RoomEvent.DataReceived, handler as (payload: Uint8Array, participant?: unknown, kind?: unknown, topic?: string) => void);
@@ -514,6 +552,64 @@ export function StageView({
       room.off(RoomEvent.DataReceived, handler as (payload: Uint8Array, participant?: unknown, kind?: unknown, topic?: string) => void);
     };
   }, [room, isGM, showId]);
+
+  /* Mensagens de dados (config e roll): GM e jogadores recebem para manter UI sincronizada. */
+  useEffect(() => {
+    if (!room) return;
+    const decoder = new TextDecoder();
+    const handler = (payload: Uint8Array, _p: unknown, _k: unknown, topic?: string) => {
+      if (topic && topic !== "espetaculo") return;
+      let msg: unknown;
+      try {
+        msg = JSON.parse(decoder.decode(payload));
+      } catch {
+        return;
+      }
+      if (!msg || typeof msg !== "object") return;
+      if ((msg as { type?: string }).type === "show/dice/config") {
+        const m = msg as DiceConfigMsg;
+        if (m.showId !== showId) return;
+        if (typeof m.count === "number" && m.count >= 1 && m.count <= 6) setDiceCount(m.count);
+        if (Array.isArray(m.golden) && m.golden.length === 6) setDiceGolden(m.golden.map((g) => !!g));
+      } else if ((msg as { type?: string }).type === "show/dice/roll") {
+        const m = msg as DiceRollMsg;
+        if (m.showId !== showId || !Array.isArray(m.values)) return;
+        const values = m.values.filter((v) => typeof v === "number" && v >= 1 && v <= 6).slice(0, 6);
+        if (values.length === 0) return;
+        setDiceValues(values);
+        setDiceRolling(true);
+        if (diceRollIntervalRef.current != null) window.clearInterval(diceRollIntervalRef.current);
+        if (diceRollTimeoutRef.current != null) window.clearTimeout(diceRollTimeoutRef.current);
+        const ROLL_DURATION_MS = 2500;
+        const CYCLE_MS = 120;
+        diceRollIntervalRef.current = window.setInterval(() => {
+          setDiceDisplayValues((prev) => {
+            const next = [...prev];
+            for (let i = 0; i < values.length; i++) next[i] = Math.floor(Math.random() * 6) + 1;
+            return next;
+          });
+        }, CYCLE_MS);
+        diceRollTimeoutRef.current = window.setTimeout(() => {
+          if (diceRollIntervalRef.current != null) window.clearInterval(diceRollIntervalRef.current);
+          diceRollIntervalRef.current = null;
+          diceRollTimeoutRef.current = null;
+          setDiceDisplayValues((prev) => {
+            const next = [...prev];
+            values.forEach((v, i) => {
+              if (i < 6) next[i] = v;
+            });
+            return next;
+          });
+          setDiceRolling(false);
+          setDiceShowAuras(true);
+        }, ROLL_DURATION_MS);
+      }
+    };
+    room.on(RoomEvent.DataReceived, handler as (payload: Uint8Array, participant?: unknown, kind?: unknown, topic?: string) => void);
+    return () => {
+      room.off(RoomEvent.DataReceived, handler as (payload: Uint8Array, participant?: unknown, kind?: unknown, topic?: string) => void);
+    };
+  }, [room, showId]);
 
   const charactersDeduped = useMemo(() => {
     const byId = new Map<number, CharacterOnStage>();
@@ -619,6 +715,11 @@ export function StageView({
           xPct: posByCharId[c.id],
           visible: !!visibleForPlayer[c.id],
         })),
+        diceVisible: diceVisibleForPlayers,
+        diceCount,
+        diceGolden,
+        diceLastResult: diceValues ?? undefined,
+        diceShowAuras,
       };
       try {
         room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), {
@@ -628,7 +729,115 @@ export function StageView({
       } catch {}
     }, 600);
     return () => clearTimeout(t);
-  }, [isGM, phase, room, sceneId, showId, charactersDeduped, visibleForPlayer, posByCharId]);
+  }, [isGM, phase, room, sceneId, showId, charactersDeduped, visibleForPlayer, posByCharId, diceVisibleForPlayers, diceCount, diceGolden, diceValues, diceShowAuras]);
+
+  useEffect(() => {
+    return () => {
+      if (diceRollIntervalRef.current != null) window.clearInterval(diceRollIntervalRef.current);
+      if (diceRollTimeoutRef.current != null) window.clearTimeout(diceRollTimeoutRef.current);
+      diceRollIntervalRef.current = null;
+      diceRollTimeoutRef.current = null;
+    };
+  }, []);
+
+  const getDiceImageSrc = useCallback((face: number) => {
+    const n = Math.max(1, Math.min(6, Math.floor(face)));
+    const base =
+      (typeof window !== "undefined" && window.location?.origin) ||
+      (typeof import.meta.env?.BASE_URL === "string" ? import.meta.env.BASE_URL : "/");
+    const path = base === "/" || !base ? `/assets/dice/dice-${n}.png` : `${base.replace(/\/$/, "")}/assets/dice/dice-${n}.png`;
+    return path;
+  }, []);
+
+  const handleDiceCountClick = useCallback(
+    (slotIndex: number) => {
+      const count = slotIndex + 1;
+      if (count < 1 || count > 6) return;
+      setDiceShowAuras(false);
+      setDiceCount(count);
+      const msg: DiceConfigMsg = { type: "show/dice/config", showId, count, golden: diceGolden };
+      try {
+        room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
+          reliable: true,
+          topic: "espetaculo",
+        });
+      } catch {}
+    },
+    [showId, room, diceGolden]
+  );
+
+  /* Checkbox do slot i: se já está marcado, desmarca do 0 ao i (permite desmarcar o primeiro). Senão, marca os primeiros i+1 como dourados. */
+  const handleDiceGoldenToggle = useCallback(
+    (slotIndex: number) => {
+      if (slotIndex < 0 || slotIndex >= 6) return;
+      setDiceShowAuras(false);
+      const isCurrentlyGolden = diceGolden[slotIndex];
+      const next = isCurrentlyGolden
+        ? diceGolden.map((_, j) => (j <= slotIndex ? false : diceGolden[j]))
+        : Array.from({ length: 6 }, (_, j) => j <= slotIndex);
+      setDiceGolden(next);
+      const msg: DiceConfigMsg = { type: "show/dice/config", showId, count: diceCount, golden: next };
+      try {
+        room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
+          reliable: true,
+          topic: "espetaculo",
+        });
+      } catch {}
+    },
+    [showId, room, diceCount, diceGolden]
+  );
+
+  const handleDiceRoll = useCallback(() => {
+    if (diceRolling || !room) return;
+    const count = Math.max(1, Math.min(6, diceCount));
+    const values = Array.from({ length: count }, () => Math.floor(Math.random() * 6) + 1);
+    const msg: DiceRollMsg = { type: "show/dice/roll", showId, values };
+    try {
+      room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
+        reliable: true,
+        topic: "espetaculo",
+      });
+    } catch {}
+    setDiceValues(values);
+    setDiceRolling(true);
+    if (diceRollIntervalRef.current != null) window.clearInterval(diceRollIntervalRef.current);
+    if (diceRollTimeoutRef.current != null) window.clearTimeout(diceRollTimeoutRef.current);
+    const ROLL_DURATION_MS = 2500;
+    const CYCLE_MS = 120;
+    diceRollIntervalRef.current = window.setInterval(() => {
+      setDiceDisplayValues((prev) => {
+        const next = [...prev];
+        for (let i = 0; i < count; i++) next[i] = Math.floor(Math.random() * 6) + 1;
+        return next;
+      });
+    }, CYCLE_MS);
+    diceRollTimeoutRef.current = window.setTimeout(() => {
+      if (diceRollIntervalRef.current != null) window.clearInterval(diceRollIntervalRef.current);
+      diceRollIntervalRef.current = null;
+      diceRollTimeoutRef.current = null;
+      setDiceDisplayValues((prev) => {
+        const next = [...prev];
+        values.forEach((v, i) => {
+          if (i < 6) next[i] = v;
+        });
+        return next;
+      });
+      setDiceRolling(false);
+      setDiceShowAuras(true);
+    }, ROLL_DURATION_MS);
+  }, [diceRolling, room, showId, diceCount]);
+
+  const handleDiceVisibleToggle = useCallback(() => {
+    const next = !diceVisibleForPlayers;
+    setDiceVisibleForPlayers(next);
+    const msg: DiceVisibleMsg = { type: "show/dice/visible", showId, visible: next };
+    try {
+      room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
+        reliable: true,
+        topic: "espetaculo",
+      });
+    } catch {}
+  }, [showId, room, diceVisibleForPlayers]);
 
   useEffect(() => {
     if (!isGM) return;
@@ -990,8 +1199,132 @@ export function StageView({
     );
   }
 
+  const showDiceBarPhase = phase === "half" || phase === "stage";
+  const diceBarVisible = isGM || diceVisibleForPlayers;
+  const activeValues = diceDisplayValues.slice(0, diceCount).filter((v) => v >= 1 && v <= 6);
+  const hasFour = activeValues.some((v) => v === 4);
+  const hasFive = activeValues.some((v) => v === 5);
+  const isMixedResult = diceShowAuras && !diceRolling && hasFour && hasFive;
+
   const stageContent = (
     <div className={"stage-view" + (isGM ? " stage-view--gm" : "")}>
+      {showDiceBarPhase && (
+        <div
+          className={
+            "stage-dice-bar" +
+            (diceBarVisible ? " stage-dice-bar--visible" : " stage-dice-bar--hidden")
+          }
+          aria-label="Dados"
+          aria-hidden={!diceBarVisible}
+        >
+          <div className="stage-dice-bar__inner">
+            <div
+              className={
+                "stage-dice-bar__dice-area" + (isMixedResult ? " stage-dice-bar__dice-area--coral" : "")
+              }
+            >
+              {[0, 1, 2, 3, 4, 5].map((i) => {
+                const active = i < diceCount;
+                const face = active ? (diceDisplayValues[i] ?? i + 1) : i + 1;
+                const golden = diceGolden[i];
+                const showAura = diceShowAuras && active && !diceRolling;
+                const auraClass =
+                  showAura && face === 6
+                    ? " stage-dice-bar__die-wrap--aura-moss"
+                    : showAura && (face === 4 || face === 5)
+                      ? " stage-dice-bar__die-wrap--aura-coral"
+                      : showAura && (face >= 1 && face <= 3)
+                        ? " stage-dice-bar__die-wrap--aura-wine"
+                        : "";
+                return (
+                  <div
+                    key={i}
+                    className={
+                      "stage-dice-bar__slot" +
+                      (active ? " stage-dice-bar__slot--active" : " stage-dice-bar__slot--empty") +
+                      (diceRolling && active ? " stage-dice-bar__slot--rolling" : "")
+                    }
+                    onClick={() => handleDiceCountClick(i)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleDiceCountClick(i);
+                      }
+                    }}
+                    aria-label={active ? `Dado ${i + 1} de ${diceCount}; clique para escolher quantidade de dados` : `Clique para usar ${i + 1} dado${i > 0 ? "s" : ""}`}
+                  >
+                    <div className={"stage-dice-bar__die-wrap" + auraClass}>
+                      <img
+                        key={`dice-slot-${i}`}
+                        src={getDiceImageSrc(face)}
+                        alt=""
+                        className={
+                          "stage-dice-bar__die-img" +
+                          (!active ? " stage-dice-bar__die-img--grey" : "") +
+                          (active && golden ? " stage-dice-bar__die-img--golden" : "")
+                        }
+                        draggable={false}
+                        onLoad={(e) => {
+                          const el = e.target as HTMLImageElement;
+                          el.style.display = "";
+                          const wrap = el.closest(".stage-dice-bar__die-wrap");
+                          wrap?.querySelectorAll(".stage-dice-bar__die-placeholder").forEach((node) => node.remove());
+                        }}
+                        onError={(e) => {
+                          const el = e.target as HTMLImageElement;
+                          el.style.display = "none";
+                          const wrap = el.closest(".stage-dice-bar__die-wrap");
+                          if (wrap && !wrap.querySelector(".stage-dice-bar__die-placeholder")) {
+                            const ph = document.createElement("span");
+                            ph.className = "stage-dice-bar__die-placeholder";
+                            ph.setAttribute("aria-hidden", "true");
+                            el.after(ph);
+                          }
+                        }}
+                      />
+                    </div>
+                    {active && (
+                      <label className="stage-dice-bar__golden" onClick={(ev) => ev.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={golden}
+                          onChange={() => handleDiceGoldenToggle(i)}
+                          aria-label={`Marcar até o dado ${i + 1} como dourado`}
+                          title={golden ? `Dourados: ${i + 1} (clique para alterar)` : `Clique para marcar os ${i + 1} primeiros como dourados`}
+                        />
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="stage-dice-bar__actions">
+              {isGM && (
+                <button
+                  type="button"
+                  className="stage-dice-bar__visibility-btn"
+                  onClick={handleDiceVisibleToggle}
+                  title={diceVisibleForPlayers ? "Ocultar dados dos jogadores" : "Mostrar dados aos jogadores"}
+                  aria-label={diceVisibleForPlayers ? "Ocultar barra de dados dos jogadores" : "Mostrar barra de dados aos jogadores"}
+                >
+                  {diceVisibleForPlayers ? <EyeOpenIcon className="stage-dice-bar__eye-icon" /> : <EyeClosedIcon className="stage-dice-bar__eye-icon" />}
+                </button>
+              )}
+              <button
+                type="button"
+                className="ui-btn stage-dice-bar__roll-btn"
+                onClick={handleDiceRoll}
+                disabled={diceRolling}
+                aria-label="Rolar dados"
+              >
+                {diceRolling ? "Rolando…" : "Rolar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <ScenarioBackground
         imageUrl={scenarioImageUrl}
         crop={scenarioCrop ?? undefined}
