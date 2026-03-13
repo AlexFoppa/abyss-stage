@@ -143,7 +143,6 @@ export function Routes() {
   }>(null);
   const [showTick, setShowTick] = useState(0);
   const [showSceneMenuOpen, setShowSceneMenuOpen] = useState(false);
-  const [showSceneMenuPos, setShowSceneMenuPos] = useState({ left: 24, top: 24 });
   const [improvisationMode, setImprovisationMode] = useState(false);
   const [improvisationScenarios, setImprovisationScenarios] = useState<
     Array<{
@@ -160,14 +159,6 @@ export function Routes() {
   /** Cenário atual no improviso: id e descrição (do drag ou da cena), para o painel (i) e "Salvar como nova cena". */
   const [improvisationScenarioId, setImprovisationScenarioId] = useState<string | null>(null);
   const [improvisationScenarioDescription, setImprovisationScenarioDescription] = useState<string>("");
-  const showSceneMenuDragRef = useRef<{
-    startX: number;
-    startY: number;
-    startLeft: number;
-    startTop: number;
-    fromTrigger: boolean;
-    didMove: boolean;
-  } | null>(null);
   const [sceneInfoOpen, setSceneInfoOpen] = useState(false);
   const [sceneInfoDraft, setSceneInfoDraft] = useState({ title: "", body: "" });
   const [sceneInfoSaving, setSceneInfoSaving] = useState(false);
@@ -441,38 +432,6 @@ export function Routes() {
     setPreviewHoverSceneId(null);
     setPreviewLoadingSceneId(null);
   }, [show?.storyId]);
-
-  useEffect(() => {
-    const DRAG_THRESHOLD = 8;
-    const onMove = (e: MouseEvent) => {
-      const drag = showSceneMenuDragRef.current;
-      if (!drag) return;
-      const dx = e.clientX - drag.startX;
-      const dy = e.clientY - drag.startY;
-      if (!drag.didMove && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
-        drag.didMove = true;
-      }
-      if (!drag.didMove) return;
-      setShowSceneMenuPos({
-        left: Math.max(0, drag.startLeft + dx),
-        top: Math.max(0, drag.startTop + dy),
-      });
-    };
-    const onUp = () => {
-      const drag = showSceneMenuDragRef.current;
-      if (drag?.fromTrigger && !drag.didMove) {
-        setShowSceneMenuOpen((open) => !open);
-      }
-      showSceneMenuDragRef.current = null;
-    };
-    const opts = { capture: true } as const;
-    window.addEventListener("mousemove", onMove, opts);
-    window.addEventListener("mouseup", onUp, opts);
-    return () => {
-      window.removeEventListener("mousemove", onMove, opts);
-      window.removeEventListener("mouseup", onUp, opts);
-    };
-  }, []);
 
   /* Ao final da contagem, jogador sai de seleção/criar/editar personagem para ver o palco. */
   useEffect(() => {
@@ -1445,30 +1404,95 @@ export function Routes() {
               </button>
             </div>
 
-            <div className="show-scene-menu" style={{ left: showSceneMenuPos.left, top: showSceneMenuPos.top }}>
-              <button
-                type="button"
-                className="show-scene-menu__trigger"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  showSceneMenuDragRef.current = {
-                    startX: e.clientX,
-                    startY: e.clientY,
-                    startLeft: showSceneMenuPos.left,
-                    startTop: showSceneMenuPos.top,
-                    fromTrigger: true,
-                    didMove: false,
-                  };
-                }}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                aria-expanded={showSceneMenuOpen}
-                aria-label={showSceneMenuOpen ? "Recolher menu de cenas" : "Abrir menu de cenas"}
-                title={showSceneMenuOpen ? "Recolher ou arrastar" : "Cenas - clique para abrir ou arraste para mover"}
-              >
+            <div className="show-gm-scene-controls">
+              <div className="show-scene-info">
+                <button
+                  type="button"
+                  className={"show-scene-info__trigger" + (sceneInfoOpen ? " is-active" : "")}
+                  onClick={() => setSceneInfoOpen((open) => !open)}
+                  aria-expanded={sceneInfoOpen}
+                  aria-label={sceneInfoOpen ? "Fechar informações da cena" : "Abrir informações da cena"}
+                  title="Informações da cena"
+                >
+                  i
+                </button>
+                {sceneInfoOpen && (
+                  <div className="show-scene-info__panel">
+                    <div className="show-scene-info__header">
+                      <span className="show-scene-info__title">Cena atual</span>
+                    </div>
+                    <label className="show-scene-info__label">
+                      <span>Título</span>
+                      <input
+                        className="ui-field"
+                        value={sceneInfoDraft.title}
+                        onChange={(e) => setSceneInfoDraft((prev) => ({ ...prev, title: e.target.value }))}
+                      />
+                    </label>
+                    <label className="show-scene-info__label">
+                      <span>Descrição</span>
+                      <textarea
+                        className="ui-field show-scene-info__textarea"
+                        value={sceneInfoDraft.body}
+                        onChange={(e) => setSceneInfoDraft((prev) => ({ ...prev, body: e.target.value }))}
+                      />
+                    </label>
+                    <div className="show-scene-info__actions">
+                      <button
+                        type="button"
+                        className="ui-btn ui-btn--ghost"
+                        disabled={sceneInfoSaving}
+                        onClick={() => setSceneInfoDraft({ title: show.sceneTitle, body: show.sceneBody })}
+                      >
+                        Desfazer
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-btn"
+                        disabled={sceneInfoSaving}
+                        onClick={() => void handleSaveSceneInfo()}
+                      >
+                        {sceneInfoSaving ? "Salvando..." : "Salvar"}
+                      </button>
+                    </div>
+                    {improvisationMode && (
+                      <>
+                        <div className="show-scene-info__header show-scene-info__header--improviso">
+                          <span className="show-scene-info__title">Improviso</span>
+                        </div>
+                        <div className="show-scene-info__improviso-desc">
+                          <textarea
+                            className="ui-field show-scene-info__textarea"
+                            readOnly
+                            value={improvisationScenarioDescription || "—"}
+                            aria-label="Texto do cenário (improviso)"
+                          />
+                        </div>
+                        <div className="show-scene-info__actions">
+                          <button
+                            type="button"
+                            className="ui-btn"
+                            disabled={sceneSaveAsNewSaving}
+                            onClick={() => void handleSaveSceneAsNew()}
+                          >
+                            {sceneSaveAsNewSaving ? "Salvando..." : "Salvar como nova cena"}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="show-scene-menu">
+                <button
+                  type="button"
+                  className="show-scene-menu__trigger"
+                  onClick={() => setShowSceneMenuOpen((open) => !open)}
+                  aria-expanded={showSceneMenuOpen}
+                  aria-label={showSceneMenuOpen ? "Recolher menu de cenas" : "Abrir menu de cenas"}
+                  title={showSceneMenuOpen ? "Recolher menu de cenas" : "Cenas"}
+                >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M8 6h13" />
                   <path d="M8 12h13" />
@@ -1479,22 +1503,7 @@ export function Routes() {
                 </svg>
               </button>
               <div className={"show-scene-menu__panel" + (showSceneMenuOpen ? " show-scene-menu__panel--open" : "")}>
-                <div
-                  className="show-scene-menu__drag-handle"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    showSceneMenuDragRef.current = {
-                      startX: e.clientX,
-                      startY: e.clientY,
-                      startLeft: showSceneMenuPos.left,
-                      startTop: showSceneMenuPos.top,
-                      fromTrigger: false,
-                      didMove: false,
-                    };
-                  }}
-                  title="Arraste para mover"
-                >
+                <div className="show-scene-menu__drag-handle" title="Cenas">
                   <span className="show-scene-menu__drag-dots">⋯</span>
                   <span className="show-scene-menu__panel-title">Cenas</span>
                   <label className="show-scene-menu__improviso show-scene-menu__improviso--in-handle">
@@ -1597,84 +1606,6 @@ export function Routes() {
                   )}
                 </div>,
                 document.body
-              )}
-
-            <div className="show-scene-info">
-              <button
-                type="button"
-                className={"show-scene-info__trigger" + (sceneInfoOpen ? " is-active" : "")}
-                onClick={() => setSceneInfoOpen((open) => !open)}
-                aria-expanded={sceneInfoOpen}
-                aria-label={sceneInfoOpen ? "Fechar informações da cena" : "Abrir informações da cena"}
-                title="Informações da cena"
-              >
-                i
-              </button>
-              {sceneInfoOpen && (
-                <div className="show-scene-info__panel">
-                  <div className="show-scene-info__header">
-                    <span className="show-scene-info__title">Cena atual</span>
-                  </div>
-                  <label className="show-scene-info__label">
-                    <span>Título</span>
-                    <input
-                      className="ui-field"
-                      value={sceneInfoDraft.title}
-                      onChange={(e) => setSceneInfoDraft((prev) => ({ ...prev, title: e.target.value }))}
-                    />
-                  </label>
-                  <label className="show-scene-info__label">
-                    <span>Descrição</span>
-                    <textarea
-                      className="ui-field show-scene-info__textarea"
-                      value={sceneInfoDraft.body}
-                      onChange={(e) => setSceneInfoDraft((prev) => ({ ...prev, body: e.target.value }))}
-                    />
-                  </label>
-                  <div className="show-scene-info__actions">
-                    <button
-                      type="button"
-                      className="ui-btn ui-btn--ghost"
-                      disabled={sceneInfoSaving}
-                      onClick={() => setSceneInfoDraft({ title: show.sceneTitle, body: show.sceneBody })}
-                    >
-                      Desfazer
-                    </button>
-                    <button
-                      type="button"
-                      className="ui-btn"
-                      disabled={sceneInfoSaving}
-                      onClick={() => void handleSaveSceneInfo()}
-                    >
-                      {sceneInfoSaving ? "Salvando..." : "Salvar"}
-                    </button>
-                  </div>
-                  {improvisationMode && (
-                    <>
-                      <div className="show-scene-info__header show-scene-info__header--improviso">
-                        <span className="show-scene-info__title">Improviso</span>
-                      </div>
-                      <div className="show-scene-info__improviso-desc">
-                        <textarea
-                          className="ui-field show-scene-info__textarea"
-                          readOnly
-                          value={improvisationScenarioDescription || "—"}
-                          aria-label="Texto do cenário (improviso)"
-                        />
-                      </div>
-                      <div className="show-scene-info__actions">
-                        <button
-                          type="button"
-                          className="ui-btn"
-                          disabled={sceneSaveAsNewSaving}
-                          onClick={() => void handleSaveSceneAsNew()}
-                        >
-                          {sceneSaveAsNewSaving ? "Salvando..." : "Salvar como nova cena"}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
               )}
             </div>
           </>,
