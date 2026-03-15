@@ -14,11 +14,23 @@ import { api } from "../api";
 import { RoomEvent, type Room } from "livekit-client";
 import type { LobbyParticipant } from "./LobbyScreen";
 import { ScenarioBackground } from "./SceneStagePreview";
+import { createPortal } from "react-dom";
+import {
+  StageCharacterBar,
+  StageBookPanel,
+  StageFichaPanel,
+  StageStatusPanel,
+  StageInventoryPanel,
+  AbilityCardOverlay,
+} from "./StageCharacterPanels";
 import type { GMCharacter } from "../types/character";
 import { getAvatarUrl } from "../utils/avatar";
 import { scenarioCropFromScenario, scenarioImageUrl as getScenarioImageUrlFromScenario } from "../scenarioCrop";
 
 type SceneCharactersOut = { character_ids: number[] };
+
+/** Posição persistida da barra livro/ficha/status/inventário (arrastável; mesma estética do menu de áudio). */
+const persistedCharacterBarPos = { right: 24, bottom: 260 };
 
 /** Personagem no palco: uma única lista; PC vs NPC só define "quem acende ao falar" e "seleção do mestre". */
 type CharacterOnStage = {
@@ -244,6 +256,9 @@ export function StageView({
   improvisationScenarios = [],
   improvisationCharacters = [],
   onScenarioChange,
+  playerCharacterId = null,
+  floatingMenuPos,
+  setFloatingMenuPos,
 }: {
   room: Room | null;
   showId: string;
@@ -283,6 +298,11 @@ export function StageView({
     scenarioId?: string | null;
     scenarioDescription?: string | null;
   }) => void;
+  /** Personagem do jogador (avatar no lobby); usado para livro/ficha/status quando não é GM. */
+  playerCharacterId?: number | null;
+  /** Posição compartilhada do menu flutuante (unificado com áudio). Quando fornecido, a barra usa e atualiza esta posição. */
+  floatingMenuPos?: { right: number; bottom: number };
+  setFloatingMenuPos?: (pos: { right: number; bottom: number }) => void;
 }) {
   const [characters, setCharacters] = useState<CharacterOnStage[]>([]);
   const [visibleForPlayer, setVisibleForPlayer] = useState<Record<number, boolean>>({});
@@ -303,6 +323,9 @@ export function StageView({
   const [playerExpressionMenuOpen, setPlayerExpressionMenuOpen] = useState(false);
   const [scenariosBarOpen, setScenariosBarOpen] = useState(true);
   const [charactersBarOpen, setCharactersBarOpen] = useState(true);
+  /* Livro, ficha, status e inventário: painel aberto e carta de habilidade (sincronizada via LiveKit). */
+  const [stageCharacterPanel, setStageCharacterPanel] = useState<"book" | "ficha" | "status" | "inventory" | null>(null);
+  const [abilityCard, setAbilityCard] = useState<{ name: string; description: string } | null>(null);
   /* Barra de dados no topo: visível para jogadores (GM controla), count 1–6, golden por slot, rolagem e resultado. */
   const [diceVisibleForPlayers, setDiceVisibleForPlayers] = useState(false);
   const [diceCount, setDiceCount] = useState(1);
@@ -314,6 +337,26 @@ export function StageView({
   const diceRollIntervalRef = useRef<number | null>(null);
   const diceRollTimeoutRef = useRef<number | null>(null);
   const draggedRecentlyRef = useRef(false);
+  /** Posição da barra de personagem (ou compartilhada com áudio quando floatingMenuPos é passado). */
+  const [characterBarPos, setCharacterBarPos] = useState(() => ({ ...persistedCharacterBarPos }));
+  const effectiveBarPos = floatingMenuPos ?? characterBarPos;
+  const setEffectiveBarPos = setFloatingMenuPos ?? setCharacterBarPos;
+  const characterBarDragRef = useRef<{ startX: number; startY: number; startRight: number; startBottom: number; didMove: boolean } | null>(null);
+  const characterBarIgnoreClickRef = useRef(false);
+  const CHARACTER_BAR_DRAG_THRESHOLD = 8;
+  const onCharacterBarDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      characterBarDragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        startRight: effectiveBarPos.right,
+        startBottom: effectiveBarPos.bottom,
+        didMove: false,
+      };
+    },
+    [effectiveBarPos.right, effectiveBarPos.bottom]
+  );
   const renderedNarrativeSlideRef = useRef<NarrativeSlide | null>(null);
   const narrativeFadeTimeoutRef = useRef<number | null>(null);
   const narrativeFadeRafRef = useRef<number | null>(null);
@@ -571,6 +614,17 @@ export function StageView({
         if (m.showId !== showId) return;
         if (typeof m.count === "number" && m.count >= 1 && m.count <= 6) setDiceCount(m.count);
         if (Array.isArray(m.golden) && m.golden.length === 6) setDiceGolden(m.golden.map((g) => !!g));
+      } else if ((msg as { type?: string }).type === "show/ability/card") {
+        const m = msg as { type: string; showId: string; name?: string; description?: string };
+        if (m.showId !== showId) return;
+        setAbilityCard({
+          name: typeof m.name === "string" ? m.name : "",
+          description: typeof m.description === "string" ? m.description : "",
+        });
+      } else if ((msg as { type?: string }).type === "show/ability/card/close") {
+        const m = msg as { type: string; showId: string };
+        if (m.showId !== showId) return;
+        setAbilityCard(null);
       } else if ((msg as { type?: string }).type === "show/dice/roll") {
         const m = msg as DiceRollMsg;
         if (m.showId !== showId || !Array.isArray(m.values)) return;
@@ -616,6 +670,16 @@ export function StageView({
     for (const c of characters) byId.set(c.id, c);
     return [...byId.values()];
   }, [characters]);
+
+  /** Personagem em foco para livro/ficha/status: jogador = próprio ou primeiro PC na cena; mestre = selecionado ou primeiro da cena. */
+  const focusCharacterId = useMemo(() => {
+    if (isGM) {
+      const firstSelected = selectedCharacterIdsLocal[0];
+      if (firstSelected != null) return firstSelected;
+      return charactersDeduped[0]?.id ?? null;
+    }
+    return playerCharacterId ?? charactersDeduped.find((c) => !c.isNPC)?.id ?? null;
+  }, [isGM, selectedCharacterIdsLocal, charactersDeduped, playerCharacterId]);
 
   const improvSensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
@@ -839,6 +903,68 @@ export function StageView({
     } catch {}
   }, [showId, room, diceVisibleForPlayers]);
 
+  /** Última ação preenchida na barra (para atualizar dados ao gastar motivação). */
+  const lastDiceFromActionRef = useRef({ rating: 1, gilded: false });
+  /** Preencher a barra de dados a partir de uma ação Candela (rating 0–3, gilded = primeiro dourado; extraDice = dados por motivação gasta). */
+  const handleFillDiceFromAction = useCallback(
+    (rating: number, gilded: boolean, extraDice = 0) => {
+      const count = Math.max(1, Math.min(6, rating + extraDice));
+      lastDiceFromActionRef.current = { rating, gilded };
+      setDiceShowAuras(false);
+      setDiceCount(count);
+      const golden = Array.from({ length: 6 }, (_, i) => i === 0 && gilded);
+      setDiceGolden(golden);
+      const msg: DiceConfigMsg = { type: "show/dice/config", showId, count, golden };
+      try {
+        room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
+          reliable: true,
+          topic: "espetaculo",
+        });
+      } catch {}
+    },
+    [showId, room]
+  );
+  /** Atualizar apenas a quantidade de dados na rolagem quando o jogador gasta motivação (mais um dado por ponto gasto). */
+  const handleMotivationChange = useCallback(
+    (extraDice: number) => {
+      const { rating, gilded } = lastDiceFromActionRef.current;
+      const count = Math.max(1, Math.min(6, rating + extraDice));
+      setDiceShowAuras(false);
+      setDiceCount(count);
+      const golden = Array.from({ length: 6 }, (_, i) => i === 0 && gilded);
+      setDiceGolden(golden);
+      const msg: DiceConfigMsg = { type: "show/dice/config", showId, count, golden };
+      try {
+        room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
+          reliable: true,
+          topic: "espetaculo",
+        });
+      } catch {}
+    },
+    [showId, room]
+  );
+
+  const handleShowAbilityCard = useCallback(
+    (abilityId: number, name: string, description: string) => {
+      try {
+        room?.localParticipant.publishData(
+          new TextEncoder().encode(
+            JSON.stringify({
+              type: "show/ability/card",
+              showId,
+              abilityId,
+              name,
+              description,
+            })
+          ),
+          { reliable: true, topic: "espetaculo" }
+        );
+      } catch {}
+      setAbilityCard({ name, description });
+    },
+    [showId, room]
+  );
+
   useEffect(() => {
     if (!isGM) return;
     const onMove = (e: MouseEvent) => {
@@ -902,6 +1028,40 @@ export function StageView({
       dragRafRef.current = null;
     };
   }, [isGM, room, showId]);
+
+  /** Arrastar a barra de personagem (livro/ficha/status/inventário). */
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const r = characterBarDragRef.current;
+      if (!r) return;
+      const dx = e.clientX - r.startX;
+      const dy = r.startY - e.clientY;
+      if (!r.didMove && (Math.abs(dx) > CHARACTER_BAR_DRAG_THRESHOLD || Math.abs(dy) > CHARACTER_BAR_DRAG_THRESHOLD)) {
+        r.didMove = true;
+      }
+      if (r.didMove) {
+        const right = Math.max(0, r.startRight - dx);
+        const bottom = Math.max(0, r.startBottom + dy);
+        if (!setFloatingMenuPos) {
+          persistedCharacterBarPos.right = right;
+          persistedCharacterBarPos.bottom = bottom;
+        }
+        setEffectiveBarPos({ right, bottom });
+      }
+    };
+    const onUp = () => {
+      const r = characterBarDragRef.current;
+      if (r?.didMove) characterBarIgnoreClickRef.current = true;
+      characterBarDragRef.current = null;
+    };
+    const opts = { capture: true };
+    window.addEventListener("mousemove", onMove, opts);
+    window.addEventListener("mouseup", onUp, opts);
+    return () => {
+      window.removeEventListener("mousemove", onMove, opts);
+      window.removeEventListener("mouseup", onUp, opts);
+    };
+  }, [setEffectiveBarPos, setFloatingMenuPos]);
 
   const selectedCharacterSet = useMemo(() => {
     const ids = isGM ? selectedCharacterIdsLocal : selectedCharacterIdsRemote;
@@ -1549,13 +1709,107 @@ export function StageView({
           )}
         </div>
       )}
+      {abilityCard && (
+        <AbilityCardOverlay
+          showId={showId}
+          name={abilityCard.name}
+          description={abilityCard.description}
+          onClose={() => setAbilityCard(null)}
+          room={room}
+        />
+      )}
     </div>
+  );
+
+  const characterBarPortal = showDiceBarPhase && createPortal(
+    <div
+      className="stage-character-bar-wrap stage-character-bar-wrap--fixed stage-character-bar-wrap--audio-style"
+      style={{ right: effectiveBarPos.right, bottom: effectiveBarPos.bottom }}
+      aria-label="Personagem: livro, ficha, status e inventário"
+    >
+      {stageCharacterPanel && focusCharacterId != null && (
+        <div className="stage-character-panel-wrap stage-character-panel-wrap--open-left">
+          <div className="stage-character-panel-drag-handle" onMouseDown={onCharacterBarDragStart} title="Arraste para mover">
+            <span className="stage-character-panel-drag-dots" aria-hidden>⋯</span>
+            <span className="stage-character-panel-drag-title">
+              {stageCharacterPanel === "book" ? "Livro" : stageCharacterPanel === "ficha" ? "Ficha" : stageCharacterPanel === "status" ? "Status" : "Inventário"}
+            </span>
+          </div>
+          {stageCharacterPanel === "book" && (
+            <StageBookPanel
+              characterId={focusCharacterId}
+              isGM={isGM}
+              onClose={() => setStageCharacterPanel(null)}
+            />
+          )}
+          {stageCharacterPanel === "ficha" && (
+            <StageFichaPanel
+              characterId={focusCharacterId}
+              isGM={isGM}
+              onClose={() => setStageCharacterPanel(null)}
+              onActionClick={handleFillDiceFromAction}
+              onMotivationChange={handleMotivationChange}
+              onAbilityClick={handleShowAbilityCard}
+            />
+          )}
+          {stageCharacterPanel === "status" && (
+            <StageStatusPanel
+              characterId={focusCharacterId}
+              isGM={isGM}
+              onClose={() => setStageCharacterPanel(null)}
+            />
+          )}
+          {stageCharacterPanel === "inventory" && (
+            <StageInventoryPanel
+              characterId={focusCharacterId}
+              isGM={isGM}
+              onClose={() => setStageCharacterPanel(null)}
+            />
+          )}
+        </div>
+      )}
+      <StageCharacterBar
+        focusCharacterId={focusCharacterId}
+        panelOpen={stageCharacterPanel}
+        onDragStart={onCharacterBarDragStart}
+        onBook={() => {
+          if (characterBarIgnoreClickRef.current) {
+            characterBarIgnoreClickRef.current = false;
+            return;
+          }
+          setStageCharacterPanel((p) => (p === "book" ? null : "book"));
+        }}
+        onFicha={() => {
+          if (characterBarIgnoreClickRef.current) {
+            characterBarIgnoreClickRef.current = false;
+            return;
+          }
+          setStageCharacterPanel((p) => (p === "ficha" ? null : "ficha"));
+        }}
+        onStatus={() => {
+          if (characterBarIgnoreClickRef.current) {
+            characterBarIgnoreClickRef.current = false;
+            return;
+          }
+          setStageCharacterPanel((p) => (p === "status" ? null : "status"));
+        }}
+        onInventory={() => {
+          if (characterBarIgnoreClickRef.current) {
+            characterBarIgnoreClickRef.current = false;
+            return;
+          }
+          setStageCharacterPanel((p) => (p === "inventory" ? null : "inventory"));
+        }}
+      />
+    </div>,
+    document.body
   );
 
   if (isGM && improvisationMode) {
     return (
       <DndContext sensors={improvSensors} collisionDetection={rectIntersection} onDragEnd={handleImprovDragEnd}>
         {stageContent}
+        {characterBarPortal}
         <div
           className={
             "improviso-bar improviso-bar--scenarios improviso-bar--left" +
@@ -1618,5 +1872,10 @@ export function StageView({
     );
   }
 
-  return stageContent;
+  return (
+    <>
+      {stageContent}
+      {characterBarPortal}
+    </>
+  );
 }

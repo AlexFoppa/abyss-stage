@@ -87,6 +87,18 @@ def init_db() -> None:
             if r is not None and r == 0:
                 conn.execute(text(f"ALTER TABLE scene_image ADD COLUMN {col} FLOAT"))
                 conn.commit()
+        # candela_character_equipment: slot de improviso (máx. 3 por personagem)
+        try:
+            r = conn.execute(text(
+                "SELECT COUNT(*) FROM pragma_table_info('candela_character_equipment') WHERE name = 'uses_improvisation_slot'"
+            )).scalar()
+            if r is not None and r == 0:
+                conn.execute(text(
+                    "ALTER TABLE candela_character_equipment ADD COLUMN uses_improvisation_slot INTEGER NOT NULL DEFAULT 0 CHECK(uses_improvisation_slot IN (0, 1))"
+                ))
+                conn.commit()
+        except Exception:
+            pass
     SQLModel.metadata.create_all(engine)
     # scene_character: criada por create_all; sem checagem de schema antigo
 

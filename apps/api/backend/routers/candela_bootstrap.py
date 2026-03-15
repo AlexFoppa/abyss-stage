@@ -41,14 +41,14 @@ def bootstrap_candela(
             params={"cid": character_id, "mk": mk},
         )
 
-    # 4) group_state defaults (drive_max/resist_max deixamos simples por enquanto)
+    # 4) group_state defaults: motivação começa cheia (drive_current=drive_max), resistência também (resist_current=resist_max)
     try:
         session.exec(
             text(
                 """
                 INSERT INTO candela_character_group_state
                   (character_id, group_key, drive_current, drive_max, resist_current, resist_max)
-                SELECT :cid, d.group_key, 0, d.drive_default, 0, 3
+                SELECT :cid, d.group_key, d.drive_default, d.drive_default, 3, 3
                 FROM candela_specialty_group_default d
                 WHERE d.specialty_id = :sid
                 """
@@ -68,7 +68,7 @@ def bootstrap_candela(
                     """
                     INSERT INTO candela_character_group_state
                       (character_id, group_key, drive_current, drive_max, resist_current, resist_max)
-                    VALUES (:cid, :gk, 0, 0, 0, 0)
+                    VALUES (:cid, :gk, 3, 3, 3, 3)
                     """
                 ),
                 params={"cid": character_id, "gk": gk},

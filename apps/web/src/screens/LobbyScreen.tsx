@@ -158,6 +158,9 @@ export function LobbyScreen({
   onRoomConnected,
   showMainUI = true,
   onEditProfile,
+  floatingMenuPos = undefined,
+  setFloatingMenuPos = undefined,
+  floatingMenuAudioOffsetBottom = undefined,
 }: {
   room?: Room | null;
   selectedCharacter: null | { id: number; name: string; system: string };
@@ -169,6 +172,11 @@ export function LobbyScreen({
   showMainUI?: boolean;
   /** Abre a tela de edição de informações do jogador (nome). */
   onEditProfile?: () => void;
+  /** Posição compartilhada do menu flutuante (áudio + barra personagem). Quando em espetáculo, áudio fica acima. */
+  floatingMenuPos?: { right: number; bottom: number };
+  setFloatingMenuPos?: (pos: { right: number; bottom: number }) => void;
+  /** Offset em px para o áudio (ex.: altura da barra personagem quando unificado). */
+  floatingMenuAudioOffsetBottom?: number;
 }) {
   const { logout } = useAuth();
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
@@ -195,7 +203,11 @@ export function LobbyScreen({
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [krispEnabled, setKrispEnabled] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
-  const [audioPanelPos, setAudioPanelPos] = useState(() => ({ ...persistedAudioPanelPos }));
+  const [internalAudioPos, setInternalAudioPos] = useState(() => ({ ...persistedAudioPanelPos }));
+  const audioPos = floatingMenuPos ?? internalAudioPos;
+  const setAudioPos = setFloatingMenuPos ?? setInternalAudioPos;
+  const audioOffsetBottom = floatingMenuAudioOffsetBottom ?? 0;
+  const audioPanelPos = { right: audioPos.right, bottom: audioPos.bottom + audioOffsetBottom };
   const audioDragRef = useRef<{
     startX: number;
     startY: number;
@@ -209,18 +221,21 @@ export function LobbyScreen({
 
   const DRAG_THRESHOLD = 8;
 
-  const onAudioDragStart = useCallback((e: React.MouseEvent, fromTrigger: boolean) => {
-    e.preventDefault();
-    e.stopPropagation();
-    audioDragRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      startRight: persistedAudioPanelPos.right,
-      startBottom: persistedAudioPanelPos.bottom,
-      fromTrigger,
-      didMove: false,
-    };
-  }, []);
+  const onAudioDragStart = useCallback(
+    (e: React.MouseEvent, fromTrigger: boolean) => {
+      e.preventDefault();
+      e.stopPropagation();
+      audioDragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        startRight: audioPos.right,
+        startBottom: audioPos.bottom,
+        fromTrigger,
+        didMove: false,
+      };
+    },
+    [audioPos.right, audioPos.bottom]
+  );
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -234,9 +249,11 @@ export function LobbyScreen({
       if (r.didMove) {
         const right = Math.max(0, r.startRight - dx);
         const bottom = Math.max(0, r.startBottom + dy);
-        persistedAudioPanelPos.right = right;
-        persistedAudioPanelPos.bottom = bottom;
-        setAudioPanelPos({ right, bottom });
+        if (!setFloatingMenuPos) {
+          persistedAudioPanelPos.right = right;
+          persistedAudioPanelPos.bottom = bottom;
+        }
+        setAudioPos({ right, bottom });
       }
     };
     const onUp = () => {
@@ -253,7 +270,7 @@ export function LobbyScreen({
       window.removeEventListener("mousemove", onMove, opts);
       window.removeEventListener("mouseup", onUp, opts);
     };
-  }, []);
+  }, [setAudioPos, setFloatingMenuPos]);
 
   const runDiagnostic = useCallback(async () => {
     setDiagnosticRunning(true);

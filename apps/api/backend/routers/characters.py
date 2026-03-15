@@ -76,6 +76,13 @@ class CandelaListItemIn(BaseModel):
     id: Optional[int] = None
     text: str
 
+
+class CandelaEquipmentItemIn(BaseModel):
+    """Equipment item; uses_improvisation_slot counts toward the 3 improvisation slots max."""
+    id: Optional[int] = None
+    text: str
+    uses_improvisation_slot: bool = False
+
 class CandelaUpsertIn(BaseModel):
     # obrigatório p/ identificar “build”
     role_id: int
@@ -95,7 +102,7 @@ class CandelaUpsertIn(BaseModel):
     scars: list[CandelaScarIn] = Field(default_factory=list)
 
     relations: list[CandelaListItemIn] = Field(default_factory=list)
-    equipment: list[CandelaListItemIn] = Field(default_factory=list)
+    equipment: list[CandelaEquipmentItemIn] = Field(default_factory=list)
     illumination_keys: list[CandelaListItemIn] = Field(default_factory=list)
 
     # obrigatório
@@ -686,6 +693,50 @@ def list_all_characters(
             )
         )
     return out
+
+
+@gm_router.get("/{character_id}")
+def gm_get_character(
+    character_id: int,
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    """GET a single character (PC or NPC) for GM — e.g. book panel (concept, backstory, notes)."""
+    row = session.exec(
+        text(
+            """
+            SELECT c.id, c.kind, c.name, c.concept, c.system, c.backstory, c.notes, u.email
+            FROM character c
+            LEFT JOIN "user" u ON u.id = c.owner_user_id
+            WHERE c.id = :cid AND c.kind IN ('PC', 'NPC')
+            """
+        ),
+        params={"cid": character_id},
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    cid = row[0]
+    sys_map = _load_systems_map(session, [cid])
+    img_map = _load_default_image_map(session, [cid])
+    img = img_map.get(cid)
+    kind = (row[1] or "PC").strip() or "PC"
+    base_system = (row[4] or "simplificado").strip() or "simplificado"
+
+    return GMCharacterOut(
+        id=cid,
+        kind=kind,
+        name=row[2],
+        concept=row[3] or "",
+        system=base_system,
+        backstory=row[5] or "",
+        notes=row[6] or "",
+        systems=(sys_map.get(cid) or [base_system]),
+        owner_email=row[7] if row[7] is not None else None,
+        default_image_url=img[0] if img else None,
+        default_image_rev=img[1] if img else None,
+    )
+
 
 @gm_router.post("", status_code=201)
 def create_any_character(
@@ -1329,12 +1380,22 @@ def create_character_system(
                     params={"cid": character_id, "t": it.text.strip()},
                 )
 
+        improv_count = sum(1 for it in data.equipment if getattr(it, "uses_improvisation_slot", False))
+        if improv_count > 3:
+            raise HTTPException(
+                status_code=400,
+                detail="At most 3 equipment items can use an improvisation slot",
+            )
+
         session.exec(text("DELETE FROM candela_character_equipment WHERE character_id=:cid"), params={"cid": character_id})
         for it in data.equipment:
             if (it.text or "").strip():
+                u = 1 if getattr(it, "uses_improvisation_slot", False) else 0
                 session.exec(
-                    text("INSERT INTO candela_character_equipment (character_id, text) VALUES (:cid,:t)"),
-                    params={"cid": character_id, "t": it.text.strip()},
+                    text(
+                        "INSERT INTO candela_character_equipment (character_id, text, uses_improvisation_slot) VALUES (:cid,:t,:u)"
+                    ),
+                    params={"cid": character_id, "t": it.text.strip(), "u": u},
                 )
 
         session.exec(text("DELETE FROM candela_character_illumination_key WHERE character_id=:cid"), params={"cid": character_id})
@@ -1504,7 +1565,12 @@ def gm_get_candela_system(
     ).all()
 
     eq = session.exec(
-        text("SELECT id, text FROM candela_character_equipment WHERE character_id=:cid ORDER BY id"),
+        text(
+            """
+            SELECT id, text, COALESCE(uses_improvisation_slot, 0)
+            FROM candela_character_equipment WHERE character_id=:cid ORDER BY id
+            """
+        ),
         params={"cid": character_id},
     ).all()
 
@@ -1550,7 +1616,7 @@ def gm_get_candela_system(
         marks=[{"mark_key": mk, "current": int(c), "max": int(m)} for (mk, c, m) in marks],
         scars=[{"id": int(i), "mark_key": mk, "description": d} for (i, mk, d) in scars],
         relations=[{"id": int(i), "text": t} for (i, t) in rels],
-        equipment=[{"id": int(i), "text": t} for (i, t) in eq],
+        equipment=[{"id": int(i), "text": t, "uses_improvisation_slot": bool(u)} for (i, t, u) in eq],
         illumination_keys=[{"id": int(i), "text": t} for (i, t) in keys],
         role_power_ids=[int(r[0]) for r in role_picks],
         specialty_power_id=int(sp_pick[0]) if sp_pick else None,
@@ -1700,12 +1766,22 @@ def gm_update_candela_system(
                     params={"cid": character_id, "t": it.text.strip()},
                 )
 
+        improv_count = sum(1 for it in data.equipment if getattr(it, "uses_improvisation_slot", False))
+        if improv_count > 3:
+            raise HTTPException(
+                status_code=400,
+                detail="At most 3 equipment items can use an improvisation slot",
+            )
+
         session.exec(text("DELETE FROM candela_character_equipment WHERE character_id=:cid"), params={"cid": character_id})
         for it in data.equipment:
             if (it.text or "").strip():
+                u = 1 if getattr(it, "uses_improvisation_slot", False) else 0
                 session.exec(
-                    text("INSERT INTO candela_character_equipment (character_id, text) VALUES (:cid,:t)"),
-                    params={"cid": character_id, "t": it.text.strip()},
+                    text(
+                        "INSERT INTO candela_character_equipment (character_id, text, uses_improvisation_slot) VALUES (:cid,:t,:u)"
+                    ),
+                    params={"cid": character_id, "t": it.text.strip(), "u": u},
                 )
 
         session.exec(text("DELETE FROM candela_character_illumination_key WHERE character_id=:cid"), params={"cid": character_id})
@@ -1872,7 +1948,12 @@ def get_candela_system(
     ).all()
 
     eq = session.exec(
-        text("SELECT id, text FROM candela_character_equipment WHERE character_id=:cid ORDER BY id"),
+        text(
+            """
+            SELECT id, text, COALESCE(uses_improvisation_slot, 0)
+            FROM candela_character_equipment WHERE character_id=:cid ORDER BY id
+            """
+        ),
         params={"cid": character_id},
     ).all()
 
@@ -1918,7 +1999,7 @@ def get_candela_system(
         marks=[{"mark_key": mk, "current": int(c), "max": int(m)} for (mk, c, m) in marks],
         scars=[{"id": int(i), "mark_key": mk, "description": d} for (i, mk, d) in scars],
         relations=[{"id": int(i), "text": t} for (i, t) in rels],
-        equipment=[{"id": int(i), "text": t} for (i, t) in eq],
+        equipment=[{"id": int(i), "text": t, "uses_improvisation_slot": bool(u)} for (i, t, u) in eq],
         illumination_keys=[{"id": int(i), "text": t} for (i, t) in keys],
         role_power_ids=[int(r[0]) for r in role_picks],
         specialty_power_id=int(sp_pick[0]) if sp_pick else None,
@@ -2077,12 +2158,22 @@ def update_candela_system(
                     params={"cid": character_id, "t": it.text.strip()},
                 )
 
+        improv_count = sum(1 for it in data.equipment if getattr(it, "uses_improvisation_slot", False))
+        if improv_count > 3:
+            raise HTTPException(
+                status_code=400,
+                detail="At most 3 equipment items can use an improvisation slot",
+            )
+
         session.exec(text("DELETE FROM candela_character_equipment WHERE character_id=:cid"), params={"cid": character_id})
         for it in data.equipment:
             if (it.text or "").strip():
+                u = 1 if getattr(it, "uses_improvisation_slot", False) else 0
                 session.exec(
-                    text("INSERT INTO candela_character_equipment (character_id, text) VALUES (:cid,:t)"),
-                    params={"cid": character_id, "t": it.text.strip()},
+                    text(
+                        "INSERT INTO candela_character_equipment (character_id, text, uses_improvisation_slot) VALUES (:cid,:t,:u)"
+                    ),
+                    params={"cid": character_id, "t": it.text.strip(), "u": u},
                 )
 
         session.exec(text("DELETE FROM candela_character_illumination_key WHERE character_id=:cid"), params={"cid": character_id})

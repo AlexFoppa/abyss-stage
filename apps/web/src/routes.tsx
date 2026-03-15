@@ -86,6 +86,10 @@ type ScenePreviewState = {
   sceneCharacterIds: number[];
 };
 
+/** Posição do menu flutuante unificado (áudio + livro/ficha/status/inventário). */
+const persistedFloatingMenuPos = { right: 24, bottom: 180 };
+const FLOATING_MENU_CHARACTER_BAR_HEIGHT = 194; /* 4 botões 44px + 3 gaps 6px */
+
 export function Routes() {
   const { user, loading, viewMode, setViewMode, logout } = useAuth();
 
@@ -104,7 +108,14 @@ export function Routes() {
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [returnToStoryId, setReturnToStoryId] = useState<string | null>(null);
   const [stageMode, setStageMode] = useState<"IDLE" | "ZOOM_IN">("IDLE");
-  
+
+  const [floatingMenuPos, setFloatingMenuPosState] = useState(() => ({ ...persistedFloatingMenuPos }));
+  const setFloatingMenuPos = useCallback((pos: { right: number; bottom: number }) => {
+    persistedFloatingMenuPos.right = pos.right;
+    persistedFloatingMenuPos.bottom = pos.bottom;
+    setFloatingMenuPosState(pos);
+  }, []);
+
   const [selectedCharacter, setSelectedCharacter] = useState<null | {
     id: number;
     name: string;
@@ -397,6 +408,9 @@ export function Routes() {
 
   const espetaculoPhase =
     showPhase === "sliding" || showPhase === "half" || showPhase === "stage" ? showPhase : null;
+
+  const isStageWithBar = effectiveRole === "PLAYER" && !!show && (showPhase === "half" || showPhase === "stage");
+  const isStageMenuUnified = !!show && (showPhase === "half" || showPhase === "stage");
 
   useEffect(() => {
     if (!show) {
@@ -1345,6 +1359,7 @@ export function Routes() {
             isNarrativeScene={show.isNarrativeScene}
             improvisationScenarios={improvisationScenarios}
             improvisationCharacters={improvisationCharacters}
+            playerCharacterId={selectedCharacter?.id ?? null}
             onScenarioChange={({ scenarioImageUrl: url, scenarioCrop: crop, scenarioId: sid, scenarioDescription: desc }) => {
               setShow((prev) => (prev ? { ...prev, scenarioImageUrl: url, scenarioCrop: crop ?? null } : prev));
               if (sid != null) setImprovisationScenarioId(sid);
@@ -1363,6 +1378,8 @@ export function Routes() {
                 );
               } catch {}
             }}
+            floatingMenuPos={floatingMenuPos}
+            setFloatingMenuPos={setFloatingMenuPos}
           />
         ) : null
       }
@@ -1627,6 +1644,9 @@ export function Routes() {
             !(effectiveRole === "PLAYER" && show && (showPhase === "half" || showPhase === "stage"))
           }
           onEditProfile={effectiveRole === "PLAYER" ? () => setSubView("EDIT_PROFILE") : undefined}
+          floatingMenuPos={floatingMenuPos}
+          setFloatingMenuPos={setFloatingMenuPos}
+          floatingMenuAudioOffsetBottom={isStageMenuUnified ? FLOATING_MENU_CHARACTER_BAR_HEIGHT : 0}
         />
       )}
       {loading ? (
