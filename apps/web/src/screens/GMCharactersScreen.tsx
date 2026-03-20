@@ -24,6 +24,11 @@ export function GMCharactersScreen({
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [players, setPlayers] = useState<Array<{ id: number; email: string; name: string }>>([]);
   const [assignLoading, setAssignLoading] = useState(false);
+  const [assignErr, setAssignErr] = useState<string | null>(null);
+  const [characterFilter, setCharacterFilter] = useState("");
+  const [ownerFilter, setOwnerFilter] = useState("");
+  const [systemFilter, setSystemFilter] = useState("all");
+  const [kindFilter, setKindFilter] = useState<"all" | "PC" | "NPC">("all");
 
   async function deleteCharacter(c: GMCharacter) {
     const ok = window.confirm(`Apagar personagem "${c.name}"?\n\nEssa ação não pode ser desfeita.`);
@@ -50,10 +55,59 @@ export function GMCharactersScreen({
     }
   }
 
+  const normalizeText = (value?: string | null) =>
+    String(value || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+
+  const availableSystems = useMemo(() => {
+    const unique = new Set<string>();
+    chars.forEach((c) => {
+      (c.systems && c.systems.length ? c.systems : [c.system]).forEach((sys) => {
+        if (sys) unique.add(sys);
+      });
+    });
+    return Array.from(unique).sort((a, b) => systemLabel(a).localeCompare(systemLabel(b), "pt-BR"));
+  }, [chars]);
+
+  const filteredChars = useMemo(() => {
+    const normalizedCharacter = normalizeText(characterFilter);
+    const normalizedOwner = normalizeText(ownerFilter);
+    return chars.filter((c) => {
+      if (kindFilter !== "all" && c.kind !== kindFilter) return false;
+      if (systemFilter !== "all") {
+        const systems = c.systems && c.systems.length ? c.systems : [c.system];
+        if (!systems.includes(systemFilter)) return false;
+      }
+      if (normalizedCharacter && !normalizeText(c.name).includes(normalizedCharacter)) return false;
+      if (normalizedOwner) {
+        const ownerSearch = normalizeText(`${c.owner_name || ""} ${c.owner_email || ""}`);
+        if (!ownerSearch || !ownerSearch.includes(normalizedOwner)) return false;
+      }
+      return true;
+    });
+  }, [chars, characterFilter, ownerFilter, systemFilter, kindFilter]);
+
+  const hasActiveFilters =
+    normalizeText(characterFilter).length > 0 ||
+    normalizeText(ownerFilter).length > 0 ||
+    systemFilter !== "all" ||
+    kindFilter !== "all";
+
   const active = useMemo(
-    () => chars.find((c) => c.id === activeId) || null,
-    [chars, activeId]
+    () => filteredChars.find((c) => c.id === activeId) || null,
+    [filteredChars, activeId]
   );
+
+  useEffect(() => {
+    if (filteredChars.length === 0) {
+      if (activeId !== null) setActiveId(null);
+      return;
+    }
+    const stillVisible = filteredChars.some((c) => c.id === activeId);
+    if (!stillVisible) setActiveId(filteredChars[0].id);
+  }, [filteredChars, activeId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,11 +194,22 @@ export function GMCharactersScreen({
 
   function openAssignModal() {
     setErr(null);
+    setAssignErr(null);
+    setPlayers([]);
     setAssignModalOpen(true);
     setAssignLoading(true);
     api<Array<{ id: number; email: string; name: string }>>("/api/gm/characters/players")
       .then((list) => setPlayers(Array.isArray(list) ? list : []))
-      .catch(() => setPlayers([]))
+      .catch((e: any) => {
+        const status = typeof e?.status === "number" ? ` (${e.status})` : "";
+        const detail = typeof e?.body?.detail === "string" ? `: ${e.body.detail}` : "";
+        const fallback =
+          typeof e?.message === "string" && e.message.trim()
+            ? e.message
+            : "Falha ao carregar jogadores";
+        const detailed = `Falha ao carregar jogadores${status}${detail}`;
+        setAssignErr(detailed === "Falha ao carregar jogadores" ? fallback : detailed);
+      })
       .finally(() => setAssignLoading(false));
   }
 
@@ -185,16 +250,56 @@ export function GMCharactersScreen({
           <div className="select-head">
             <h2 className="select-title">Personagens</h2>
           </div>
+          <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+              <input
+                className="ui-field"
+                type="text"
+                placeholder="Buscar personagem"
+                value={characterFilter}
+                onChange={(e) => setCharacterFilter(e.target.value)}
+              />
+              <input
+                className="ui-field"
+                type="text"
+                placeholder="Buscar jogador"
+                value={ownerFilter}
+                onChange={(e) => setOwnerFilter(e.target.value)}
+              />
+              <select className="ui-field" value={systemFilter} onChange={(e) => setSystemFilter(e.target.value)}>
+                <option value="all">Todos os sistemas</option>
+                {availableSystems.map((sys) => (
+                  <option key={sys} value={sys}>
+                    {systemLabel(sys)}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="ui-field"
+                value={kindFilter}
+                onChange={(e) => setKindFilter((e.target.value as "all" | "PC" | "NPC") || "all")}
+              >
+                <option value="all">Todos os tipos</option>
+                <option value="PC">PC</option>
+                <option value="NPC">NPC</option>
+              </select>
+            </div>
+          </div>
 
           {loading ? (
             <div className="select-muted">Carregando…</div>
+          ) : filteredChars.length === 0 ? (
+            <div className="select-muted">
+              {hasActiveFilters ? "Nenhum personagem encontrado com os filtros atuais." : "Nenhum personagem encontrado."}
+            </div>
           ) : chars.length === 0 ? (
             <div className="select-muted">Nenhum personagem encontrado.</div>
           ) : (
             <div className="select-list">
-              {chars.map((c) => {
+              {filteredChars.map((c) => {
                 const isActive = c.id === activeId;
                 const kindLabel = c.kind === "NPC" ? "NPC" : "PC";
+                const ownerLabel = c.owner_name ? `${c.owner_name}${c.owner_email ? ` (${c.owner_email})` : ""}` : c.owner_email;
                 return (
                   <button
                     key={c.id}
@@ -207,8 +312,8 @@ export function GMCharactersScreen({
                         {kindLabel}
                       </span>
                       {c.name}
-                      {c.owner_email != null && c.owner_email !== "" && (
-                        <span className="select-item-owner"> ({c.owner_email})</span>
+                      {ownerLabel != null && ownerLabel !== "" && (
+                        <span className="select-item-owner"> ({ownerLabel})</span>
                       )}
                     </div>
                     <div className="select-item-sub">
@@ -348,6 +453,8 @@ export function GMCharactersScreen({
                     <p className="gm-characters-assign-desc">O personagem passará a ser um PC desse jogador.</p>
                     {assignLoading ? (
                       <div className="select-muted">Carregando jogadores…</div>
+                    ) : assignErr ? (
+                      <div className="select-error">{assignErr}</div>
                     ) : players.length === 0 ? (
                       <div className="select-muted">Nenhum jogador cadastrado.</div>
                     ) : (

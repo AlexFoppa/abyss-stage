@@ -44,6 +44,7 @@ class CharacterOut(BaseModel):
 
 class GMCharacterOut(CharacterOut):
     owner_email: Optional[str] = None  # null para NPC
+    owner_name: Optional[str] = None
 
 class CharacterImageOut(BaseModel):
     slot: int
@@ -658,7 +659,7 @@ def list_all_characters(
     rows = session.exec(
         text(
             """
-            SELECT c.id, c.kind, c.name, c.concept, c.system, c.backstory, c.notes, u.email
+            SELECT c.id, c.kind, c.name, c.concept, c.system, c.backstory, c.notes, u.email, u.name
             FROM character c
             LEFT JOIN "user" u ON u.id = c.owner_user_id
             WHERE c.kind IN ('PC', 'NPC')
@@ -688,11 +689,22 @@ def list_all_characters(
                 notes=r[6],
                 systems=(sys_map.get(cid) or [base_system]),
                 owner_email=r[7] if r[7] is not None else None,
+                owner_name=r[8] if r[8] is not None else None,
                 default_image_url=img[0] if img else None,
                 default_image_rev=img[1] if img else None,
             )
         )
     return out
+
+
+@gm_router.get("/players")
+def list_players(
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    """Lista jogadores (role=PLAYER) para o mestre atribuir um NPC a um jogador (transformar em PC)."""
+    users = session.exec(select(User).where(User.role == Role.PLAYER).order_by(User.email)).all()
+    return [{"id": u.id, "email": u.email, "name": u.name} for u in users]
 
 
 @gm_router.get("/{character_id}")
@@ -705,7 +717,7 @@ def gm_get_character(
     row = session.exec(
         text(
             """
-            SELECT c.id, c.kind, c.name, c.concept, c.system, c.backstory, c.notes, u.email
+            SELECT c.id, c.kind, c.name, c.concept, c.system, c.backstory, c.notes, u.email, u.name
             FROM character c
             LEFT JOIN "user" u ON u.id = c.owner_user_id
             WHERE c.id = :cid AND c.kind IN ('PC', 'NPC')
@@ -733,6 +745,7 @@ def gm_get_character(
         notes=row[6] or "",
         systems=(sys_map.get(cid) or [base_system]),
         owner_email=row[7] if row[7] is not None else None,
+        owner_name=row[8] if row[8] is not None else None,
         default_image_url=img[0] if img else None,
         default_image_rev=img[1] if img else None,
     )
@@ -812,16 +825,6 @@ def create_any_character(
             systems=sys_map.get(character_id, ["simplificado"]),
         )
     }
-
-
-@gm_router.get("/players")
-def list_players(
-    gm: User = Depends(require_gm),
-    session: Session = Depends(get_session),
-):
-    """Lista jogadores (role=PLAYER) para o mestre atribuir um NPC a um jogador (transformar em PC)."""
-    users = session.exec(select(User).where(User.role == Role.PLAYER).order_by(User.email)).all()
-    return [{"id": u.id, "email": u.email, "name": u.name} for u in users]
 
 
 @gm_router.put("/{character_id}")

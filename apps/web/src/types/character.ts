@@ -15,6 +15,7 @@ export type CharacterBase = {
   default_image_rev?: string | null;
   kind?: "PC" | "NPC";
   owner_email?: string | null;
+  owner_name?: string | null;
 };
 
 /** Personagem na visão do jogador (compatível com /me/characters). */
