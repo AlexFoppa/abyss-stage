@@ -151,18 +151,22 @@ export type LobbyParticipant = {
 
 export function LobbyScreen({
   room,
+  isGM = false,
   selectedCharacter: _selectedCharacter,
   lobbyParticipants = [],
   onCreateCharacter,
   onSelectCharacter,
   onRoomConnected,
   showMainUI = true,
+  showActiveMustSelectCharacter = false,
   onEditProfile,
   floatingMenuPos = undefined,
   setFloatingMenuPos = undefined,
   floatingMenuAudioOffsetBottom = undefined,
 }: {
   room?: Room | null;
+  /** Mestre: conectar à sala mesmo quando não está na view LOBBY (ex.: reconexão em GM_ESPETACULO). */
+  isGM?: boolean;
   selectedCharacter: null | { id: number; name: string; system: string };
   lobbyParticipants?: LobbyParticipant[];
   onCreateCharacter: () => void;
@@ -170,6 +174,8 @@ export function LobbyScreen({
   onRoomConnected?: (room: Room) => void;
   /** Quando false, só renderiza o widget de áudio (portal). Use true apenas na view LOBBY. */
   showMainUI?: boolean;
+  /** Espetáculo ativo e jogador ainda sem personagem: mostrar mensagem para selecionar personagem (após conectar áudio). */
+  showActiveMustSelectCharacter?: boolean;
   /** Abre a tela de edição de informações do jogador (nome). */
   onEditProfile?: () => void;
   /** Posição compartilhada do menu flutuante (áudio + barra personagem). Quando em espetáculo, áudio fica acima. */
@@ -307,13 +313,17 @@ export function LobbyScreen({
   }, [onRoomConnected]);
 
   const didAutoConnect = useRef(false);
-  /** Só conecta automaticamente se o usuário já passou do portão (concedeu ou escolheu continuar sem áudio). */
+  /** GM que não está no lobby (ex.: reconexão em GM_ESPETACULO): pular portão para poder conectar à sala. */
   useEffect(() => {
-    if (!showMainUI || micGate === "pending" || micGate === "denied") return;
-    if (didAutoConnect.current) return;
+    if (isGM && !showMainUI && !room && micGate === "pending") setMicGate("skipped");
+  }, [isGM, showMainUI, room, micGate]);
+  /** Conecta automaticamente quando: (lobby visível ou GM sem sala) e portão já passado. */
+  useEffect(() => {
+    const shouldConnect = (showMainUI || (isGM && !room)) && micGate !== "pending" && micGate !== "denied";
+    if (!shouldConnect || didAutoConnect.current) return;
     didAutoConnect.current = true;
     connectAudio();
-  }, [showMainUI, micGate, connectAudio]);
+  }, [showMainUI, isGM, room, micGate, connectAudio]);
 
   /** Se o navegador já tiver permissão concedida, passar o portão e permitir auto-connect. */
   useEffect(() => {
@@ -702,59 +712,75 @@ export function LobbyScreen({
     return audioWidget;
   }
 
-  /* Portão de microfone: bloquear lobby até o usuário permitir (ou escolher continuar sem áudio) */
+  /* Portão de microfone: bloquear lobby até o usuário permitir (ou escolher continuar sem áudio).
+   * Em portal para document.body para não ficar sob .center--espetaculo-off (pointer-events: none). */
+  const micGateContent = (
+    <div className="lobby-mic-gate" role="dialog" aria-modal="true" aria-labelledby="lobby-mic-gate-title">
+      <div className="lobby-mic-gate__box">
+        <h2 id="lobby-mic-gate-title" className="lobby-mic-gate__title">
+          {micGate === "denied" ? "Microfone bloqueado" : "Permissão de microfone"}
+        </h2>
+        <p className="lobby-mic-gate__text">
+          {micGate === "denied"
+            ? "O microfone foi bloqueado. Sem permissão, você não poderá falar no lobby nem no espetáculo. Permita nas configurações do site (ícone de cadeado na barra de endereço) e atualize a página, ou continue sem áudio."
+            : "Para participar com voz no lobby e no espetáculo, é necessário permitir o uso do microfone. O navegador pedirá a permissão ao clicar em \"Permitir microfone\"."}
+        </p>
+        <div className="lobby-mic-gate__actions">
+          {micGate === "denied" ? (
+            <>
+              <button
+                type="button"
+                className="ui-btn"
+                onClick={() => setMicGate("pending")}
+              >
+                Tentar novamente
+              </button>
+              <button
+                type="button"
+                className="ui-btn ui-btn--ghost"
+                onClick={skipMicAndConnect}
+              >
+                Continuar sem áudio
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="ui-btn"
+              onClick={requestMicAndConnect}
+              disabled={micGateRequesting}
+            >
+              {micGateRequesting ? "Aguardando permissão…" : "Permitir microfone"}
+            </button>
+          )}
+        </div>
+        {err && <p className="lobby-mic-gate__error">{err}</p>}
+      </div>
+    </div>
+  );
+
   if (!room && (micGate === "pending" || micGate === "denied")) {
+    const portalTarget = typeof document !== "undefined" ? document.body : null;
     return (
       <>
         {audioWidget}
-        <div className="lobby-mic-gate" role="dialog" aria-modal="true" aria-labelledby="lobby-mic-gate-title">
-          <div className="lobby-mic-gate__box">
-            <h2 id="lobby-mic-gate-title" className="lobby-mic-gate__title">
-              {micGate === "denied" ? "Microfone bloqueado" : "Permissão de microfone"}
-            </h2>
-            <p className="lobby-mic-gate__text">
-              {micGate === "denied"
-                ? "O microfone foi bloqueado. Sem permissão, você não poderá falar no lobby nem no espetáculo. Permita nas configurações do site (ícone de cadeado na barra de endereço) e atualize a página, ou continue sem áudio."
-                : "Para participar com voz no lobby e no espetáculo, é necessário permitir o uso do microfone. O navegador pedirá a permissão ao clicar em \"Permitir microfone\"."}
-            </p>
-            <div className="lobby-mic-gate__actions">
-              {micGate === "denied" ? (
-                <>
-                  <button
-                    type="button"
-                    className="ui-btn"
-                    onClick={() => setMicGate("pending")}
-                  >
-                    Tentar novamente
-                  </button>
-                  <button
-                    type="button"
-                    className="ui-btn ui-btn--ghost"
-                    onClick={skipMicAndConnect}
-                  >
-                    Continuar sem áudio
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="ui-btn"
-                  onClick={requestMicAndConnect}
-                  disabled={micGateRequesting}
-                >
-                  {micGateRequesting ? "Aguardando permissão…" : "Permitir microfone"}
-                </button>
-              )}
-            </div>
-            {err && <p className="lobby-mic-gate__error">{err}</p>}
-          </div>
-        </div>
+        {portalTarget ? createPortal(micGateContent, portalTarget) : micGateContent}
       </>
     );
   }
 
   return (
     <div className="lobby-wrap">
+      {showActiveMustSelectCharacter && connected ? (
+        <div className="lobby-espetaculo-enter-card" role="alert">
+          <p className="lobby-espetaculo-enter-card__text">
+            Há um espetáculo em andamento. Selecione um personagem para entrar no jogo.
+          </p>
+          <button type="button" className="ui-btn" onClick={onSelectCharacter}>
+            Selecionar personagem
+          </button>
+        </div>
+      ) : null}
       {posterLabels.length > 0 ? (
         <div className="lobby-wall-poster" aria-label="Poster dos jogadores no lobby">
           <div className="lobby-wall-poster__frame">

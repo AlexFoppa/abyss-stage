@@ -256,6 +256,7 @@ export function StageView({
   improvisationScenarios = [],
   improvisationCharacters = [],
   onScenarioChange,
+  initialStageState,
   playerCharacterId = null,
   floatingMenuPos,
   setFloatingMenuPos,
@@ -270,6 +271,15 @@ export function StageView({
   narrativeSlides?: NarrativeSlide[];
   currentNarrativeIndex?: number;
   onNarrativeIndexChange?: (index: number) => void;
+  /** Estado do palco restaurado na reconexão do mestre (personagens, dados). */
+  initialStageState?: {
+    characters?: Array<{ id: number; name: string; side: string; imageUrl?: string | null; xPct?: number; visible: boolean }>;
+    diceVisible?: boolean;
+    diceCount?: number;
+    diceGolden?: boolean[];
+    diceLastResult?: number[];
+    diceShowAuras?: boolean;
+  } | null;
   isGM: boolean;
   gmEmail: string | null;
   lobbyParticipants: LobbyParticipant[];
@@ -334,9 +344,14 @@ export function StageView({
   const [diceValues, setDiceValues] = useState<number[] | null>(null);
   const [diceDisplayValues, setDiceDisplayValues] = useState<number[]>([1, 1, 1, 1, 1, 1]);
   const [diceShowAuras, setDiceShowAuras] = useState(false);
+  const initialStageStateAppliedRef = useRef(false);
+
   const diceRollIntervalRef = useRef<number | null>(null);
   const diceRollTimeoutRef = useRef<number | null>(null);
   const draggedRecentlyRef = useRef(false);
+  const latestStageStateForPatchRef = useRef<object | null>(null);
+  const lastPatchedStageStateRef = useRef<string>("");
+  const stagePatchTimeoutRef = useRef<number | null>(null);
   /** Posição da barra de personagem (ou compartilhada com áudio quando floatingMenuPos é passado). */
   const [characterBarPos, setCharacterBarPos] = useState(() => ({ ...persistedCharacterBarPos }));
   const effectiveBarPos = floatingMenuPos ?? characterBarPos;
@@ -378,6 +393,56 @@ export function StageView({
     setSelectedCharacterIdsRemote([]);
     setOpenCharacterNotesId(null);
   }, [sceneId]);
+
+  /** Aplicar estado do palco restaurado (reconexão do mestre). Deve rodar depois do clear por sceneId. */
+  useEffect(() => {
+    if (!isGM || !initialStageState || initialStageStateAppliedRef.current) return;
+    initialStageStateAppliedRef.current = true;
+    try {
+      const st = initialStageState;
+      if (Array.isArray(st.characters) && st.characters.length > 0) {
+        const list: CharacterOnStage[] = [];
+        const visible: Record<number, boolean> = {};
+        const pos: Record<number, number> = {};
+        for (const c of st.characters) {
+          const id = typeof c.id === "number" && Number.isFinite(c.id) ? c.id : Number(c.id);
+          if (!Number.isFinite(id) || id < 0) continue;
+          list.push({
+            id,
+            name: typeof c.name === "string" ? c.name : "Personagem",
+            imageUrl: c.imageUrl != null && typeof c.imageUrl === "string" ? c.imageUrl : null,
+            isNPC: c.side === "NPC",
+          });
+          visible[id] = !!c.visible;
+          if (typeof c.xPct === "number" && Number.isFinite(c.xPct)) pos[id] = c.xPct;
+        }
+        if (list.length > 0) {
+          setCharacters(list);
+          setVisibleForPlayer(visible);
+          setPosByCharId((prev) => ({ ...prev, ...pos }));
+        }
+      }
+      if (typeof st.diceVisible === "boolean") setDiceVisibleForPlayers(st.diceVisible);
+      if (typeof st.diceCount === "number" && st.diceCount >= 1 && st.diceCount <= 6) setDiceCount(st.diceCount);
+      if (Array.isArray(st.diceGolden) && st.diceGolden.length >= 6) setDiceGolden(st.diceGolden.slice(0, 6).map(Boolean));
+      if (Array.isArray(st.diceLastResult) && st.diceLastResult.length > 0) {
+        const vals = st.diceLastResult.filter((v) => typeof v === "number" && v >= 1 && v <= 6).slice(0, 6);
+        if (vals.length > 0) {
+          setDiceValues(vals);
+          setDiceDisplayValues((prev) => {
+            const next = [...prev];
+            vals.forEach((v, i) => {
+              if (i < 6) next[i] = v;
+            });
+            return next;
+          });
+        }
+      }
+      if (typeof st.diceShowAuras === "boolean") setDiceShowAuras(st.diceShowAuras);
+    } catch (_) {
+      /* não quebrar a página se o estado restaurado vier malformado */
+    }
+  }, [isGM, initialStageState]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
@@ -785,6 +850,32 @@ export function StageView({
         diceLastResult: diceValues ?? undefined,
         diceShowAuras,
       };
+      const stagePayload = {
+        characters: payload.characters,
+        diceVisible: payload.diceVisible,
+        diceCount: payload.diceCount,
+        diceGolden: payload.diceGolden,
+        diceLastResult: payload.diceLastResult,
+        diceShowAuras: payload.diceShowAuras,
+      };
+      latestStageStateForPatchRef.current = stagePayload;
+
+      const payloadStr = JSON.stringify(stagePayload);
+      if (payloadStr !== lastPatchedStageStateRef.current) {
+        if (stagePatchTimeoutRef.current != null) window.clearTimeout(stagePatchTimeoutRef.current);
+        stagePatchTimeoutRef.current = window.setTimeout(() => {
+          stagePatchTimeoutRef.current = null;
+          const toSend = latestStageStateForPatchRef.current;
+          if (toSend && typeof toSend === "object") {
+            lastPatchedStageStateRef.current = JSON.stringify(toSend);
+            api("/api/show/active/stage", {
+              method: "PATCH",
+              body: JSON.stringify(toSend),
+            }).catch(() => {});
+          }
+        }, 2000);
+      }
+
       try {
         room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), {
           reliable: true,
@@ -792,7 +883,13 @@ export function StageView({
         });
       } catch {}
     }, 600);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      if (stagePatchTimeoutRef.current != null) {
+        window.clearTimeout(stagePatchTimeoutRef.current);
+        stagePatchTimeoutRef.current = null;
+      }
+    };
   }, [isGM, phase, room, sceneId, showId, charactersDeduped, visibleForPlayer, posByCharId, diceVisibleForPlayers, diceCount, diceGolden, diceValues, diceShowAuras]);
 
   useEffect(() => {

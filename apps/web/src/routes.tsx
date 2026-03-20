@@ -151,6 +151,15 @@ export function Routes() {
     sceneBody: string;
     isNarrativeScene: boolean;
     storyScenes: ShowSceneSummary[];
+    /** Estado do palco (PC/NPC, posições, dados) restaurado na reconexão. */
+    stageState?: {
+      characters?: Array<{ id: number; name: string; side: string; imageUrl?: string | null; xPct?: number; visible: boolean }>;
+      diceVisible?: boolean;
+      diceCount?: number;
+      diceGolden?: boolean[];
+      diceLastResult?: number[];
+      diceShowAuras?: boolean;
+    } | null;
   }>(null);
   const [showTick, setShowTick] = useState(0);
   const [showSceneMenuOpen, setShowSceneMenuOpen] = useState(false);
@@ -233,6 +242,79 @@ export function Routes() {
     if (effectiveRole === "GM") return gmSubView;
     return subView;
   }, [user, loading, subView, effectiveRole, gmSubView]);
+
+  /* Bootstrap: ao reconectar com usuário logado, restaurar show ativo (GM vai direto ao espetáculo; jogador sem personagem vai para seleção). */
+  const hasFetchedShowActiveRef = useRef(false);
+  useEffect(() => {
+    if (!logged) {
+      hasFetchedShowActiveRef.current = false;
+      return;
+    }
+    if (hasFetchedShowActiveRef.current) return;
+    hasFetchedShowActiveRef.current = true;
+    fetch("/api/show/active", { credentials: "include" })
+      .then((res) => {
+        if (res.status === 204 || !res.ok) return null;
+        return res.json();
+      })
+      .then((data: unknown) => {
+        if (!data || typeof data !== "object" || typeof (data as { id?: unknown }).id !== "string") return;
+        const d = data as {
+          id: string;
+          startedAt: number;
+          storyId: string;
+          sceneId: string;
+          scenarioId?: string | null;
+          scenarioImageUrl?: string | null;
+          scenarioCrop?: { x: number; y: number; width: number; height: number } | null;
+          narrativeSlides?: NarrativeSlide[];
+          currentNarrativeIndex?: number;
+          sceneTitle: string;
+          sceneBody: string;
+          isNarrativeScene: boolean;
+          storyScenes: ShowSceneSummary[];
+          stageState?: {
+            characters?: Array<{ id: number; name: string; side: string; imageUrl?: string | null; xPct?: number; visible: boolean }>;
+            diceVisible?: boolean;
+            diceCount?: number;
+            diceGolden?: boolean[];
+            diceLastResult?: number[];
+            diceShowAuras?: boolean;
+          } | null;
+        };
+        if (
+          typeof d.startedAt !== "number" ||
+          typeof d.storyId !== "string" ||
+          typeof d.sceneId !== "string" ||
+          typeof d.sceneTitle !== "string" ||
+          typeof d.sceneBody !== "string" ||
+          typeof d.isNarrativeScene !== "boolean" ||
+          !Array.isArray(d.storyScenes)
+        )
+          return;
+        setShow({
+          id: d.id,
+          startedAt: d.startedAt,
+          storyId: d.storyId,
+          sceneId: d.sceneId,
+          scenarioId: d.scenarioId ?? null,
+          scenarioImageUrl: d.scenarioImageUrl ?? null,
+          scenarioCrop: d.scenarioCrop ?? null,
+          narrativeSlides: d.narrativeSlides,
+          currentNarrativeIndex: d.currentNarrativeIndex,
+          sceneTitle: d.sceneTitle,
+          sceneBody: d.sceneBody,
+          isNarrativeScene: d.isNarrativeScene,
+          storyScenes: d.storyScenes,
+          stageState: d.stageState ?? undefined,
+        });
+        if (isGM) {
+          setGmSubView("GM_ESPETACULO");
+        }
+        /* Jogador: manter em LOBBY para conectar áudio primeiro; depois selecionar personagem (mensagem no LobbyScreen). */
+      })
+      .catch(() => {});
+  }, [logged, isGM]);
 
   useEffect(() => {
     setStageMode(view === "CREATE_CHARACTER" || view === "EDIT_CHARACTER" ? "ZOOM_IN" : "IDLE");
@@ -391,6 +473,8 @@ export function Routes() {
     const countdownMs = 10_000;
     const t = Date.now();
     const elapsed = t - show.startedAt;
+    /* Se o relógio do cliente está atrás do mestre, elapsed pode ser negativo e o countdown viraria centenas de segundos. Tratar como show já iniciado. */
+    if (elapsed < 0) return "stage" as const;
     if (elapsed < countdownMs) return "countdown" as const;
     if (elapsed < countdownMs + 1000) return "sliding" as const;
     if (elapsed < countdownMs + 2000) return "half" as const;
@@ -402,6 +486,7 @@ export function Routes() {
     const countdownMs = 10_000;
     const t = Date.now();
     const elapsed = t - show.startedAt;
+    if (elapsed < 0) return 0;
     const remaining = Math.max(0, countdownMs - elapsed);
     return Math.max(1, Math.ceil(remaining / 1000));
   }, [show, showPhase, showTick]);
@@ -1163,6 +1248,16 @@ export function Routes() {
         ...sceneState,
       });
       publishShowPayload("show/start", id, startedAt, sceneState);
+      try {
+        await api("/api/show/start", {
+          method: "POST",
+          body: JSON.stringify({
+            showId: id,
+            startedAt,
+            ...sceneState,
+          }),
+        });
+      } catch {}
       if (sceneState.narrativeSlides?.length) {
         try {
           liveKitRoom?.localParticipant.publishData(
@@ -1190,6 +1285,22 @@ export function Routes() {
             : prev
         );
         publishShowPayload("show/scene/change", show.id, show.startedAt, sceneState);
+        try {
+          await api("/api/show/active", {
+            method: "PATCH",
+            body: JSON.stringify({
+              sceneId: sceneState.sceneId,
+              scenarioId: sceneState.scenarioId,
+              scenarioImageUrl: sceneState.scenarioImageUrl,
+              scenarioCrop: sceneState.scenarioCrop,
+              narrativeSlides: sceneState.narrativeSlides,
+              currentNarrativeIndex: sceneState.currentNarrativeIndex,
+              sceneTitle: sceneState.sceneTitle,
+              sceneBody: sceneState.sceneBody,
+              isNarrativeScene: sceneState.isNarrativeScene,
+            }),
+          });
+        } catch {}
         if (sceneState.narrativeSlides?.length) {
           try {
             liveKitRoom?.localParticipant.publishData(
@@ -1333,8 +1444,11 @@ export function Routes() {
       curtainsOpen={shouldOpenCurtains}
       hideValance={hideValance}
       espetaculoPhase={espetaculoPhase}
+      centerOffForStage={
+        !!(show && (showPhase === "half" || showPhase === "stage") && (isGM || selectedCharacter != null))
+      }
       stageContent={
-        show && (showPhase === "half" || showPhase === "stage") ? (
+        show && (showPhase === "half" || showPhase === "stage") && (isGM || selectedCharacter != null) ? (
           <StageView
             room={liveKitRoom}
             showId={show.id}
@@ -1348,6 +1462,7 @@ export function Routes() {
             onNarrativeIndexChange={(index) =>
               setShow((prev) => (prev ? { ...prev, currentNarrativeIndex: index } : prev))
             }
+            initialStageState={show.stageState ?? undefined}
             isGM={isGM}
             gmEmail={user?.email ?? null}
             lobbyParticipants={displayParticipants}
@@ -1403,7 +1518,7 @@ export function Routes() {
               <button
                 type="button"
                 className="ui-btn ui-btn--ghost"
-                onClick={() => {
+                onClick={async () => {
                   if (!show) return;
                   const msg = { type: "show/cancel", showId: show.id };
                   try {
@@ -1411,6 +1526,9 @@ export function Routes() {
                       new TextEncoder().encode(JSON.stringify(msg)),
                       { reliable: true, topic: "espetaculo" }
                     );
+                  } catch {}
+                  try {
+                    await api("/api/show/cancel", { method: "POST" });
                   } catch {}
                   setShow(null);
                   setShowSceneMenuOpen(false);
@@ -1631,6 +1749,7 @@ export function Routes() {
       {logged && (
         <LobbyScreen
           room={liveKitRoom}
+          isGM={isGM}
           selectedCharacter={selectedCharacter}
           lobbyParticipants={displayParticipants}
           onSelectCharacter={() => setSubView("SELECT_CHARACTER")}
@@ -1641,7 +1760,10 @@ export function Routes() {
           onRoomConnected={setLiveKitRoom}
           showMainUI={
             view === "LOBBY" &&
-            !(effectiveRole === "PLAYER" && show && (showPhase === "half" || showPhase === "stage"))
+            !(effectiveRole === "PLAYER" && show && (showPhase === "half" || showPhase === "stage") && selectedCharacter != null)
+          }
+          showActiveMustSelectCharacter={
+            effectiveRole === "PLAYER" && !!show && selectedCharacter == null
           }
           onEditProfile={effectiveRole === "PLAYER" ? () => setSubView("EDIT_PROFILE") : undefined}
           floatingMenuPos={floatingMenuPos}
@@ -1788,6 +1910,11 @@ export function Routes() {
         />
       ) : view === "SELECT_CHARACTER" ? (
         <SelectCharacterScreen
+          messageWhenShowActive={
+            show && effectiveRole === "PLAYER"
+              ? "Há um espetáculo em andamento. Selecione um personagem para entrar."
+              : undefined
+          }
           onBack={() => setSubView("LOBBY")}
           onSelect={(c) => {
             setSelectedCharacter({
@@ -1844,7 +1971,7 @@ export function Routes() {
             <div className="lobby-actors" aria-label="Jogadores">
               {displayParticipants
                 .filter((p) => !p.is_gm)
-                .slice(0, 6)
+                .slice(0, 5)
                 .map((p) => {
                   const isLocal = localIdentity != null && p.identity === localIdentity;
                   const imageUrl =

@@ -7,10 +7,13 @@ export function SelectCharacterScreen({
   onBack,
   onSelect,
   onEdit,
+  messageWhenShowActive,
 }: {
   onBack: () => void;
   onSelect: (c: Character) => void;
   onEdit?: (c: Character) => void;
+  /** Ex.: "Há um espetáculo em andamento. Selecione um personagem para entrar." */
+  messageWhenShowActive?: string;
 }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -72,7 +75,11 @@ export function SelectCharacterScreen({
           <div className="select-head">
             <h2 className="select-title">Personagens</h2>
           </div>
-
+          {messageWhenShowActive ? (
+            <p className="select-muted select-message-show-active" role="status">
+              {messageWhenShowActive}
+            </p>
+          ) : null}
           {loading ? (
             <div className="select-muted">Carregando…</div>
           ) : chars.length === 0 ? (

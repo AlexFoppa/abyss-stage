@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api";
+import { scenarioImageUrl as getScenarioImageUrl } from "../scenarioCrop";
 import { ScenarioCropEditor } from "./ScenarioCropEditor";
 
 export type Scenario = {
@@ -18,8 +19,7 @@ export type Scenario = {
 };
 
 function scenarioImageUrl(s: Scenario): string | null {
-  if (!s.image_storage_key) return null;
-  return `/uploads/${s.image_storage_key}`;
+  return getScenarioImageUrl(s);
 }
 
 function ScenarioTooltipContent({ scenario, className }: { scenario: Scenario; className?: string }) {

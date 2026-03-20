@@ -626,11 +626,11 @@
   border-top: 1px solid rgba(215,178,92,.25);
 }
 
-/* Portão de permissão de microfone (antes de conectar ao lobby) */
+/* Portão de permissão de microfone (antes de conectar ao lobby). Portal em body para não ser bloqueado por .center--espetaculo-off. */
 .lobby-mic-gate {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: 100001;
   background: rgba(0, 0, 0, 0.85);
   display: flex;
   align-items: center;
@@ -671,4 +671,25 @@
   margin: 14px 0 0;
   font-size: 0.9rem;
   color: #c44;
+}
+
+/* Card: espetáculo em andamento — selecionar personagem (jogador que entrou tarde) */
+.lobby-espetaculo-enter-card {
+  margin-bottom: 16px;
+  padding: 18px 20px;
+  background: linear-gradient(rgba(28, 24, 18, 0.95), rgba(15, 12, 8, 0.95));
+  border: 1px solid var(--gold-border, rgba(215, 178, 92, 0.45));
+  border-radius: var(--radius-md, 12px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+  font-family: var(--font-display);
+}
+.lobby-espetaculo-enter-card__text {
+  margin: 0 0 14px;
+  font-size: 1rem;
+  line-height: 1.45;
+  color: var(--text-label);
+}
+.lobby-espetaculo-enter-card .ui-btn {
+  width: 100%;
+  min-height: 48px;
 }

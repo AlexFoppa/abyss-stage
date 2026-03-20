@@ -11,12 +11,16 @@ export type ScenarioForDisplay = {
   crop_y?: number | null;
   crop_width?: number | null;
   crop_height?: number | null;
+  /** Quando presente, usado como cache-busting (?rev=) para que troca de imagem atualize na tela. */
+  updated_at?: string | null;
 };
 
 /** URL da imagem do cenário (mesmo em todos os contextos: tela Cenários, preview, espetáculo). */
 export function scenarioImageUrl(s: ScenarioForDisplay | null): string | null {
   if (!s?.image_storage_key) return null;
-  return `/uploads/${s.image_storage_key}`;
+  const base = `/uploads/${s.image_storage_key}`;
+  const rev = s.updated_at != null && String(s.updated_at).trim() !== "" ? String(s.updated_at) : null;
+  return rev ? `${base}?rev=${encodeURIComponent(rev)}` : base;
 }
 
 /** Crop do cenário em 0–1, ou null se inválido (mesma lógica em todos os contextos). */

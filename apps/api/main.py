@@ -25,6 +25,7 @@ from apps.api.backend.routers.characters import router as characters_router, gm_
 from apps.api.backend.routers.gm_stories import router as gm_stories_router
 from apps.api.backend.routers.gm_scenarios import router as gm_scenarios_router
 from apps.api.backend.routers.catalog import router as catalog_router
+from apps.api.backend.routers.show import router as show_router
 
 
 @asynccontextmanager
@@ -59,3 +60,4 @@ app.include_router(characters_router)
 app.include_router(gm_characters_router)
 app.include_router(gm_stories_router)
 app.include_router(gm_scenarios_router)
+app.include_router(show_router)

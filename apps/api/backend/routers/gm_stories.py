@@ -165,7 +165,9 @@ def update_scene(
         scene.is_narrative = data.is_narrative
     if data.narrative_black_start is not None:
         scene.narrative_black_start = data.narrative_black_start
-    if data.scenario_id is not None:
+    # Permitir limpar cenário: quando o cliente envia scenario_id (inclusive null), aplicar
+    _set = getattr(data, "model_fields_set", None) or getattr(data, "__fields_set__", set())
+    if "scenario_id" in _set:
         scene.scenario_id = data.scenario_id
     scene.updated_at = datetime.utcnow()
     session.add(scene)

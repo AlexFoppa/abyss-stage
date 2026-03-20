@@ -9,6 +9,8 @@ export function StageLayout({
   curtainsOpen = false,
   hideValance = false,
   espetaculoPhase = null,
+  /** Quando false, o .center não recebe center--espetaculo-off (jogador em seleção de personagem pode clicar). */
+  centerOffForStage,
   stageContent = null,
   children,
 }: {
@@ -21,6 +23,8 @@ export function StageLayout({
   hideValance?: boolean;
   /** Fase do espetáculo: sliding = conteúdo desce; half = cortina meio aberta (jogador); stage = cortina aberta, valance sai. */
   espetaculoPhase?: "sliding" | "half" | "stage" | null;
+  /** Quando true, aplica center--espetaculo-off. Deve ser true só quando o palco está de fato visível (GM ou jogador com personagem). */
+  centerOffForStage?: boolean;
   /** Conteúdo do palco (cenário/personagens), renderizado atrás da cortina. */
   stageContent?: React.ReactNode;
   children: React.ReactNode;
@@ -32,7 +36,7 @@ export function StageLayout({
 
   const espetaculoSliding = espetaculoPhase === "sliding";
   const espetaculoActive = espetaculoPhase === "half" || espetaculoPhase === "stage";
-  const centerOff = espetaculoPhase === "half" || espetaculoPhase === "stage";
+  const centerOff = centerOffForStage === true;
 
   return (
     <div
