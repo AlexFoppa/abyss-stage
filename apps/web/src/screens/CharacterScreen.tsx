@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import {
   CandelaObscuraForm,
@@ -229,6 +229,73 @@ export function CharacterScreen({
     } catch (e: any) {
       // no GM, erros de imagem não devem bloquear a edição
     }
+  }
+
+  async function uploadImageForVisibleSlot(file: File) {
+    if (!character?.id) return;
+    if (!file.type.startsWith("image/")) {
+      setErr("Envie apenas um arquivo de imagem (PNG, JPEG, WebP, etc.).");
+      return;
+    }
+
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("slot", String(visibleSlot));
+
+    setImgBusy(true);
+    setErr(null);
+    try {
+      await api(`${basePrefix}/${character.id}/images`, { method: "POST", body: fd });
+      await refreshImages(visibleSlot);
+    } catch (e: any) {
+      setErr(e?.message || "Falha no upload");
+    } finally {
+      setImgBusy(false);
+    }
+  }
+
+  const gmImageDropZone = scope === "GM" && mode === "edit";
+  const mirrorDragDepthRef = useRef(0);
+  const [mirrorDragActive, setMirrorDragActive] = useState(false);
+
+  function handleMirrorDragEnter(e: DragEvent<HTMLDivElement>) {
+    if (!gmImageDropZone || imgBusy || !character?.id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    mirrorDragDepthRef.current += 1;
+    setMirrorDragActive(true);
+  }
+
+  function handleMirrorDragLeave(e: DragEvent<HTMLDivElement>) {
+    if (!gmImageDropZone) return;
+    e.preventDefault();
+    e.stopPropagation();
+    mirrorDragDepthRef.current -= 1;
+    if (mirrorDragDepthRef.current <= 0) {
+      mirrorDragDepthRef.current = 0;
+      setMirrorDragActive(false);
+    }
+  }
+
+  function handleMirrorDragOver(e: DragEvent<HTMLDivElement>) {
+    if (!gmImageDropZone || imgBusy || !character?.id) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  async function handleMirrorDrop(e: DragEvent<HTMLDivElement>) {
+    if (!gmImageDropZone) return;
+    e.preventDefault();
+    e.stopPropagation();
+    mirrorDragDepthRef.current = 0;
+    setMirrorDragActive(false);
+    if (imgBusy || !character?.id) return;
+    const f = e.dataTransfer.files?.[0];
+    if (!f) {
+      setErr("Nenhum arquivo foi solto.");
+      return;
+    }
+    await uploadImageForVisibleSlot(f);
   }
 
   useEffect(() => {
@@ -870,7 +937,20 @@ export function CharacterScreen({
               scope === "GM" ? "create-col--preview--gm" : "create-col--preview--player"
             }`}
           >
-            <div className="mirror">
+            <div
+              className={`mirror${gmImageDropZone ? " mirror--drop-target" : ""}${
+                mirrorDragActive ? " mirror--drop-active" : ""
+              }`}
+              onDragEnter={gmImageDropZone ? handleMirrorDragEnter : undefined}
+              onDragLeave={gmImageDropZone ? handleMirrorDragLeave : undefined}
+              onDragOver={gmImageDropZone ? handleMirrorDragOver : undefined}
+              onDrop={gmImageDropZone ? handleMirrorDrop : undefined}
+              aria-label={
+                gmImageDropZone
+                  ? "Solte uma imagem aqui para substituir o slot atual"
+                  : undefined
+              }
+            >
               {(() => {
                 const portraitUrl = visibleImageUrl || getAvatarUrl(character ?? undefined);
 
@@ -929,25 +1009,11 @@ export function CharacterScreen({
                         accept="image/*"
                         disabled={imgBusy || !character?.id}
                         onChange={async (ev) => {
-                        const f = ev.target.files?.[0];
-                        ev.target.value = "";
-                        if (!f || !character?.id) return;
-
-                        const fd = new FormData();
-                        fd.append("file", f);
-                        fd.append("slot", String(visibleSlot)); // determinístico: substitui o slot visível
-
-                        setImgBusy(true);
-                        setErr(null);
-                        try {
-                          await api(`${basePrefix}/${character.id}/images`, { method: "POST", body: fd });
-                          await refreshImages(visibleSlot);
-                        } catch (e: any) {
-                          setErr(e?.message || "Falha no upload");
-                        } finally {
-                          setImgBusy(false);
-                        }
-                      }}
+                          const f = ev.target.files?.[0];
+                          ev.target.value = "";
+                          if (!f || !character?.id) return;
+                          await uploadImageForVisibleSlot(f);
+                        }}
                       />
                     </label>
                   </div>

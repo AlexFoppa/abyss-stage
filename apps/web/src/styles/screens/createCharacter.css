@@ -115,6 +115,18 @@
   background: transparent;
 }
 
+/* GM: área de soltar imagem (complementa o botão Adicionar/Substituir) */
+.create-col--preview--gm .mirror--drop-target{
+  cursor: copy;
+}
+
+.create-col--preview--gm .mirror.mirror--drop-active{
+  outline: 2px dashed rgba(210, 170, 80, 0.65);
+  outline-offset: 4px;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px rgba(210, 170, 80, 0.2);
+}
+
 .portrait{
   position: absolute;
   left: 50%;
