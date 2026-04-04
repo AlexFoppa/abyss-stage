@@ -225,7 +225,7 @@ def _gm_require_character_exists(session: Session, character_id: int) -> None:
             """
             SELECT 1
             FROM character
-            WHERE id = :cid AND kind='PC'
+            WHERE id = :cid AND kind IN ('PC', 'NPC')
             """
         ),
         params={"cid": character_id},
