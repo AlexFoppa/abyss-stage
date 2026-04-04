@@ -193,12 +193,14 @@ export function SceneStagePreview({
               className={`stage-actor stage-actor--${a.side}`}
               style={{ left: `${x}%` }}
             >
-              <img
-                className="stage-actor__img"
-                src={a.imageUrl || "/assets/jogador_default.png"}
-                alt={a.name}
-                draggable={false}
-              />
+              <div className="stage-actor__body">
+                <img
+                  className="stage-actor__img"
+                  src={a.imageUrl || "/assets/jogador_default.png"}
+                  alt={a.name}
+                  draggable={false}
+                />
+              </div>
             </div>
           );
         })}

@@ -1769,60 +1769,36 @@ export function StageView({
                 className={`stage-actor ${c.isNPC ? "stage-actor--npc" : "stage-actor--pc"} ${anim ? `stage-actor--${anim}` : ""} ${
                   lookRight ? "stage-actor--look-right" : "stage-actor--look-left"
                 } ${isGM && selected ? "stage-actor--selected" : ""} ${speaking ? "stage-actor--speaking" : "stage-actor--silent"}`}
-                style={{ left: `${x}%` }}
-                onMouseDown={(e) => {
-                  if (!isGM) return;
-                  if ((e.target as HTMLElement).closest(".stage-actor__eye-btn, .stage-actor__select-btn, .stage-actor__note-btn, .stage-actor__notes")) return;
-                  e.preventDefault();
-                  dragRef.current = { characterId: c.id, startClientX: e.clientX, startXPct: x };
-                }}
-                onClick={(e) => {
-                  if (!isGM) return;
-                  if ((e.target as HTMLElement).closest(".stage-actor__eye-btn, .stage-actor__select-btn, .stage-actor__note-btn, .stage-actor__notes")) return;
-                  if (draggedRecentlyRef.current) return;
-                  setSelectedCharacterIdsLocal((prev) => {
-                    const has = prev.includes(c.id);
-                    const next = has ? prev.filter((id) => id !== c.id) : [...prev, c.id];
-                    const msg: SelectionMsg = { type: "show/actor/selection", showId, selectedIds: next };
-                    try {
-                      room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
-                        reliable: true,
-                        topic: "espetaculo",
-                      });
-                    } catch {}
-                    return next;
-                  });
-                }}
+                style={
+                  {
+                    left: `${x}%`,
+                    ...(isGM ? { "--actor-x-pct": Math.round(x) } : {}),
+                  } as CSSProperties
+                }
               >
-                <img
-                  className="stage-actor__img"
-                  src={resolvedParticipantImageByCharacterId?.[c.id] ?? c.imageUrl ?? "/assets/jogador_default.png"}
-                  alt=""
-                  draggable={false}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = "/assets/jogador_default.png";
-                  }}
-                />
+                <div className="stage-actor__body">
+                  <img
+                    className="stage-actor__img"
+                    src={resolvedParticipantImageByCharacterId?.[c.id] ?? c.imageUrl ?? "/assets/jogador_default.png"}
+                    alt=""
+                    draggable={false}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = "/assets/jogador_default.png";
+                    }}
+                  />
+                </div>
                 {isGM && (
                   <>
-                    <button
-                      type="button"
-                      className={"stage-actor__note-btn" + (openCharacterNotesId === c.id ? " is-active" : "")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOpenCharacterNotesId((prev) => (prev === c.id ? null : c.id));
+                    {/* Faixa sob a barra (topo do bloco): arrastar/seleção — pés do ator ficam fora do palco (overflow) */}
+                    <div
+                      className="stage-actor__gm-drag-hit"
+                      aria-hidden
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        dragRef.current = { characterId: c.id, startClientX: e.clientX, startXPct: x };
                       }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      title="Ler notas do personagem"
-                      aria-label={`Ler notas de ${c.name}`}
-                    >
-                      <InfoIcon />
-                    </button>
-                    <button
-                      type="button"
-                      className={"stage-actor__select-btn" + (selected ? " is-selected" : "")}
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={() => {
+                        if (draggedRecentlyRef.current) return;
                         setSelectedCharacterIdsLocal((prev) => {
                           const has = prev.includes(c.id);
                           const next = has ? prev.filter((id) => id !== c.id) : [...prev, c.id];
@@ -1836,45 +1812,79 @@ export function StageView({
                           return next;
                         });
                       }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      title={selected ? "Desselecionar" : "Selecionar (fala por este personagem quando você falar)"}
-                      aria-label={selected ? "Desselecionar" : "Selecionar para falar por este personagem"}
-                    >
-                      <SpeakForIcon />
-                    </button>
-                    <button
-                      type="button"
-                      className="stage-actor__eye-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const nextVisible = !visibleToPlayer;
-                        setVisibleForPlayer((prev) => ({ ...prev, [c.id]: nextVisible }));
-                        const xPct = posByCharId[c.id];
-                        const msg: VisibilityMsg = {
-                          type: "show/actor/visible",
-                          showId,
-                          actor: {
-                            id: c.id,
-                            name: c.name,
-                            side: c.isNPC ? "NPC" : "PC",
-                            imageUrl: c.imageUrl,
-                            xPct,
-                          },
-                          visible: nextVisible,
-                        };
-                        try {
-                          room?.localParticipant.publishData(
-                            new TextEncoder().encode(JSON.stringify(msg)),
-                            { reliable: true, topic: "espetaculo" }
-                          );
-                        } catch {}
-                      }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      title={visibleToPlayer ? "Ocultar do jogador" : "Tornar visível ao jogador"}
-                      aria-label={visibleToPlayer ? "Ocultar do jogador" : "Tornar visível ao jogador"}
-                    >
-                      {visibleToPlayer ? <EyeOpenIcon /> : <EyeClosedIcon />}
-                    </button>
+                    />
+                    <div className="stage-actor__gm-toolbar" onMouseDown={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className={"stage-actor__note-btn" + (openCharacterNotesId === c.id ? " is-active" : "")}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenCharacterNotesId((prev) => (prev === c.id ? null : c.id));
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        title="Ler notas do personagem"
+                        aria-label={`Ler notas de ${c.name}`}
+                      >
+                        <InfoIcon />
+                      </button>
+                      <button
+                        type="button"
+                        className={"stage-actor__select-btn" + (selected ? " is-selected" : "")}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCharacterIdsLocal((prev) => {
+                            const has = prev.includes(c.id);
+                            const next = has ? prev.filter((id) => id !== c.id) : [...prev, c.id];
+                            const msg: SelectionMsg = { type: "show/actor/selection", showId, selectedIds: next };
+                            try {
+                              room?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
+                                reliable: true,
+                                topic: "espetaculo",
+                              });
+                            } catch {}
+                            return next;
+                          });
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        title={selected ? "Desselecionar" : "Selecionar (fala por este personagem quando você falar)"}
+                        aria-label={selected ? "Desselecionar" : "Selecionar para falar por este personagem"}
+                      >
+                        <SpeakForIcon />
+                      </button>
+                      <button
+                        type="button"
+                        className="stage-actor__eye-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const nextVisible = !visibleToPlayer;
+                          setVisibleForPlayer((prev) => ({ ...prev, [c.id]: nextVisible }));
+                          const xPct = posByCharId[c.id];
+                          const msg: VisibilityMsg = {
+                            type: "show/actor/visible",
+                            showId,
+                            actor: {
+                              id: c.id,
+                              name: c.name,
+                              side: c.isNPC ? "NPC" : "PC",
+                              imageUrl: c.imageUrl,
+                              xPct,
+                            },
+                            visible: nextVisible,
+                          };
+                          try {
+                            room?.localParticipant.publishData(
+                              new TextEncoder().encode(JSON.stringify(msg)),
+                              { reliable: true, topic: "espetaculo" }
+                            );
+                          } catch {}
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        title={visibleToPlayer ? "Ocultar do jogador" : "Tornar visível ao jogador"}
+                        aria-label={visibleToPlayer ? "Ocultar do jogador" : "Tornar visível ao jogador"}
+                      >
+                        {visibleToPlayer ? <EyeOpenIcon /> : <EyeClosedIcon />}
+                      </button>
+                    </div>
                     {openCharacterNotesId === c.id && (
                       <div className="stage-actor__notes" onMouseDown={(e) => e.stopPropagation()}>
                         <div className="stage-actor__notes-title">{c.name}</div>

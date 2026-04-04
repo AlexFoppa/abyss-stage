@@ -418,6 +418,13 @@
   align-items: flex-end;
   justify-content: center;
 }
+.scene-stage-preview--preview .stage-actor__body {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
 .scene-stage-preview--preview .stage-actor__img {
   width: auto;
   height: 100%;
@@ -966,12 +973,17 @@
   overflow: hidden;
   pointer-events:none;
 }
-.stage-view--gm .stage-actor{
-  pointer-events:auto;
-  cursor: grab;
+/* GM: sprite sem pointer; hit só em .stage-actor__gm-drag-hit + .stage-actor__gm-toolbar.
+   O ator usa bottom:-10vh + overflow:hidden nos actores — controlos ancorados por top ficam visíveis; por bottom ficavam cortados. */
+.stage-view--gm .stage-actor {
+  pointer-events: none;
+  z-index: calc(10 + var(--actor-x-pct, 0));
 }
-.stage-view--gm .stage-actor:active{
-  cursor: grabbing;
+.stage-view--gm .stage-actor:hover {
+  z-index: calc(110 + var(--actor-x-pct, 0));
+}
+.stage-view--gm .stage-actor--selected {
+  z-index: calc(210 + var(--actor-x-pct, 0));
 }
 
 /* Mesmo tamanho do lobby (avatar do personagem): 60vh, max 85vh — não usar miniatura de preview */
@@ -985,8 +997,22 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  isolation: isolate;
 }
 .stage-view:not(.stage-view--gm) .stage-actor {
+  pointer-events: none;
+}
+/* Sprite: sem pointer no GM (letterbox da img ainda cobre 60vh); arraste/seleção na faixa .stage-actor__gm-drag-hit. */
+.stage-actor__body {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+.stage-view--gm .stage-actor__img {
   pointer-events: none;
 }
 .stage-actor__img{
@@ -1002,27 +1028,70 @@
   user-select: none;
   opacity: 1;
 }
-/* Botão de seleção (NPC: fala pelo mestre) — canto superior esquerdo */
-.stage-actor__select-btn {
+/* Faixa para arrastar / alternar seleção — abaixo da barra, na zona do ator que ainda entra no palco (não nos pés cortados) */
+.stage-actor__gm-drag-hit {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(200px, 42vw);
+  height: min(260px, 42vh);
+  max-height: calc(100% - 52px);
+  z-index: 5;
+  pointer-events: auto;
+  cursor: grab;
+  box-sizing: border-box;
+}
+.stage-view--gm .stage-actor__gm-drag-hit:active {
+  cursor: grabbing;
+}
+/* Botões agrupados no topo do bloco do ator (visível com overflow); mesmo trio por personagem */
+.stage-actor__gm-toolbar {
   position: absolute;
   top: 4px;
-  left: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 3px;
+  z-index: 6;
+  pointer-events: auto;
+  padding: 2px 4px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.stage-actor__note-btn,
+.stage-actor__select-btn,
+.stage-actor__eye-btn {
+  position: static;
+  top: auto;
+  left: auto;
+  right: auto;
+  transform: none;
   width: 28px;
   height: 28px;
+  flex-shrink: 0;
   border: none;
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.55);
   color: #fff;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  z-index: 2;
   pointer-events: auto;
 }
-.stage-actor__select-btn:hover {
-  background: rgba(0, 0, 0, 0.8);
+.stage-actor__note-btn:hover,
+.stage-actor__select-btn:hover,
+.stage-actor__eye-btn:hover {
+  background: rgba(0, 0, 0, 0.82);
+  color: #ffd;
+}
+.stage-actor__note-btn.is-active {
+  background: rgba(0, 0, 0, 0.82);
   color: #ffd;
 }
 .stage-actor__select-btn.is-selected {
@@ -1030,32 +1099,10 @@
   color: rgba(255, 220, 120, 0.95);
 }
 .stage-actor__select-btn:focus-visible,
-.stage-actor__eye-btn:focus-visible {
+.stage-actor__eye-btn:focus-visible,
+.stage-actor__note-btn:focus-visible {
   outline: 2px solid rgba(255, 220, 120, 0.8);
   outline-offset: 2px;
-}
-/* Ícone de visibilidade (olho) na própria imagem do personagem — só para o mestre */
-.stage-actor__eye-btn {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  z-index: 2;
-  pointer-events: auto;
-}
-.stage-actor__eye-btn:hover {
-  background: rgba(0, 0, 0, 0.8);
-  color: #ffd;
 }
 /* Direção do olhar por coluna: 1–2 olham para a direita, 4–5 para a esquerda (sobrescreve npc/pc ao arrastar) */
 .stage-actor--look-right .stage-actor__img {
@@ -1399,40 +1446,10 @@
   color: rgba(255,255,255,.88);
 }
 
-.stage-actor__note-btn{
-  position: absolute;
-  top: 4px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  z-index: 2;
-  pointer-events: auto;
-}
-.stage-actor__note-btn:hover,
-.stage-actor__note-btn.is-active{
-  background: rgba(0, 0, 0, 0.82);
-  color: #ffd;
-}
-.stage-actor__select-btn:focus-visible,
-.stage-actor__eye-btn:focus-visible,
-.stage-actor__note-btn:focus-visible{
-  outline: 2px solid rgba(255, 220, 120, 0.8);
-  outline-offset: 2px;
-}
 .stage-actor__notes{
   position: absolute;
   left: 50%;
-  top: 38px;
+  top: 40px;
   transform: translateX(-50%);
   width: min(260px, 28vw);
   padding: 10px 12px;
@@ -1441,7 +1458,7 @@
   background: linear-gradient(rgba(20, 17, 14, 0.94), rgba(9, 7, 5, 0.96));
   color: rgba(255,255,255,.9);
   box-shadow: 0 12px 26px rgba(0,0,0,.45);
-  z-index: 3;
+  z-index: 7;
   pointer-events: auto;
 }
 .stage-actor__notes-title{
