@@ -1,5 +1,12 @@
 // src/api.ts
-export type ApiError = { status: number; message: string; body?: unknown };
+export type ApiError = {
+  status: number;
+  message: string;
+  body?: unknown;
+  /** Present when the failure came from fetch (helps debug proxy vs API). */
+  method?: string;
+  path?: string;
+};
 
 /** Chamado em 401 para limpar sessão (ex.: outra aba deslogou e o cookie sumiu). */
 let on401: (() => void) | null = null;
@@ -30,6 +37,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     delete headers["Content-Type"];
   }
 
+  const method = (init.method || "GET").toUpperCase();
+
   const res = await fetch(path, {
     ...init,
     headers,
@@ -41,9 +50,16 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     on401();
   }
   if (!res.ok) {
-    const message =
-      (body as any)?.detail || (body as any)?.message || res.statusText || "Request failed";
-    throw { status: res.status, message, body } satisfies ApiError;
+    const raw =
+      (body as any)?.detail ?? (body as any)?.message ?? res.statusText ?? "Request failed";
+    const detailStr =
+      typeof raw === "string"
+        ? raw
+        : raw !== undefined && raw !== null
+          ? JSON.stringify(raw)
+          : res.statusText || "Request failed";
+    const message = `${method} ${path} → ${res.status}: ${detailStr}`;
+    throw { status: res.status, message, body, method, path } satisfies ApiError;
   }
   return body as T;
 }

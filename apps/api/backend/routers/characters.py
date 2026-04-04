@@ -1224,40 +1224,9 @@ def update_my_character(
         systems=sys_map.get(character_id, ["simplificado"]),
     )
 
-@router.post("/{character_id}/systems/{system_key}", status_code=201)
-def create_character_system(
-    character_id: int,
-    system_key: str,
-    data: CandelaUpsertIn = Body(...),
-    user: User = Depends(_require_player),
-    session: Session = Depends(get_session),
-):
-    system_key = (system_key or "").strip()
 
-    # valida dono
-    row = session.exec(
-        text(
-            """
-            SELECT 1
-            FROM character
-            WHERE id = :cid AND kind='PC' AND owner_user_id = :uid
-            """
-        ),
-        params={"cid": character_id, "uid": user.id},
-    ).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Character not found")
-
-# apps/api/backend/routers/characters.py
-# PASSO 4.2 (POST /{character_id}/systems/{system_key})
-# Substitua do `if system_key == "simplificado":` ate o `return {"ok": True}` por:
-
-    if system_key == "simplificado":
-        raise HTTPException(status_code=400, detail="Base system already exists")
-
-    if system_key != "candela_obscura":
-        raise HTTPException(status_code=400, detail="Unsupported system for now")
-
+def _install_candela_system(session: Session, character_id: int, system_key: str, data: CandelaUpsertIn) -> None:
+    """Primeira instalação do sistema Candela no personagem (transação interna)."""
     try:
         session.exec(text("BEGIN"))
 
@@ -1469,7 +1438,82 @@ def create_character_system(
         session.exec(text("ROLLBACK"))
         raise HTTPException(status_code=500, detail=f"Create system failed: {e}")
 
+
+# Rota literal (não `/{system_key}`) para o mesmo path do GET — evita 405 no Starlette
+# quando o nó estático `.../systems/candela_obscura` só tinha GET registrado.
+@router.post("/{character_id}/systems/candela_obscura", status_code=201)
+def create_candela_character_system(
+    character_id: int,
+    data: CandelaUpsertIn = Body(...),
+    user: User = Depends(_require_player),
+    session: Session = Depends(get_session),
+):
+    row = session.exec(
+        text(
+            """
+            SELECT 1
+            FROM character
+            WHERE id = :cid AND kind='PC' AND owner_user_id = :uid
+            """
+        ),
+        params={"cid": character_id, "uid": user.id},
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    _install_candela_system(session, character_id, "candela_obscura", data)
+
     return {"ok": True}
+
+
+@router.post("/{character_id}/systems/{system_key}", status_code=201)
+def create_character_system(
+    character_id: int,
+    system_key: str,
+    data: CandelaUpsertIn = Body(...),
+    user: User = Depends(_require_player),
+    session: Session = Depends(get_session),
+):
+    system_key = (system_key or "").strip()
+
+    # valida dono
+    row = session.exec(
+        text(
+            """
+            SELECT 1
+            FROM character
+            WHERE id = :cid AND kind='PC' AND owner_user_id = :uid
+            """
+        ),
+        params={"cid": character_id, "uid": user.id},
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    if system_key == "simplificado":
+        raise HTTPException(status_code=400, detail="Base system already exists")
+
+    if system_key == "candela_obscura":
+        raise HTTPException(
+            status_code=400,
+            detail="Candela: use POST /me/characters/{id}/systems/candela_obscura",
+        )
+
+    raise HTTPException(status_code=400, detail="Unsupported system for now")
+
+
+@gm_router.post("/{character_id}/systems/candela_obscura", status_code=201)
+def gm_create_candela_character_system(
+    character_id: int,
+    data: CandelaUpsertIn = Body(...),
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    _gm_require_character_exists(session, character_id)
+    _install_candela_system(session, character_id, "candela_obscura", data)
+
+    return {"ok": True}
+
 
 @gm_router.get("/{character_id}/systems/candela_obscura")
 def gm_get_candela_system(
