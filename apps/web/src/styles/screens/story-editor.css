@@ -471,8 +471,16 @@
   color: var(--text-main);
 }
 
-.story-editor__scene-characters-item span {
+.story-editor__scene-characters-name-row {
   flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.story-editor__scene-characters-name {
   min-width: 0;
 }
 
@@ -658,6 +666,40 @@
   border-radius: var(--radius-sm);
   cursor: grab;
   font-size: 0.85rem;
+}
+
+.story-editor__char-thumb-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.story-editor__char-thumb-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Selo PC / NPC (editor de roteiro) */
+.story-editor__char-kind-badge {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.35rem;
+  border-radius: 4px;
+  border: 1px solid var(--gold-soft);
+  color: var(--gold);
+  background: rgba(0, 0, 0, 0.35);
+  line-height: 1.2;
+}
+
+.story-editor__char-kind-badge--npc {
+  color: var(--text-label);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .story-editor__char-thumb:active {
@@ -1372,6 +1414,32 @@
 }
 
 /* Painel Personagens (direita) no editor */
+.story-editor__characters-filter {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 4px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.story-editor__characters-filter-btn {
+  flex: 1;
+  min-width: 0;
+  width: auto !important;
+  padding: 0.25rem 0.35rem !important;
+  font-size: 0.72rem !important;
+  min-height: auto !important;
+  white-space: nowrap;
+}
+
+.story-editor__characters-filter-btn.is-active {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(212, 175, 55, 0.12);
+}
+
 .story-editor__characters-inner {
   display: flex;
   flex-direction: column;

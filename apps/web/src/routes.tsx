@@ -90,6 +90,17 @@ type ScenePreviewState = {
 const persistedFloatingMenuPos = { right: 24, bottom: 180 };
 const FLOATING_MENU_CHARACTER_BAR_HEIGHT = 194; /* 4 botões 44px + 3 gaps 6px */
 
+/** Sinal jogador→mestre (conteúdo pesado / pausa); só o mestre trata na UI. */
+type SafetyPanicSignal = {
+  id: string;
+  at: number;
+  identity: string;
+  displayName?: string;
+  email?: string;
+  characterId?: number;
+  characterName?: string;
+};
+
 export function Routes() {
   const { user, loading, viewMode, setViewMode, logout } = useAuth();
 
@@ -232,6 +243,19 @@ export function Routes() {
   const expressionInitializedFromLobbyRef = useRef(false);
   /** Slot → URL para o personagem local (antes do GET /lobby devolver character_image_by_slot). */
   const [localCharacterImageBySlot, setLocalCharacterImageBySlot] = useState<Record<number, string>>({});
+
+  const [safetySignals, setSafetySignals] = useState<SafetyPanicSignal[]>([]);
+
+  const dismissSafetySignal = useCallback((id: string) => {
+    setSafetySignals((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+  const dismissAllSafetySignals = useCallback(() => {
+    setSafetySignals([]);
+  }, []);
+
+  useEffect(() => {
+    setSafetySignals([]);
+  }, [show?.id]);
 
   const view: View = useMemo(() => {
     if (loading) return "LOGIN";
@@ -576,6 +600,39 @@ export function Routes() {
         return;
       }
 
+      if (msg.type === "safety/panic") {
+        if (!isGM) return;
+        if (topic != null && topic !== "" && topic !== "safety") return;
+        const fromIdentity =
+          typeof msg.identity === "string" && msg.identity.trim() !== ""
+            ? msg.identity.trim()
+            : participant?.identity;
+        if (!fromIdentity || fromIdentity === "gm") return;
+        const at = typeof msg.at === "number" && Number.isFinite(msg.at) ? msg.at : Date.now();
+        const displayName = typeof msg.displayName === "string" ? msg.displayName.trim() : "";
+        const email = typeof msg.email === "string" ? msg.email.trim() : "";
+        const characterId =
+          typeof msg.characterId === "number" && Number.isFinite(msg.characterId) ? msg.characterId : undefined;
+        const characterName = typeof msg.characterName === "string" ? msg.characterName.trim() : "";
+        const id =
+          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `${at}-${fromIdentity}-${Math.random().toString(36).slice(2, 9)}`;
+        setSafetySignals((prev) => {
+          const next: SafetyPanicSignal = {
+            id,
+            at,
+            identity: fromIdentity,
+            ...(displayName ? { displayName } : {}),
+            ...(email ? { email } : {}),
+            ...(characterId != null ? { characterId } : {}),
+            ...(characterName ? { characterName } : {}),
+          };
+          return [...prev, next].sort((a, b) => a.at - b.at);
+        });
+        return;
+      }
+
       const sceneTitle =
         typeof msg.sceneTitle === "string" ? msg.sceneTitle : "";
       const sceneBody =
@@ -834,7 +891,7 @@ export function Routes() {
       liveKitRoom.off(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
       unsubs.forEach((u) => u());
     };
-  }, [liveKitRoom]);
+  }, [liveKitRoom, isGM]);
 
   useEffect(() => {
     if (!logged && liveKitRoom) {
@@ -1495,6 +1552,12 @@ export function Routes() {
             }}
             floatingMenuPos={floatingMenuPos}
             setFloatingMenuPos={setFloatingMenuPos}
+            canSendSafetySignal={user?.role === "PLAYER"}
+            safetySenderIdentity={user?.role === "PLAYER" && user ? `player-${user.id}` : null}
+            safetyDisplayName={user?.role === "PLAYER" ? user.name : undefined}
+            safetyEmail={user?.role === "PLAYER" ? user.email : undefined}
+            safetyCharacterId={selectedCharacter?.id ?? null}
+            safetyCharacterName={selectedCharacter?.name ?? null}
           />
         ) : null
       }
@@ -1507,6 +1570,73 @@ export function Routes() {
                 O jogo começará em <strong>{countdownSeconds}</strong> segundo{countdownSeconds !== 1 ? "s" : ""}.
               </p>
             </div>
+          </div>,
+          document.body
+        )}
+      {isGM &&
+        show &&
+        safetySignals.length > 0 &&
+        createPortal(
+          <div
+            className="safety-signals-panel"
+            role="region"
+            aria-live="assertive"
+            aria-label="Alerta: jogador pediu pausa ou ajuste na mesa"
+          >
+            <div className="safety-signals-panel__header">
+              <div className="safety-signals-panel__title-row">
+                <svg className="safety-signals-panel__alert-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+                </svg>
+                <div className="safety-signals-panel__title-text">
+                  <span className="safety-signals-panel__title">Alerta na mesa</span>
+                  <span className="safety-signals-panel__subtitle">Jogador sinalizou pausa ou desconforto — sem som</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="safety-signals-panel__btn safety-signals-panel__btn--clear"
+                onClick={dismissAllSafetySignals}
+              >
+                Limpar todos
+              </button>
+            </div>
+            <ul className="safety-signals-panel__list">
+              {safetySignals.map((s) => {
+                const who =
+                  [s.displayName, s.email, s.identity].find((x) => x && String(x).trim() !== "") ?? s.identity;
+                const charLine =
+                  s.characterName && s.characterName.trim() !== ""
+                    ? `Personagem: ${s.characterName.trim()}`
+                    : s.characterId != null
+                      ? `Personagem #${s.characterId}`
+                      : null;
+                const timeStr = new Date(s.at).toLocaleTimeString("pt-BR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                });
+                return (
+                  <li key={s.id} className="safety-signals-panel__item">
+                    <div className="safety-signals-panel__item-body">
+                      <span className="safety-signals-panel__time">{timeStr}</span>
+                      <span className="safety-signals-panel__who">{who}</span>
+                      {charLine != null && (
+                        <span className="safety-signals-panel__character">{charLine}</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="safety-signals-panel__btn"
+                      onClick={() => dismissSafetySignal(s.id)}
+                      aria-label={`Dispensar alerta de ${who}`}
+                    >
+                      Dispensar
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           </div>,
           document.body
         )}

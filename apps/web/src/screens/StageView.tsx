@@ -32,6 +32,9 @@ type SceneCharactersOut = { character_ids: number[] };
 /** Posição persistida da barra livro/ficha/status/inventário (arrastável; mesma estética do menu de áudio). */
 const persistedCharacterBarPos = { right: 24, bottom: 260 };
 
+/** Intervalo mínimo entre sinais ao mestre (conteúdo pesado / pausa), por jogador. */
+const SAFETY_SIGNAL_COOLDOWN_MS = 90_000;
+
 /** Personagem no palco: uma única lista; PC vs NPC só define "quem acende ao falar" e "seleção do mestre". */
 type CharacterOnStage = {
   id: number;
@@ -125,6 +128,22 @@ function InfoIcon({ className }: { className?: string }) {
       <circle cx="12" cy="12" r="10" />
       <path d="M12 16v-4" />
       <path d="M12 8h.01" />
+    </svg>
+  );
+}
+
+/** Ícone de alerta (sinal de pausa / desconforto ao mestre). */
+function PanicAlertIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="26"
+      height="26"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
     </svg>
   );
 }
@@ -260,6 +279,12 @@ export function StageView({
   playerCharacterId = null,
   floatingMenuPos,
   setFloatingMenuPos,
+  canSendSafetySignal = false,
+  safetySenderIdentity = null,
+  safetyDisplayName,
+  safetyEmail,
+  safetyCharacterId = null,
+  safetyCharacterName = null,
 }: {
   room: Room | null;
   showId: string;
@@ -313,6 +338,13 @@ export function StageView({
   /** Posição compartilhada do menu flutuante (unificado com áudio). Quando fornecido, a barra usa e atualiza esta posição. */
   floatingMenuPos?: { right: number; bottom: number };
   setFloatingMenuPos?: (pos: { right: number; bottom: number }) => void;
+  /** Conta PLAYER: permite enviar sinal discreto ao mestre durante o palco (meio‑aberto ou aberto). */
+  canSendSafetySignal?: boolean;
+  safetySenderIdentity?: string | null;
+  safetyDisplayName?: string;
+  safetyEmail?: string;
+  safetyCharacterId?: number | null;
+  safetyCharacterName?: string | null;
 }) {
   const [characters, setCharacters] = useState<CharacterOnStage[]>([]);
   const [visibleForPlayer, setVisibleForPlayer] = useState<Record<number, boolean>>({});
@@ -331,6 +363,7 @@ export function StageView({
   const [sceneTransitionVisible, setSceneTransitionVisible] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [playerExpressionMenuOpen, setPlayerExpressionMenuOpen] = useState(false);
+  const [safetyCooldownSec, setSafetyCooldownSec] = useState(0);
   const [scenariosBarOpen, setScenariosBarOpen] = useState(true);
   const [charactersBarOpen, setCharactersBarOpen] = useState(true);
   /* Livro, ficha, status e inventário: painel aberto e carta de habilidade (sincronizada via LiveKit). */
@@ -1297,6 +1330,49 @@ export function StageView({
     [onNarrativeIndexChange, room, showId]
   );
 
+  useEffect(() => {
+    if (safetyCooldownSec <= 0) return;
+    const id = window.setTimeout(() => setSafetyCooldownSec((s) => Math.max(0, s - 1)), 1000);
+    return () => clearTimeout(id);
+  }, [safetyCooldownSec]);
+
+  const sendSafetyPanic = useCallback(async () => {
+    if (!room?.localParticipant || !canSendSafetySignal) return;
+    const identity = safetySenderIdentity?.trim() || room.localParticipant.identity;
+    const payload = {
+      type: "safety/panic",
+      at: Date.now(),
+      identity,
+      ...(safetyDisplayName?.trim() ? { displayName: safetyDisplayName.trim() } : {}),
+      ...(safetyEmail?.trim() ? { email: safetyEmail.trim() } : {}),
+      ...(safetyCharacterId != null ? { characterId: safetyCharacterId } : {}),
+      ...(safetyCharacterName?.trim() ? { characterName: safetyCharacterName.trim() } : {}),
+    };
+    const enc = new TextEncoder().encode(JSON.stringify(payload));
+    try {
+      await room.localParticipant.publishData(enc, {
+        reliable: true,
+        topic: "safety",
+        destinationIdentities: ["gm"],
+      });
+    } catch {
+      try {
+        await room.localParticipant.publishData(enc, { reliable: true, topic: "safety" });
+      } catch {
+        /* silencioso */
+      }
+    }
+    setSafetyCooldownSec(Math.ceil(SAFETY_SIGNAL_COOLDOWN_MS / 1000));
+  }, [
+    room,
+    canSendSafetySignal,
+    safetySenderIdentity,
+    safetyDisplayName,
+    safetyEmail,
+    safetyCharacterId,
+    safetyCharacterName,
+  ]);
+
   function narrativeMotionVars(slide: NarrativeSlide): CSSProperties {
     const seed = slide.id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
     const dirX = seed % 2 === 0 ? 1 : -1;
@@ -1385,6 +1461,73 @@ export function StageView({
 
   const visibleNarrativeSlide = activeNarrativeLayer === "a" ? narrativeLayerA : narrativeLayerB;
 
+  const safetyPhaseOk = phase === "half" || phase === "stage";
+  const playerStageChrome =
+    !isGM ? (
+      <>
+        {canSendSafetySignal && safetyPhaseOk && room != null && (
+          <div className="stage-view__player-panic">
+            <button
+              type="button"
+              className="stage-view__player-panic-btn"
+              disabled={safetyCooldownSec > 0}
+              onClick={() => void sendSafetyPanic()}
+              aria-label="Alerta ao mestre: preciso de pausa ou ajuste na mesa. Só o mestre é notificado, sem som."
+              title={
+                safetyCooldownSec > 0
+                  ? `Aguarde ${safetyCooldownSec}s para enviar novamente`
+                  : "Alerta ao mestre — um toque envia o sinal (só o mestre vê; sem som)"
+              }
+            >
+              <PanicAlertIcon className="stage-view__player-panic-icon" />
+            </button>
+          </div>
+        )}
+        <div className="stage-view__player-expression">
+          <button
+            type="button"
+            className={"stage-view__player-expression-trigger" + (playerExpressionMenuOpen ? " is-open" : "")}
+            onClick={() => setPlayerExpressionMenuOpen((o) => !o)}
+            aria-expanded={playerExpressionMenuOpen}
+            aria-label={playerExpressionMenuOpen ? "Recolher expressões do avatar" : "Ver expressões do avatar"}
+            title={playerExpressionMenuOpen ? "Recolher" : "Expressões do avatar"}
+          >
+            🎭
+          </button>
+          {playerExpressionMenuOpen && (
+            <div className="stage-view__player-expression-panel" role="dialog" aria-label="Expressões do avatar">
+              {( [
+                { slot: 0, label: "Padrão", emoji: "🙂" },
+                { slot: 1, label: "Assustado", emoji: "😱" },
+                { slot: 2, label: "Rindo", emoji: "😂" },
+                { slot: 3, label: "Furioso", emoji: "😠" },
+                { slot: 4, label: "Ferido / com dor", emoji: "🤕" },
+                { slot: 5, label: "Personalizado 1", emoji: "🎭" },
+                { slot: 6, label: "Personalizado 2", emoji: "🎭" },
+                { slot: 7, label: "Pesquisando", emoji: "🤔" },
+                { slot: 8, label: "Atordoado/Incapacitado", emoji: "😵" },
+                { slot: 9, label: "Off", emoji: "👤" },
+              ] as const ).map(({ slot, label, emoji }) => {
+                const isCurrent = playerExpressionSlot === slot;
+                const displayNum = slot === 9 ? 0 : slot + 1;
+                return (
+                  <div
+                    key={slot}
+                    className={"stage-view__player-expression-item" + (isCurrent ? " stage-view__player-expression-item--current" : "")}
+                  >
+                    <span className="stage-view__player-expression-emoji" aria-hidden>{emoji}</span>
+                    <span className="stage-view__player-expression-text">
+                      {displayNum} – {label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </>
+    ) : null;
+
   if (isNarrativeMode && visibleNarrativeSlide) {
     return (
       <div className={"stage-view stage-view--narrative" + (isGM ? " stage-view--gm" : "")}>
@@ -1452,6 +1595,7 @@ export function StageView({
             {renderSceneTransitionFrame(sceneTransitionFrame)}
           </div>
         )}
+        {playerStageChrome}
       </div>
     );
   }
@@ -1762,50 +1906,7 @@ export function StageView({
         </div>
       )}
 
-      {!isGM && (
-        <div className="stage-view__player-expression">
-          <button
-            type="button"
-            className={"stage-view__player-expression-trigger" + (playerExpressionMenuOpen ? " is-open" : "")}
-            onClick={() => setPlayerExpressionMenuOpen((o) => !o)}
-            aria-expanded={playerExpressionMenuOpen}
-            aria-label={playerExpressionMenuOpen ? "Recolher expressões do avatar" : "Ver expressões do avatar"}
-            title={playerExpressionMenuOpen ? "Recolher" : "Expressões do avatar"}
-          >
-            🎭
-          </button>
-          {playerExpressionMenuOpen && (
-            <div className="stage-view__player-expression-panel" role="dialog" aria-label="Expressões do avatar">
-              {( [
-                { slot: 0, label: "Padrão", emoji: "🙂" },
-                { slot: 1, label: "Assustado", emoji: "😱" },
-                { slot: 2, label: "Rindo", emoji: "😂" },
-                { slot: 3, label: "Furioso", emoji: "😠" },
-                { slot: 4, label: "Ferido / com dor", emoji: "🤕" },
-                { slot: 5, label: "Personalizado 1", emoji: "🎭" },
-                { slot: 6, label: "Personalizado 2", emoji: "🎭" },
-                { slot: 7, label: "Pesquisando", emoji: "🤔" },
-                { slot: 8, label: "Atordoado/Incapacitado", emoji: "😵" },
-                { slot: 9, label: "Off", emoji: "👤" },
-              ] as const ).map(({ slot, label, emoji }) => {
-                const isCurrent = playerExpressionSlot === slot;
-                const displayNum = slot === 9 ? 0 : slot + 1;
-                return (
-                  <div
-                    key={slot}
-                    className={"stage-view__player-expression-item" + (isCurrent ? " stage-view__player-expression-item--current" : "")}
-                  >
-                    <span className="stage-view__player-expression-emoji" aria-hidden>{emoji}</span>
-                    <span className="stage-view__player-expression-text">
-                      {displayNum} – {label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+      {playerStageChrome}
       {abilityCard && (
         <AbilityCardOverlay
           showId={showId}

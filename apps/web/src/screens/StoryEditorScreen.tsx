@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   DndContext,
@@ -29,6 +29,10 @@ const SCENE_CHAR_DROP_PREFIX = "scene-char-drop-";
 const CHAR_DRAG_PREFIX = "char-";
 const SCENE_REORDER_PREFIX = "scene-reorder-";
 const NARRATIVE_IMAGE_REORDER_PREFIX = "narrative-image-reorder-";
+
+function gmCharacterKind(c: GMCharacter): "PC" | "NPC" {
+  return c.kind === "NPC" ? "NPC" : "PC";
+}
 
 /** Converte GMCharacter (campos opcionais) para Character (campos obrigatórios) para EditCharacterScreen. */
 function gmCharToCharacter(c: GMCharacter | null): Character | null {
@@ -126,6 +130,7 @@ function SceneCharacterDropZone({
 function DraggableCharacterThumb({ character }: { character: GMCharacter }) {
   const id = CHAR_DRAG_PREFIX + character.id;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
+  const kind = gmCharacterKind(character);
   return (
     <div
       ref={setNodeRef}
@@ -135,7 +140,12 @@ function DraggableCharacterThumb({ character }: { character: GMCharacter }) {
       {...attributes}
     >
       <img src={getAvatarUrl(character ?? undefined)} alt="" className="story-editor__char-thumb-avatar" />
-      <span>{character.name}</span>
+      <span className="story-editor__char-thumb-text">
+        <span className="story-editor__char-thumb-name">{character.name}</span>
+        <span className={"story-editor__char-kind-badge" + (kind === "NPC" ? " story-editor__char-kind-badge--npc" : "")}>
+          {kind}
+        </span>
+      </span>
     </div>
   );
 }
@@ -411,6 +421,8 @@ export function StoryEditorScreen({
   const [sceneDetailsSceneId, setSceneDetailsSceneId] = useState<string | null>(null);
   const [sceneDetailsCharacterIds, setSceneDetailsCharacterIds] = useState<number[]>([]);
   const [duplicating, setDuplicating] = useState(false);
+  /** Filtro do painel direito (cenas regulares): personagens da história por PC / NPC. */
+  const [storyCharKindFilter, setStoryCharKindFilter] = useState<"all" | "PC" | "NPC">("all");
   const [autosaveEnabled, setAutosaveEnabled] = useState(true);
   const [storyTooltipPos, setStoryTooltipPos] = useState<{ left: number; top: number } | null>(null);
   const storyTooltipLeaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -458,6 +470,13 @@ export function StoryEditorScreen({
   ];
   const currentNarrativeSlide =
     narrativeSlides[Math.max(0, Math.min(narrativePreviewIndex, Math.max(0, narrativeSlides.length - 1)))] ?? null;
+
+  const filteredStoryPanelChars = useMemo(() => {
+    return storyCharacterIds
+      .map((id) => gmCharacters.find((c) => c.id === id))
+      .filter((c): c is GMCharacter => Boolean(c))
+      .filter((c) => storyCharKindFilter === "all" || gmCharacterKind(c) === storyCharKindFilter);
+  }, [storyCharacterIds, gmCharacters, storyCharKindFilter]);
 
   /** IDs de cenários na história: usados em cenas ou adicionados à história (sem cena ainda). */
   const [addedToStoryScenarioIds, setAddedToStoryScenarioIds] = useState<string[]>([]);
@@ -1603,19 +1622,31 @@ export function StoryEditorScreen({
                       {sceneCharacterIds
                         .map((id) => gmCharacters.find((c) => c.id === id))
                         .filter(Boolean)
-                        .map((c) => (
-                          <li key={c!.id} className="story-editor__scene-characters-item">
-                            <img src={getAvatarUrl(c ?? undefined)} alt="" className="story-editor__char-thumb-avatar" />
-                            <span>{c!.name}</span>
-                            <button
-                              type="button"
-                              className="ui-btn ui-btn--ghost"
-                              onClick={() => removeCharacterFromScene(c!.id)}
-                            >
-                              Remover
-                            </button>
-                          </li>
-                        ))}
+                        .map((c) => {
+                          const k = gmCharacterKind(c!);
+                          return (
+                            <li key={c!.id} className="story-editor__scene-characters-item">
+                              <img src={getAvatarUrl(c ?? undefined)} alt="" className="story-editor__char-thumb-avatar" />
+                              <span className="story-editor__scene-characters-name-row">
+                                <span className="story-editor__scene-characters-name">{c!.name}</span>
+                                <span
+                                  className={
+                                    "story-editor__char-kind-badge" + (k === "NPC" ? " story-editor__char-kind-badge--npc" : "")
+                                  }
+                                >
+                                  {k}
+                                </span>
+                              </span>
+                              <button
+                                type="button"
+                                className="ui-btn ui-btn--ghost"
+                                onClick={() => removeCharacterFromScene(c!.id)}
+                              >
+                                Remover
+                              </button>
+                            </li>
+                          );
+                        })}
                     </ul>
                   )}
                 </div>
@@ -1644,16 +1675,41 @@ export function StoryEditorScreen({
                   Nenhum personagem na história. Clique em &quot;Gerenciar personagens&quot; para adicionar.
                 </p>
               ) : (
-                <ul className="story-editor__characters-list">
-                  {storyCharacterIds
-                    .map((id) => gmCharacters.find((c) => c.id === id))
-                    .filter(Boolean)
-                    .map((c) => (
-                      <li key={c!.id} className="story-editor__characters-item">
-                        <DraggableCharacterThumb character={c!} />
+                <>
+                  <div className="story-editor__characters-filter" role="group" aria-label="Filtrar por tipo de personagem">
+                    {(
+                      [
+                        { key: "all" as const, label: "Todos" },
+                        { key: "PC" as const, label: "PCs" },
+                        { key: "NPC" as const, label: "NPCs" },
+                      ] as const
+                    ).map(({ key, label }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        className={
+                          "ui-btn ui-btn--ghost story-editor__characters-filter-btn" +
+                          (storyCharKindFilter === key ? " is-active" : "")
+                        }
+                        onClick={() => setStoryCharKindFilter(key)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <ul className="story-editor__characters-list">
+                    {filteredStoryPanelChars.map((c) => (
+                      <li key={c.id} className="story-editor__characters-item">
+                        <DraggableCharacterThumb character={c} />
                       </li>
                     ))}
-                </ul>
+                  </ul>
+                  {storyCharacterIds.length > 0 && filteredStoryPanelChars.length === 0 && (
+                    <p className="story-editor__placeholder" style={{ marginTop: 8 }}>
+                      Nenhum personagem neste filtro.
+                    </p>
+                  )}
+                </>
               )}
               <div className="story-editor__characters-actions">
                 <button
