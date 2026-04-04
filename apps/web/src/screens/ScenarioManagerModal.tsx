@@ -69,7 +69,7 @@ export function ScenarioManagerModal({
   /** IDs de cenários na história (usados em cenas ou adicionados). */
   usedInStoryScenarioIds?: string[];
   /** No roteiro: adicionar cenário à história (sem exclusão). */
-  onAddScenarioToStory?: (scenarioId: string) => void;
+  onAddScenarioToStory?: (scenarioId: string) => void | Promise<void>;
   /** No roteiro: remover cenário da história (desvincula das cenas, sem exclusão). */
   onRemoveScenarioFromStory?: (scenarioId: string) => Promise<void>;
   initialAction?: "create" | string | null;
@@ -86,6 +86,7 @@ export function ScenarioManagerModal({
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [addingId, setAddingId] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<{ scenario: Scenario; x: number; y: number } | null>(null);
   const tooltipLeaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const appliedInitialActionRef = useRef<string | boolean>(false);
@@ -309,6 +310,24 @@ export function ScenarioManagerModal({
     setDescription("");
     setCrop(null);
     setFormOpen(true);
+  }
+
+  async function handleAddToStory(id: string) {
+    if (!onAddScenarioToStory) return;
+    setAddingId(id);
+    setErr(null);
+    try {
+      await Promise.resolve(onAddScenarioToStory(id));
+      onSaved?.();
+    } catch (e: unknown) {
+      const msg =
+        e && typeof (e as { message?: string })?.message === "string"
+          ? (e as { message: string }).message
+          : "Falha ao adicionar à história";
+      setErr(msg);
+    } finally {
+      setAddingId(null);
+    }
   }
 
   async function handleRemoveFromStory(id: string) {
@@ -551,7 +570,8 @@ export function ScenarioManagerModal({
                                 <button
                                   type="button"
                                   className="ui-btn scenario-manager__btn-icon"
-                                  onClick={() => onAddScenarioToStory(s.id)}
+                                  onClick={() => void handleAddToStory(s.id)}
+                                  disabled={addingId === s.id}
                                   title="Adicionar à história"
                                   aria-label="Adicionar à história"
                                 >

@@ -17,6 +17,8 @@ from apps.api.backend.models.scene import Scene
 from apps.api.backend.models.scene_character import SceneCharacter
 from apps.api.backend.models.scene_image import SceneImage
 from apps.api.backend.models.story_character import StoryCharacter
+from apps.api.backend.models.story_scenario import StoryScenario
+from apps.api.backend.models.scenario import Scenario
 from apps.api.backend.routers.auth import require_gm
 from apps.api.backend.models.user import User
 from sqlmodel import Session, select
@@ -526,6 +528,61 @@ def put_story_characters(
     stmt = select(StoryCharacter.character_id).where(StoryCharacter.story_id == story_id)
     rows = session.exec(stmt).all()
     return StoryCharactersOut(character_ids=list(rows))
+
+
+# --- Story scenarios (pool do editor: IDs extras além dos usados em cenas) ---
+
+class StoryScenariosOut(BaseModel):
+    scenario_ids: list[str]
+
+
+class StoryScenariosPutIn(BaseModel):
+    scenario_ids: list[str] = Field(default_factory=list)
+
+
+@router.get("/{story_id}/scenarios", response_model=StoryScenariosOut)
+def get_story_scenarios(
+    story_id: str,
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    story = session.get(Story, story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+    stmt = select(StoryScenario.scenario_id).where(StoryScenario.story_id == story_id)
+    rows = session.exec(stmt).all()
+    return StoryScenariosOut(scenario_ids=list(rows))
+
+
+@router.put("/{story_id}/scenarios", response_model=StoryScenariosOut)
+def put_story_scenarios(
+    story_id: str,
+    data: StoryScenariosPutIn,
+    gm: User = Depends(require_gm),
+    session: Session = Depends(get_session),
+):
+    story = session.get(Story, story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+    seen: set[str] = set()
+    ordered_unique: list[str] = []
+    for sid in data.scenario_ids or []:
+        if sid in seen:
+            continue
+        seen.add(sid)
+        ordered_unique.append(sid)
+    for sid in ordered_unique:
+        if not session.get(Scenario, sid):
+            raise HTTPException(status_code=400, detail=f"Unknown scenario_id: {sid}")
+    existing = session.exec(select(StoryScenario).where(StoryScenario.story_id == story_id)).all()
+    for row in existing:
+        session.delete(row)
+    for sid in ordered_unique:
+        session.add(StoryScenario(story_id=story_id, scenario_id=sid))
+    session.commit()
+    stmt = select(StoryScenario.scenario_id).where(StoryScenario.story_id == story_id)
+    rows = session.exec(stmt).all()
+    return StoryScenariosOut(scenario_ids=list(rows))
 
 
 @router.get("", response_model=list[StoryOut])

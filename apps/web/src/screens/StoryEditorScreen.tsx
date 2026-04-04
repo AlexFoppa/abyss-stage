@@ -478,8 +478,12 @@ export function StoryEditorScreen({
       .filter((c) => storyCharKindFilter === "all" || gmCharacterKind(c) === storyCharKindFilter);
   }, [storyCharacterIds, gmCharacters, storyCharKindFilter]);
 
-  /** IDs de cenários na história: usados em cenas ou adicionados à história (sem cena ainda). */
+  /** Cenários explicitamente adicionados à história (persistidos); união com scenario_id das cenas na UI. */
   const [addedToStoryScenarioIds, setAddedToStoryScenarioIds] = useState<string[]>([]);
+  const addedToStoryScenarioIdsRef = useRef<string[]>([]);
+  useEffect(() => {
+    addedToStoryScenarioIdsRef.current = addedToStoryScenarioIds;
+  }, [addedToStoryScenarioIds]);
   const scenarioIdsInStory = new Set([
     ...scenes.map((s) => s.scenario_id).filter(Boolean),
     ...addedToStoryScenarioIds,
@@ -539,6 +543,17 @@ export function StoryEditorScreen({
       setStoryCharacterIds(res?.character_ids ?? []);
     } catch {
       setStoryCharacterIds([]);
+    }
+  }, [storyId]);
+
+  const loadStoryScenarios = useCallback(async () => {
+    try {
+      const res = await api<{ scenario_ids: string[] }>(
+        `/api/gm/stories/${storyId}/scenarios`
+      );
+      setAddedToStoryScenarioIds(Array.isArray(res?.scenario_ids) ? res.scenario_ids : []);
+    } catch {
+      setAddedToStoryScenarioIds([]);
     }
   }, [storyId]);
 
@@ -624,12 +639,14 @@ export function StoryEditorScreen({
       await loadGmCharacters();
       if (cancelled) return;
       await loadStoryCharacters();
+      if (cancelled) return;
+      await loadStoryScenarios();
       if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [storyId, loadStory, loadScenes, loadScenarios, loadGmCharacters, loadStoryCharacters]);
+  }, [storyId, loadStory, loadScenes, loadScenarios, loadGmCharacters, loadStoryCharacters, loadStoryScenarios]);
 
   useEffect(() => {
     if (initialSceneIdAppliedRef.current || !initialSceneId || scenes.length === 0) return;
@@ -639,9 +656,28 @@ export function StoryEditorScreen({
     }
   }, [initialSceneId, scenes]);
 
-  const addScenarioToStory = useCallback((scenarioId: string) => {
-    setAddedToStoryScenarioIds((prev) => (prev.includes(scenarioId) ? prev : [...prev, scenarioId]));
-  }, []);
+  const addScenarioToStory = useCallback(async (scenarioId: string) => {
+    const prev = addedToStoryScenarioIdsRef.current;
+    if (prev.includes(scenarioId)) return;
+    const next = [...prev, scenarioId];
+    setAddedToStoryScenarioIds(next);
+    addedToStoryScenarioIdsRef.current = next;
+    try {
+      await api<{ scenario_ids: string[] }>(`/api/gm/stories/${storyId}/scenarios`, {
+        method: "PUT",
+        body: JSON.stringify({ scenario_ids: next }),
+      });
+    } catch (e: unknown) {
+      setAddedToStoryScenarioIds(prev);
+      addedToStoryScenarioIdsRef.current = prev;
+      const msg =
+        e && typeof (e as { message?: string })?.message === "string"
+          ? (e as { message: string }).message
+          : "Falha ao adicionar cenário à história";
+      setErr(msg);
+      throw e;
+    }
+  }, [storyId]);
 
   const removeScenarioFromStory = useCallback(
     async (scenarioId: string) => {
@@ -653,9 +689,26 @@ export function StoryEditorScreen({
         });
       }
       await loadScenes();
-      setAddedToStoryScenarioIds((prev) => prev.filter((id) => id !== scenarioId));
+      const prev = addedToStoryScenarioIdsRef.current;
+      const next = prev.filter((id) => id !== scenarioId);
+      setAddedToStoryScenarioIds(next);
+      addedToStoryScenarioIdsRef.current = next;
+      try {
+        await api<{ scenario_ids: string[] }>(`/api/gm/stories/${storyId}/scenarios`, {
+          method: "PUT",
+          body: JSON.stringify({ scenario_ids: next }),
+        });
+      } catch (e: unknown) {
+        await loadStoryScenarios();
+        const msg =
+          e && typeof (e as { message?: string })?.message === "string"
+            ? (e as { message: string }).message
+            : "Falha ao atualizar cenários da história";
+        setErr(msg);
+        throw e;
+      }
     },
-    [storyId, scenes, loadScenes]
+    [storyId, scenes, loadScenes, loadStoryScenarios]
   );
 
   useEffect(() => {
