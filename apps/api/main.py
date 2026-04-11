@@ -26,6 +26,10 @@ from apps.api.backend.routers.gm_stories import router as gm_stories_router
 from apps.api.backend.routers.gm_scenarios import router as gm_scenarios_router
 from apps.api.backend.routers.catalog import router as catalog_router
 from apps.api.backend.routers.show import router as show_router
+from apps.api.backend.http_request_log_middleware import (
+    HttpRequestLogMiddleware,
+    http_request_logging_enabled,
+)
 
 
 @asynccontextmanager
@@ -40,6 +44,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+if http_request_logging_enabled():
+    app.add_middleware(HttpRequestLogMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

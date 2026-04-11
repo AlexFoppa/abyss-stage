@@ -113,7 +113,7 @@ export async function runAudioDiagnostic(): Promise<DiagnosticStep[]> {
     const likelyWebRTC = lower.includes("pc connection") || lower.includes("establish") || lower.includes("ice") || lower.includes("webrtc");
     const detailWebRTC = isLiveKitCloud
       ? "WebSocket OK, mas a mídia não conectou (TURN/relay). Rede/firewall pode bloquear. Erro: "
-      : "WebSocket chegou, mas a mídia não. Use LiveKit Cloud (docs/audio-livekit-cloud.md). Erro: ";
+      : "WebSocket chegou, mas a mídia não. Use LiveKit Cloud (ver Readme na raiz do repo). Erro: ";
     steps.push({
       step: 3,
       label: likelyWebRTC ? "Falha na mídia (WebRTC)" : "Falha na conexão LiveKit",
@@ -616,7 +616,7 @@ export function LobbyScreen({
                   <span className="lobby-error">{err}</span>
                   {lastLiveKitUrl && (
                     <p className="lobby-error-url">
-                      URL: <code>{lastLiveKitUrl}</code>. Túnel 7880 e API; ou use LiveKit Cloud (docs/audio-livekit-cloud.md).
+                      URL: <code>{lastLiveKitUrl}</code>. Túnel 7880 e API; ou use LiveKit Cloud (ver Readme na raiz do repo).
                     </p>
                   )}
                 </div>

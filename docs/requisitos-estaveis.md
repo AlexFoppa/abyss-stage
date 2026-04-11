@@ -1,8 +1,10 @@
 # Requisitos estáveis (não regredir)
 
-**Versão:** 1.3  
+**Versão:** 1.7  
 **Actualização:** 2026-03-30  
 **Uso:** referência para refactor e redesign; alterações que quebrem estes pontos exigem decisão explícita de produto. O que **não** estiver aqui **não** conta como requisito estável até ser acrescentado (este ficheiro é a fonte de planeamento em `docs/`).
+
+**Colaboração (IA / terceiros):** **Não** alterar código, middleware, variáveis de ambiente, `.env.example` nem ficheiros em `docs/` **sem autorização explícita** do dono do repositório. **Não** implementar funcionalidades a meio nem alargar o âmbito do pedido sem combinar (evita logs, flags ou refactors “pela metade” sem alinhamento).
 
 ---
 
@@ -38,7 +40,8 @@
 
 ## Queda do mestre durante o espetáculo
 
-- Se o **mestre** sair (rede, browser, crash) **durante** o espetáculo, ao voltar a autenticar-se deve **retomar o jogo no ponto em que parou**: o estado da sessão de jogo **não** se perde só por essa desconexão (reconexão + estado persistido/recuperável conforme arquitectura adoptada).
+- Se o **mestre** fechar só o **browser** ou perder **rede**, mas o **processo da API continuar a correr** com o mesmo **contexto de URL** (mesma instância, mesmo túnel/deploy), ao voltar a autenticar-se deve **retomar o jogo no ponto em que parou** (estado do espetáculo em memória na API + `GET /show/active`, etc.).
+- **Reinício do processo da API** (deploy, crash do servidor) ou **mudança da URL pública** do app (novo túnel, novo ambiente): **não** há requisito de restaurar o **mesmo** espetáculo nem a mesma sessão — trata-se de **nova execução** do serviço; jogadores e mestre voltam a alinhar por um novo show se necessário.
 
 ## Observabilidade e carga (polling)
 
@@ -52,3 +55,22 @@
 ## Escala de referência
 
 - Sessões de RPG: ordem de **~6 pessoas**, **~6 h** por sessão, **≥4 sessões/mês**; arquitectura e custos devem tolerar **crescimento** além disso quando possível.
+
+---
+
+## Backlog de desenvolvimento (código — actualizar quando fechar)
+
+1. **Paridade de retratos (lobby + palco):** Unificar a origem da URL por `character_id` e slot de expressão efectivo (hoje: `localCharacterImageBySlot`, `character_image_by_slot` do `GET /lobby`, e vias no GM em `StageView` / `fetchCharactersForGM`) numa ordem de precedência alinhada ao servidor, sem mapas locais que contradigam o lobby para o mesmo alvo visível.
+2. **Piscar / preview para todos:** Garantir que o override temporário (`expression/override` e estado espelhado) produza a **mesma** percepção visual em todos os clientes; corrigir efeitos só no cliente local (ex.: `expressionJustFixedAt` só com `isLocal`) se violarem o RF.
+3. **Duplicação de `GET /lobby`:** Com GM em espetáculo, `routes.tsx` e `StageView` disparam pedidos ao lobby em paralelo — consolidar (um dono do poll ou partilha de dados).
+4. **Jogador com espetáculo activo:** Rever UX/copy (`showActiveMustSelectCharacter`, bootstrap `GET /show/active`) para cumprir o RF (orientação clara, não “visitante sem jogo”).
+5. **Remover Krisp (LiveKit noise filter):** Retirar dependência `@livekit/krisp-noise-filter`, processador no track de áudio e UI associada no lobby — motivo: custo / facturação BVC no LiveKit Cloud (e-mail Maio 2026); manter opções de captura do browser (noise suppression, etc.) que não dependam desse add-on.
+6. **Trilha sonora no espetáculo:** A definir quando o item for abordado (fonte, sync, direitos, GM vs jogador).
+7. **Transcrição de fala:** A definir quando o item for abordado (privacidade, custo, língua, quem vê o texto).
+
+## Backlog nice to have (desenvolvimento)
+
+1. **Simplificar fluxo** de entrada do jogador com espetáculo a decorrer (menos passos ou UI mais directa), mantendo aceitável o lobby para áudio e escolha de personagem — ver bullet “Nice to have” em **Espetáculo iniciado — jogador que entra depois**.
+2. **Timer no espetáculo** (contagem visível para mesa / GM — detalhe a fechar quando for prioridade).
+3. **Baralho de arquétipos** para apoio à **criação de personagens** (mecânica e UX a fechar quando for prioridade).
+4. **Seleccionar dispositivo de saída de áudio** (altifalante / auscultadores) no lobby ou espetáculo — hoje só é possível escolher o **dispositivo de entrada** (microfone).

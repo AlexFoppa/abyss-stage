@@ -20,7 +20,7 @@ SUBIR TUDO DE UMA VEZ (RECOMENDADO — MESTRE + JOGADOR)
 3) Abrir no navegador a URL que o script mostrar (https://xxx.trycloudflare.com).
    Mestre e jogador usam a mesma URL; o áudio conecta via LiveKit Cloud.
 
-Documentação: docs/audio-livekit-cloud.md e docs/passo-a-passo-mestre-jogador.md
+Documentação: docs/requisitos-estaveis.md (requisitos estáveis / não regredir). Áudio LiveKit: secções abaixo e ./scripts/start-lobby-tunnels.sh.
 
 ================================================================================
 RODAR A API (FASTAPI)
@@ -132,9 +132,9 @@ MESTRE E JOGADOR EM DUAS MÁQUINAS (REDE)
 ================================================================================
 
 Recomendado: **LiveKit Cloud** + script `./scripts/start-lobby-tunnels.sh` (um túnel
-para o app; áudio via LiveKit Cloud). Ver docs/audio-livekit-cloud.md.
+para o app; áudio via LiveKit Cloud).
 
-Alternativas (docs/passo-a-passo-mestre-jogador.md):
+Alternativas (rede local / IP):
 - **Mesma rede (LAN):** LIVEKIT_WS_URL="ws://192.168.x.x:7880"; jogador acessa
   o IP do Linux (ex.: http://192.168.x.x:5173). Liberar portas 7880, 7881, 7882.
 - **Redes diferentes:** servidor com wss:// ou LiveKit Cloud. A URL do LiveKit
