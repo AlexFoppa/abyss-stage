@@ -29,6 +29,21 @@ import { scenarioCropFromScenario, scenarioImageUrl as getScenarioImageUrlFromSc
 
 type SceneCharactersOut = { character_ids: number[] };
 
+/** Mesma precedência que GET /lobby: `character_image_by_slot` + `expression_slot`, senão `character_image_url`. */
+function portraitUrlFromLobbyParticipant(lobby: LobbyParticipant): string {
+  const bySlot = lobby.character_image_by_slot;
+  const expr =
+    typeof lobby.expression_slot === "number" && lobby.expression_slot >= 0 && lobby.expression_slot <= 9
+      ? lobby.expression_slot
+      : 0;
+  if (bySlot && typeof bySlot === "object") {
+    const u = bySlot[expr] ?? bySlot[0];
+    if (typeof u === "string" && u !== "") return u;
+  }
+  if (lobby.character_image_url) return getAvatarUrl({ character_image_url: lobby.character_image_url });
+  return getAvatarUrl(null);
+}
+
 /** Posição persistida da barra livro/ficha/status/inventário (arrastável; mesma estética do menu de áudio). */
 const persistedCharacterBarPos = { right: 24, bottom: 260 };
 
@@ -266,7 +281,7 @@ export function StageView({
   isGM,
   gmEmail,
   lobbyParticipants,
-  lobbyCharacterIdsKey: _lobbyCharacterIdsKeyFromParent,
+  lobbyCharacterIdsKey = "",
   speakingByIdentity,
   playerExpressionSlot = 0,
   resolvedParticipantImageByCharacterId,
@@ -320,6 +335,7 @@ export function StageView({
   improvisationScenarios?: Array<{
     id: string;
     name: string;
+    description?: string | null;
     image_storage_key: string | null;
     crop_x?: number | null;
     crop_y?: number | null;
@@ -411,7 +427,10 @@ export function StageView({
   const sceneTransitionTimeoutRef = useRef<number | null>(null);
   const sceneTransitionRafRef = useRef<number | null>(null);
   const currentSceneFrameRef = useRef<SceneTransitionFrame | null>(null);
-  void _lobbyCharacterIdsKeyFromParent;
+  const lobbyParticipantsRef = useRef(lobbyParticipants);
+  useEffect(() => {
+    lobbyParticipantsRef.current = lobbyParticipants;
+  }, [lobbyParticipants]);
 
   useEffect(() => {
     posRef.current = posByCharId;
@@ -489,12 +508,12 @@ export function StageView({
   const fetchCharactersForGM = useCallback(async () => {
     if (!storyId || !sceneId) return;
     try {
-      const [scRes, lobbyRes, list] = await Promise.all([
+      const lobbyParticipantsFromParent = lobbyParticipantsRef.current;
+      const [scRes, list] = await Promise.all([
         api<SceneCharactersOut>(`/api/gm/stories/${storyId}/scenes/${sceneId}/characters`),
-        api<{ participants: LobbyParticipant[] }>("/api/lobby"),
         api<GMCharacter[]>("/api/gm/characters"),
       ]);
-      const lobbyParticipantsFromApi = Array.isArray(lobbyRes?.participants) ? lobbyRes.participants : [];
+      const lobbyParticipantsFromApi = Array.isArray(lobbyParticipantsFromParent) ? lobbyParticipantsFromParent : [];
       const lobbyByCharId = new Map<number, LobbyParticipant>();
       const lobbyCharIds: number[] = [];
       lobbyParticipantsFromApi.forEach((p) => {
@@ -515,10 +534,7 @@ export function StageView({
           ? gmChar.kind === "NPC" || (!!gmEmail && gmChar.owner_email === gmEmail)
           : false;
         if (gmChar) {
-          const imageUrl =
-            lobby?.character_image_url != null && lobby.character_image_url !== ""
-              ? getAvatarUrl({ character_image_url: lobby.character_image_url })
-              : getAvatarUrl(gmChar);
+          const imageUrl = lobby ? portraitUrlFromLobbyParticipant(lobby) : getAvatarUrl(gmChar);
           byId.set(id, {
             id: gmChar.id,
             name: gmChar.name,
@@ -532,7 +548,7 @@ export function StageView({
           byId.set(id, {
             id,
             name: lobby.character_name ?? "Personagem",
-            imageUrl: getAvatarUrl({ character_image_url: lobby.character_image_url }),
+            imageUrl: portraitUrlFromLobbyParticipant(lobby),
             notes: "",
             isNPC: false,
           });
@@ -553,7 +569,7 @@ export function StageView({
     if (!isGM) return;
     let cancelled = false;
     fetchCharactersForGM();
-    const intervalMs = 2500;
+    const intervalMs = 5000;
     const t = setInterval(() => {
       if (cancelled) return;
       fetchCharactersForGM();
@@ -562,7 +578,7 @@ export function StageView({
       cancelled = true;
       clearInterval(t);
     };
-  }, [isGM, fetchCharactersForGM]);
+  }, [isGM, fetchCharactersForGM, lobbyCharacterIdsKey]);
 
   useEffect(() => {
     if (characters.length === 0) return;

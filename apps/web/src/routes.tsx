@@ -101,6 +101,9 @@ type SafetyPanicSignal = {
   characterName?: string;
 };
 
+/** Preview 0–9 no lobby: troca de imagem ~1s. Ao receber LiveKit, o fim usa o relógio local (evita skew entre jogador e mestre). */
+const EXPRESSION_LOBBY_PREVIEW_MS = 1000;
+
 export function Routes() {
   const { user, loading, viewMode, setViewMode, logout } = useAuth();
 
@@ -230,18 +233,24 @@ export function Routes() {
   /* Expressão 0–9: slot de armazenamento (0=Padrão, 1=Assustado, … 9=Off). Tecla 1→slot 0, tecla 0→slot 9. */
   const [currentExpressionSlot, setCurrentExpressionSlot] = useState(0); // 0 = Padrão
   const [temporaryOverride, setTemporaryOverride] = useState<{ slot: number; until: number } | null>(null);
-  /** Timestamp em que a expressão foi fixada (para brilho discreto no avatar). */
-  const [expressionJustFixedAt, setExpressionJustFixedAt] = useState<number | null>(null);
   /** Override temporário por identity (recebido via LiveKit). */
   const [expressionOverrideByIdentity, setExpressionOverrideByIdentity] = useState<
     Record<string, { slot: number; until: number }>
   >({});
+  /** Remove cada preview remoto no instante `until` (evita mapa preso + useMemo com tempo congelado). */
+  const expressionOverrideClearTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   /** Slot atual por identity (recebido via LiveKit expression/current). */
   const [expressionCurrentByIdentity, setExpressionCurrentByIdentity] = useState<Record<string, number>>({});
+  useEffect(() => {
+    return () => {
+      Object.values(expressionOverrideClearTimeoutsRef.current).forEach((t) => clearTimeout(t));
+      expressionOverrideClearTimeoutsRef.current = {};
+    };
+  }, []);
   const expressionKeyDownRef = useRef<{ key: string; slot: number; time: number } | null>(null);
   const expressionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const expressionInitializedFromLobbyRef = useRef(false);
-  /** Slot → URL para o personagem local (antes do GET /lobby devolver character_image_by_slot). */
+  /** Fallback slot→URL só quando GET /lobby ainda não trouxe `character_image_by_slot` para o jogador local. */
   const [localCharacterImageBySlot, setLocalCharacterImageBySlot] = useState<Record<number, string>>({});
 
   const [safetySignals, setSafetySignals] = useState<SafetyPanicSignal[]>([]);
@@ -335,7 +344,7 @@ export function Routes() {
         if (isGM) {
           setGmSubView("GM_ESPETACULO");
         }
-        /* Jogador: manter em LOBBY para conectar áudio primeiro; depois selecionar personagem (mensagem no LobbyScreen). */
+        /* Jogador: mantém-se no lobby para áudio primeiro; com show activo, a UI indica mesa em jogo e escolha de personagem (não fluxo de “visitante”). */
       })
       .catch(() => {});
   }, [logged, isGM]);
@@ -518,7 +527,6 @@ export function Routes() {
   const espetaculoPhase =
     showPhase === "sliding" || showPhase === "half" || showPhase === "stage" ? showPhase : null;
 
-  const isStageWithBar = effectiveRole === "PLAYER" && !!show && (showPhase === "half" || showPhase === "stage");
   const isStageMenuUnified = !!show && (showPhase === "half" || showPhase === "stage");
 
   useEffect(() => {
@@ -581,13 +589,25 @@ export function Routes() {
       }
       if (!msg || typeof msg !== "object") return;
 
-      /* Expressão: sincronização em tempo real (override 2s e current). */
+      /* Expressão: preview ~1s = troca de imagem (slot); fixação = expression/current + lobby. */
       if (msg.type === "expression/override") {
         const identity = typeof msg.identity === "string" ? msg.identity : participant?.identity;
         const slot = typeof msg.slot === "number" && msg.slot >= 0 && msg.slot <= 9 ? msg.slot : 0;
-        const until = typeof msg.until === "number" && Number.isFinite(msg.until) ? msg.until : Date.now() + 1000;
         if (identity) {
-          setExpressionOverrideByIdentity((prev) => ({ ...prev, [identity]: { slot, until } }));
+          const localUntil = Date.now() + EXPRESSION_LOBBY_PREVIEW_MS;
+          const prevClear = expressionOverrideClearTimeoutsRef.current[identity];
+          if (prevClear) clearTimeout(prevClear);
+          setExpressionOverrideByIdentity((prev) => ({ ...prev, [identity]: { slot, until: localUntil } }));
+          expressionOverrideClearTimeoutsRef.current[identity] = setTimeout(() => {
+            setExpressionOverrideByIdentity((prev) => {
+              const cur = prev[identity];
+              if (!cur || cur.until !== localUntil) return prev;
+              const next = { ...prev };
+              delete next[identity];
+              return next;
+            });
+            delete expressionOverrideClearTimeoutsRef.current[identity];
+          }, EXPRESSION_LOBBY_PREVIEW_MS);
         }
         return;
       }
@@ -1045,16 +1065,24 @@ export function Routes() {
     return () => clearInterval(t);
   }, [isLobbyView, user, selectedCharacter?.id, currentExpressionSlot, fetchLobby]);
 
+  /** Identity estável do utilizador no lobby (mesmo antes do LiveKit ligar). */
+  const resolveLobbyExpressionIdentity = useCallback((): string | null => {
+    const fromLk = liveKitRoom?.localParticipant?.identity;
+    if (fromLk) return fromLk;
+    if (!user) return null;
+    return isGM ? "gm" : `player-${user.id}`;
+  }, [liveKitRoom, user, isGM]);
+
   const fixExpressionAndSync = useCallback(
     (slot: number) => {
       setCurrentExpressionSlot(slot);
       setTemporaryOverride(null);
-      setExpressionJustFixedAt(Date.now());
       expressionKeyDownRef.current = null;
       if (expressionTimerRef.current) {
         clearTimeout(expressionTimerRef.current);
         expressionTimerRef.current = null;
       }
+      const identity = resolveLobbyExpressionIdentity();
       api("/api/lobby/me", {
         method: "POST",
         body: JSON.stringify({
@@ -1065,27 +1093,19 @@ export function Routes() {
         .then(() => fetchLobby())
         .catch(() => {});
       try {
-        const identity = liveKitRoom?.localParticipant?.identity;
-        if (identity) {
-          liveKitRoom?.localParticipant.publishData(
+        if (identity && liveKitRoom?.localParticipant) {
+          liveKitRoom.localParticipant.publishData(
             new TextEncoder().encode(JSON.stringify({ type: "expression/current", identity, expression_slot: slot })),
             { reliable: true, topic: "lobby" }
           );
         }
       } catch {}
     },
-    [liveKitRoom, selectedCharacter?.id, fetchLobby]
+    [liveKitRoom, selectedCharacter?.id, fetchLobby, resolveLobbyExpressionIdentity]
   );
 
-  const EXPRESSION_DURATION_MS = 1000; /* 1s: tempo do override (toque) e do segurar para fixar */
   const expressionKeysActive =
     isLobbyView || (effectiveRole === "PLAYER" && !!show && (showPhase === "half" || showPhase === "stage"));
-  useEffect(() => {
-    if (expressionJustFixedAt == null) return;
-    const t = setTimeout(() => setExpressionJustFixedAt(null), 500);
-    return () => clearTimeout(t);
-  }, [expressionJustFixedAt]);
-
   useEffect(() => {
     if (!expressionKeysActive || !user) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1097,13 +1117,13 @@ export function Routes() {
       const keyNum = parseInt(key, 10);
       const slot = (keyNum + 9) % 10;
       const now = Date.now();
-      const until = now + EXPRESSION_DURATION_MS;
+      const until = now + EXPRESSION_LOBBY_PREVIEW_MS;
       expressionKeyDownRef.current = { key, slot, time: now };
       setTemporaryOverride({ slot, until });
       try {
-        const identity = liveKitRoom?.localParticipant?.identity;
-        if (identity) {
-          liveKitRoom?.localParticipant.publishData(
+        const identity = resolveLobbyExpressionIdentity();
+        if (identity && liveKitRoom?.localParticipant) {
+          liveKitRoom.localParticipant.publishData(
             new TextEncoder().encode(JSON.stringify({ type: "expression/override", identity, slot, until })),
             { reliable: true, topic: "lobby" }
           );
@@ -1118,7 +1138,7 @@ export function Routes() {
         } else {
           setTemporaryOverride(null);
         }
-      }, EXPRESSION_DURATION_MS);
+      }, EXPRESSION_LOBBY_PREVIEW_MS);
     };
     const onKeyUp = (e: KeyboardEvent) => {
       const key = e.key;
@@ -1126,7 +1146,7 @@ export function Routes() {
       const ref = expressionKeyDownRef.current;
       if (ref?.key === key) {
         const slot = ref.slot;
-        if (Date.now() - ref.time >= EXPRESSION_DURATION_MS) {
+        if (Date.now() - ref.time >= EXPRESSION_LOBBY_PREVIEW_MS) {
           fixExpressionAndSync(slot);
         }
         expressionKeyDownRef.current = null;
@@ -1138,7 +1158,7 @@ export function Routes() {
       window.removeEventListener("keydown", onKeyDown, { capture: true });
       window.removeEventListener("keyup", onKeyUp, { capture: true });
     };
-  }, [expressionKeysActive, user, fixExpressionAndSync, liveKitRoom, EXPRESSION_DURATION_MS]);
+  }, [expressionKeysActive, user, fixExpressionAndSync, liveKitRoom, resolveLobbyExpressionIdentity]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -1227,7 +1247,7 @@ export function Routes() {
     ];
   }
 
-  /** Única fonte da lógica de expressão: slot efetivo + URL por personagem (lobby e espetáculo). */
+  /** Slot efetivo + URL por personagem. Preview 0–9 ≈1s = troca de imagem (override), não efeito CSS. */
   const resolvedParticipantImageByCharacterId = useMemo(() => {
     const now = Date.now();
     const map: Record<number, string> = {};
@@ -1242,10 +1262,14 @@ export function Routes() {
             if (override && now < override.until) return override.slot;
             return expressionCurrentByIdentity[p.identity] ?? p.expression_slot ?? 0;
           })();
-      const slotMap =
-        isLocal && Object.keys(localCharacterImageBySlot).length > 0
+      const fromLobby = p.character_image_by_slot;
+      const hasLobbySlots =
+        fromLobby != null && typeof fromLobby === "object" && Object.keys(fromLobby).length > 0;
+      const slotMap = hasLobbySlots
+        ? fromLobby
+        : isLocal && Object.keys(localCharacterImageBySlot).length > 0
           ? localCharacterImageBySlot
-          : p.character_image_by_slot ?? undefined;
+          : undefined;
       const url =
         slotMap != null && slotMap[effectiveSlot] != null
           ? slotMap[effectiveSlot]
@@ -2042,7 +2066,7 @@ export function Routes() {
         <SelectCharacterScreen
           messageWhenShowActive={
             show && effectiveRole === "PLAYER"
-              ? "Há um espetáculo em andamento. Selecione um personagem para entrar."
+              ? "A mesa já está em jogo nesta sessão. Escolha um personagem para entrar na mesma partida — não é apenas visitar o lobby."
               : undefined
           }
           onBack={() => setSubView("LOBBY")}
@@ -2103,7 +2127,6 @@ export function Routes() {
                 .filter((p) => !p.is_gm)
                 .slice(0, 5)
                 .map((p) => {
-                  const isLocal = localIdentity != null && p.identity === localIdentity;
                   const imageUrl =
                     p.character_id != null && resolvedParticipantImageByCharacterId[p.character_id] != null
                       ? resolvedParticipantImageByCharacterId[p.character_id]
@@ -2113,8 +2136,6 @@ export function Routes() {
                       ? localSpeaking
                       : (speakingByIdentity[p.identity] ?? false)
                     : false;
-                  const showExpressionFixedGlow =
-                    isLocal && expressionJustFixedAt != null && Date.now() - expressionJustFixedAt < 500;
                   const offset = actorOffsets[p.identity] ?? 0;
                   const displayLabel = (p.user_name ?? p.user_email ?? "").trim() || null;
                   const altText =
@@ -2136,11 +2157,8 @@ export function Routes() {
                       }}
                     >
                       <img
-                        className={
-                          "lobby-actor" +
-                          (isSpeaking ? " lobby-actor--speaking" : "") +
-                          (showExpressionFixedGlow ? " lobby-actor--expression-fixed" : "")
-                        }
+                        key={`lobby-actor-${p.identity}-${imageUrl}`}
+                        className={"lobby-actor" + (isSpeaking ? " lobby-actor--speaking" : "")}
                         src={imageUrl}
                         alt={altText}
                         draggable={false}
