@@ -672,6 +672,16 @@
   font-size: 0.9rem;
   color: #c44;
 }
+.lobby-mic-gate__mesa-em-jogo {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text-main);
+  background: rgba(215, 178, 92, 0.12);
+  border: 1px solid rgba(215, 178, 92, 0.35);
+  border-radius: var(--radius-md, 8px);
+}
 
 /* Card: espetáculo em andamento — selecionar personagem (jogador que entrou tarde) */
 .lobby-espetaculo-enter-card {
@@ -688,6 +698,9 @@
   font-size: 1rem;
   line-height: 1.45;
   color: var(--text-label);
+}
+.lobby-espetaculo-enter-card--waiting .lobby-espetaculo-enter-card__text {
+  margin-bottom: 0;
 }
 .lobby-espetaculo-enter-card .ui-btn {
   width: 100%;

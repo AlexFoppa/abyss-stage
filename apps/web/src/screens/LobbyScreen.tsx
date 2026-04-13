@@ -717,13 +717,20 @@ export function LobbyScreen({
   const micGateContent = (
     <div className="lobby-mic-gate" role="dialog" aria-modal="true" aria-labelledby="lobby-mic-gate-title">
       <div className="lobby-mic-gate__box">
+        {showActiveMustSelectCharacter ? (
+          <p className="lobby-mic-gate__mesa-em-jogo" role="status">
+            Há um jogo em curso nesta mesa. Não está só de visita ao lobby: depois de configurar o áudio, escolha o personagem para entrar no espetáculo.
+          </p>
+        ) : null}
         <h2 id="lobby-mic-gate-title" className="lobby-mic-gate__title">
           {micGate === "denied" ? "Microfone bloqueado" : "Permissão de microfone"}
         </h2>
         <p className="lobby-mic-gate__text">
           {micGate === "denied"
-            ? "O microfone foi bloqueado. Sem permissão, você não poderá falar no lobby nem no espetáculo. Permita nas configurações do site (ícone de cadeado na barra de endereço) e atualize a página, ou continue sem áudio."
-            : "Para participar com voz no lobby e no espetáculo, é necessário permitir o uso do microfone. O navegador pedirá a permissão ao clicar em \"Permitir microfone\"."}
+            ? "O microfone foi bloqueado. Sem permissão, não poderá falar no lobby nem no espetáculo. Permita nas definições do site (ícone de cadeado na barra de endereço) e atualize a página, ou continue sem áudio."
+            : showActiveMustSelectCharacter
+              ? "Para ouvir e falar na mesa em jogo, é necessário permitir o microfone (ou continuar sem áudio). O navegador pedirá a permissão quando carregar em Permitir microfone."
+              : "Para participar com voz no lobby e no espetáculo, é necessário permitir o uso do microfone. O navegador pedirá a permissão quando carregar em Permitir microfone."}
         </p>
         <div className="lobby-mic-gate__actions">
           {micGate === "denied" ? (
@@ -771,13 +778,25 @@ export function LobbyScreen({
 
   return (
     <div className="lobby-wrap">
+      {showActiveMustSelectCharacter && !connected && showMainUI ? (
+        <div className="lobby-espetaculo-enter-card lobby-espetaculo-enter-card--waiting" role="status">
+          <p className="lobby-espetaculo-enter-card__text">
+            Há um jogo em curso nesta mesa.{" "}
+            {status === "connecting"
+              ? "A ligar o áudio… Em seguida escolha o personagem para entrar."
+              : status === "error"
+                ? "Corrija a ligação de áudio (painel flutuante) ou tente novamente; depois escolha o personagem para entrar."
+                : "A preparar o áudio… Em seguida escolha o personagem para entrar."}
+          </p>
+        </div>
+      ) : null}
       {showActiveMustSelectCharacter && connected ? (
         <div className="lobby-espetaculo-enter-card" role="alert">
           <p className="lobby-espetaculo-enter-card__text">
-            Há um espetáculo em andamento. Selecione um personagem para entrar no jogo.
+            O espetáculo está em curso. Escolha o personagem para se juntar à mesa em jogo.
           </p>
           <button type="button" className="ui-btn" onClick={onSelectCharacter}>
-            Selecionar personagem
+            Escolher personagem e entrar
           </button>
         </div>
       ) : null}

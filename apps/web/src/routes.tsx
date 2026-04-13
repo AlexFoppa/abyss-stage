@@ -241,6 +241,9 @@ export function Routes() {
   const [speakingByIdentity, setSpeakingByIdentity] = useState<Record<string, boolean>>({});
 
   const [lobbyParticipants, setLobbyParticipants] = useState<LobbyParticipant[]>([]);
+  /** Evita vários GET /api/lobby em paralelo (intervalo 2s + POST /lobby/me + expressões). StageView não chama /lobby — só consome `lobbyParticipants`. */
+  const lobbyFetchInFlightRef = useRef(false);
+  const lobbyFetchPendingAgainRef = useRef(false);
   /** Chave estável: só muda quando o conjunto de character_id no lobby muda; evita refetch em StageView a cada poll. */
   const lobbyCharacterIdsComputed = useMemo(
     () =>
@@ -428,7 +431,7 @@ export function Routes() {
         if (isGM) {
           setGmSubView("GM_ESPETACULO");
         }
-        /* Jogador: mantém-se no lobby para áudio primeiro; com show activo, a UI indica mesa em jogo e escolha de personagem (não fluxo de “visitante”). */
+        /* Jogador: lobby primeiro para áudio; com show activo, LobbyScreen + bootstrap conduzem à escolha de personagem (requisito “não como visitante sem jogo”). */
       })
       .catch(() => {});
   }, [logged, isGM]);
@@ -1211,9 +1214,24 @@ export function Routes() {
 
   const fetchLobby = useCallback(() => {
     if (!user) return;
-    api<{ participants: LobbyParticipant[] }>("/api/lobby")
-      .then((res) => setLobbyParticipants(res.participants ?? []))
-      .catch(() => {});
+    const execute = () => {
+      lobbyFetchInFlightRef.current = true;
+      api<{ participants: LobbyParticipant[] }>("/api/lobby")
+        .then((res) => setLobbyParticipants(res.participants ?? []))
+        .catch(() => {})
+        .finally(() => {
+          lobbyFetchInFlightRef.current = false;
+          if (lobbyFetchPendingAgainRef.current) {
+            lobbyFetchPendingAgainRef.current = false;
+            execute();
+          }
+        });
+    };
+    if (lobbyFetchInFlightRef.current) {
+      lobbyFetchPendingAgainRef.current = true;
+      return;
+    }
+    execute();
   }, [user]);
 
   const gmHasShowActive = isGM && !!show;
