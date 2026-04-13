@@ -300,6 +300,7 @@ export function StageView({
   safetyEmail,
   safetyCharacterId = null,
   safetyCharacterName = null,
+  onGmExpressionTargetsChange,
 }: {
   room: Room | null;
   showId: string;
@@ -361,6 +362,8 @@ export function StageView({
   safetyEmail?: string;
   safetyCharacterId?: number | null;
   safetyCharacterName?: string | null;
+  /** Mestre: `selectedCharacterIdsLocal` (todos) controlam as expressões 0–9 em simultâneo. */
+  onGmExpressionTargetsChange?: (targets: { id: number; name: string; imageUrl?: string | null }[]) => void;
 }) {
   const [characters, setCharacters] = useState<CharacterOnStage[]>([]);
   const [visibleForPlayer, setVisibleForPlayer] = useState<Record<number, boolean>>({});
@@ -784,6 +787,21 @@ export function StageView({
     for (const c of characters) byId.set(c.id, c);
     return [...byId.values()];
   }, [characters]);
+
+  const gmExprTargetsSigRef = useRef("");
+  useEffect(() => {
+    if (!isGM || !onGmExpressionTargetsChange) return;
+    const targets = selectedCharacterIdsLocal
+      .map((id) => charactersDeduped.find((x) => x.id === id))
+      .filter((c): c is CharacterOnStage => c != null);
+    const sig =
+      targets.length === 0
+        ? "∅"
+        : targets.map((c) => `${c.id}|${c.name}|${c.imageUrl ?? ""}`).join(";");
+    if (sig === gmExprTargetsSigRef.current) return;
+    gmExprTargetsSigRef.current = sig;
+    onGmExpressionTargetsChange(targets.map((c) => ({ id: c.id, name: c.name, imageUrl: c.imageUrl })));
+  }, [isGM, onGmExpressionTargetsChange, selectedCharacterIdsLocal, charactersDeduped]);
 
   /** Personagem em foco para livro/ficha/status: jogador = próprio ou primeiro PC na cena; mestre = selecionado ou primeiro da cena. */
   const focusCharacterId = useMemo(() => {
@@ -1479,7 +1497,7 @@ export function StageView({
 
   const safetyPhaseOk = phase === "half" || phase === "stage";
   const playerStageChrome =
-    !isGM ? (
+    !isGM || playerCharacterId != null ? (
       <>
         {canSendSafetySignal && safetyPhaseOk && room != null && (
           <div className="stage-view__player-panic">

@@ -1,7 +1,7 @@
 # Requisitos estáveis (não regredir)
 
-**Versão:** 1.7  
-**Actualização:** 2026-03-30  
+**Versão:** 1.8  
+**Actualização:** 2026-04-11  
 **Uso:** referência para refactor e redesign; alterações que quebrem estes pontos exigem decisão explícita de produto. O que **não** estiver aqui **não** conta como requisito estável até ser acrescentado (este ficheiro é a fonte de planeamento em `docs/`).
 
 **Colaboração (IA / terceiros):** **Não** alterar código, middleware, variáveis de ambiente, `.env.example` nem ficheiros em `docs/` **sem autorização explícita** do dono do repositório. **Não** implementar funcionalidades a meio nem alargar o âmbito do pedido sem combinar (evita logs, flags ou refactors “pela metade” sem alinhamento).
@@ -28,6 +28,16 @@
 
 - Para **dois jogadores** (ou para **jogador e mestre**, quando o assunto é o mesmo elemento visível no ecrã do jogador): o conjunto de elementos **visíveis** e a **imagem** mostrada em cada um (URL/asset/estado de expressão) deve ser **exactamente o mesmo**. Não há “versão local” do palco que difira do que os outros jogadores veem nos itens visíveis.
 - **Piscar / preview de expressão** (ex.: teclas numéricas): se um **jogador** actua sobre o **seu** avatar, o efeito deve ser visto por **todos** (incluindo o mestre). Se o **mestre** actua sobre **imagem de PC ou NPC** (ou equivalente), o mesmo efeito deve ser visto por **todos** os que veem esse elemento **nesse momento** (ou seja, quem o vê, vê o mesmo piscar).
+
+### Mestre: alvo das expressões 0–9 no palco (vários personagens)
+
+- O mestre **não** usa ecrã nem botão à parte para “escolher personagem das expressões”. O alvo é a **selecção já existente no palco** (`StageView`): **todos** os actores seleccionados são afectados **em simultâneo** pelas teclas **0–9** (preview ~1 s e fixação ao soltar).
+- Sincronização em rede: mensagens LiveKit `expression/override` e `expression/current` levam **`characterIds`** (lista), não só um único `characterId`. Durante o espetáculo (half/stage), o mesmo payload é publicado nos tópicos **`lobby`** e **`espetaculo`** para alinhar com o resto do fluxo do show.
+- **URLs no payload (paridade real):** o cliente jogador **não** pode depender só do mapa `character_image_by_slot` do `GET /lobby` para reconstruir o retrato de **outros** personagens ou de **NPCs** que não têm linha estável no lobby daquele cliente. O mestre envia, por id, **`previewUrlByCharacterId`** (preview) e **`portraitUrlByCharacterId`** (slot fixo após soltar a tecla), calculados no cliente do mestre. O mapa de retratos usado no palco deve **aplicar** essas URLs a **qualquer** `character_id` presente nesse estado, **mesmo** que o id **não** apareça na lista de participantes do lobby naquele cliente — caso contrário o `StageView` cai no `imageUrl` estático do sync e a paridade quebra-se.
+
+### Anti-regressão (expressões multi-alvo + retratos remotos)
+
+- Não remover o envio de **`characterIds`** + mapas de URL em **`expression/override`** / **`expression/current`** para o fluxo do mestre com vários seleccionados, nem a passagem final que preenche o mapa por id a partir do estado LiveKit **independentemente** do loop só sobre `displayParticipants` do lobby.
 
 ### Anti-regressão (fonte da verdade)
 
@@ -61,12 +71,11 @@
 ## Backlog de desenvolvimento (código — actualizar quando fechar)
 
 1. **Paridade de retratos (lobby + palco):** Unificar a origem da URL por `character_id` e slot de expressão efectivo (hoje: `localCharacterImageBySlot`, `character_image_by_slot` do `GET /lobby`, e vias no GM em `StageView` / `fetchCharactersForGM`) numa ordem de precedência alinhada ao servidor, sem mapas locais que contradigam o lobby para o mesmo alvo visível.
-2. **Piscar / preview para todos:** Garantir que o override temporário (`expression/override` e estado espelhado) produza a **mesma** percepção visual em todos os clientes; corrigir efeitos só no cliente local (ex.: `expressionJustFixedAt` só com `isLocal`) se violarem o RF.
-3. **Duplicação de `GET /lobby`:** Com GM em espetáculo, `routes.tsx` e `StageView` disparam pedidos ao lobby em paralelo — consolidar (um dono do poll ou partilha de dados).
-4. **Jogador com espetáculo activo:** Rever UX/copy (`showActiveMustSelectCharacter`, bootstrap `GET /show/active`) para cumprir o RF (orientação clara, não “visitante sem jogo”).
-5. **Remover Krisp (LiveKit noise filter):** Retirar dependência `@livekit/krisp-noise-filter`, processador no track de áudio e UI associada no lobby — motivo: custo / facturação BVC no LiveKit Cloud (e-mail Maio 2026); manter opções de captura do browser (noise suppression, etc.) que não dependam desse add-on.
-6. **Trilha sonora no espetáculo:** A definir quando o item for abordado (fonte, sync, direitos, GM vs jogador).
-7. **Transcrição de fala:** A definir quando o item for abordado (privacidade, custo, língua, quem vê o texto).
+2. **Duplicação de `GET /lobby`:** Com GM em espetáculo, `routes.tsx` e `StageView` disparam pedidos ao lobby em paralelo — consolidar (um dono do poll ou partilha de dados).
+3. **Jogador com espetáculo activo:** Rever UX/copy (`showActiveMustSelectCharacter`, bootstrap `GET /show/active`) para cumprir o RF (orientação clara, não “visitante sem jogo”).
+4. **Remover Krisp (LiveKit noise filter):** Retirar dependência `@livekit/krisp-noise-filter`, processador no track de áudio e UI associada no lobby — motivo: custo / facturação BVC no LiveKit Cloud (e-mail Maio 2026); manter opções de captura do browser (noise suppression, etc.) que não dependam desse add-on.
+5. **Trilha sonora no espetáculo:** A definir quando o item for abordado (fonte, sync, direitos, GM vs jogador).
+6. **Download de pdf do personagem e do livro** adicionar ao espaço de ficha de personagem a possibilidade de fazer um download das informações do personagem em uma estética semelhante a da aplicação, assim como um botão para baixar o livro em pdf - português e inglês. Tenho os dois pdfs. 
 
 ## Backlog nice to have (desenvolvimento)
 
@@ -74,3 +83,4 @@
 2. **Timer no espetáculo** (contagem visível para mesa / GM — detalhe a fechar quando for prioridade).
 3. **Baralho de arquétipos** para apoio à **criação de personagens** (mecânica e UX a fechar quando for prioridade).
 4. **Seleccionar dispositivo de saída de áudio** (altifalante / auscultadores) no lobby ou espetáculo — hoje só é possível escolher o **dispositivo de entrada** (microfone).
+5.  **Transcrição de fala:** A definir quando o item for abordado (privacidade, custo, língua, quem vê o texto).

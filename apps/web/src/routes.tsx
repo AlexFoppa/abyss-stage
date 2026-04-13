@@ -104,6 +104,67 @@ type SafetyPanicSignal = {
 /** Preview 0–9 no lobby: troca de imagem ~1s. Ao receber LiveKit, o fim usa o relógio local (evita skew entre jogador e mestre). */
 const EXPRESSION_LOBBY_PREVIEW_MS = 1000;
 
+function expressionMessageCharacterIds(msg: { characterIds?: unknown; characterId?: unknown }): number[] {
+  if (Array.isArray(msg.characterIds)) {
+    const out: number[] = [];
+    for (const x of msg.characterIds) {
+      if (typeof x === "number" && Number.isFinite(x)) out.push(x);
+      else if (typeof x === "string" && /^\d+$/.test(x)) out.push(parseInt(x, 10));
+    }
+    return out;
+  }
+  if (typeof msg.characterId === "number" && Number.isFinite(msg.characterId)) return [msg.characterId];
+  if (typeof msg.characterId === "string" && /^\d+$/.test(msg.characterId)) return [parseInt(msg.characterId, 10)];
+  return [];
+}
+
+function readExpressionUrlMap(raw: unknown): Record<number, string> | undefined {
+  if (raw == null || typeof raw !== "object") return undefined;
+  const out: Record<number, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const id = Number(k);
+    if (!Number.isFinite(id)) continue;
+    if (typeof v === "string" && v !== "") out[id] = v;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** URLs já resolvidas no mestre (atlas + lobby); os jogadores não têm slot→URL completo dos outros PCs. */
+function urlsForExpressionAtSlot(
+  characterIds: number[],
+  slot: number,
+  gmStageSlotImagesBy: Record<number, Record<number, string>>,
+  gmExpressionTargets: Array<{ id: number; imageUrl?: string | null }>,
+  displayParticipants: LobbyParticipant[]
+): Record<number, string> {
+  const out: Record<number, string> = {};
+  for (const id of characterIds) {
+    const gmSlots = gmStageSlotImagesBy[id];
+    let u: string | undefined;
+    if (gmSlots && typeof gmSlots === "object") {
+      u = gmSlots[slot] ?? gmSlots[0];
+    }
+    if (u == null) {
+      const p = displayParticipants.find((q) => !q.is_gm && q.character_id === id);
+      const fromLobby = p?.character_image_by_slot;
+      if (fromLobby && typeof fromLobby === "object") {
+        u = fromLobby[slot] ?? fromLobby[0];
+      }
+      if (u == null) {
+        const t = gmExpressionTargets.find((x) => x.id === id);
+        u = (t?.imageUrl ?? undefined) || (p?.character_image_url ?? undefined) || undefined;
+      }
+    }
+    if (typeof u === "string" && u !== "") out[id] = u;
+  }
+  for (const id of characterIds) {
+    if (out[id] != null) continue;
+    const t = gmExpressionTargets.find((x) => x.id === id);
+    if (typeof t?.imageUrl === "string" && t.imageUrl !== "") out[id] = t.imageUrl;
+  }
+  return out;
+}
+
 export function Routes() {
   const { user, loading, viewMode, setViewMode, logout } = useAuth();
 
@@ -136,7 +197,11 @@ export function Routes() {
     system: string;
     imageUrl?: string | null;
   }>(null);
-  
+  /** Mestre: personagens seleccionados no palco cujas expressões 0–9 o mestre controla (todos em simultâneo). */
+  const [gmExpressionTargets, setGmExpressionTargets] = useState<
+    Array<{ id: number; name: string; system: string; imageUrl?: string | null }>
+  >([]);
+
   const [editingCharacter, setEditingCharacter] = useState<null | {
     id: number;
     name: string;
@@ -237,14 +302,32 @@ export function Routes() {
   const [expressionOverrideByIdentity, setExpressionOverrideByIdentity] = useState<
     Record<string, { slot: number; until: number }>
   >({});
+  /** Override por character_id (mestre a controlar expressões de um alvo no palco). */
+  const [expressionOverrideByCharacterId, setExpressionOverrideByCharacterId] = useState<
+    Record<number, { slot: number; until: number; previewUrl?: string | null }>
+  >({});
+  /** Retrato por personagem após expression/current do mestre (URL no slot fixo; jogadores sem atlas completo dos outros). */
+  const [expressionRemotePortraitByCharacterId, setExpressionRemotePortraitByCharacterId] = useState<
+    Record<number, string>
+  >({});
+  const [expressionCurrentByCharacterId, setExpressionCurrentByCharacterId] = useState<Record<number, number>>({});
   /** Remove cada preview remoto no instante `until` (evita mapa preso + useMemo com tempo congelado). */
   const expressionOverrideClearTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const expressionOverrideCharClearTimeoutsRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  /** Último lobby + atlas do mestre para montar URLs nas mensagens LiveKit (fixExpression corre antes de `displayParticipants` no ficheiro). */
+  const expressionPublishContextRef = useRef<{
+    displayParticipants: LobbyParticipant[];
+    gmStageSlotImagesBy: Record<number, Record<number, string>>;
+    gmExpressionTargets: Array<{ id: number; imageUrl?: string | null }>;
+  }>({ displayParticipants: [], gmStageSlotImagesBy: {}, gmExpressionTargets: [] });
   /** Slot atual por identity (recebido via LiveKit expression/current). */
   const [expressionCurrentByIdentity, setExpressionCurrentByIdentity] = useState<Record<string, number>>({});
   useEffect(() => {
     return () => {
       Object.values(expressionOverrideClearTimeoutsRef.current).forEach((t) => clearTimeout(t));
       expressionOverrideClearTimeoutsRef.current = {};
+      Object.values(expressionOverrideCharClearTimeoutsRef.current).forEach((t) => clearTimeout(t));
+      expressionOverrideCharClearTimeoutsRef.current = {};
     };
   }, []);
   const expressionKeyDownRef = useRef<{ key: string; slot: number; time: number } | null>(null);
@@ -252,6 +335,8 @@ export function Routes() {
   const expressionInitializedFromLobbyRef = useRef(false);
   /** Fallback slot→URL só quando GET /lobby ainda não trouxe `character_image_by_slot` para o jogador local. */
   const [localCharacterImageBySlot, setLocalCharacterImageBySlot] = useState<Record<number, string>>({});
+  /** Mestre no palco: mapa character_id → (slot → URL) para vários alvos à vez. */
+  const [gmStageSlotImagesBy, setGmStageSlotImagesBy] = useState<Record<number, Record<number, string>>>({});
 
   const [safetySignals, setSafetySignals] = useState<SafetyPanicSignal[]>([]);
 
@@ -265,6 +350,40 @@ export function Routes() {
   useEffect(() => {
     setSafetySignals([]);
   }, [show?.id]);
+
+  useEffect(() => {
+    setExpressionRemotePortraitByCharacterId({});
+  }, [show?.id]);
+
+  useEffect(() => {
+    if (show == null && isGM) setGmExpressionTargets([]);
+  }, [show, isGM]);
+
+  const onGmExpressionTargetsChange = useCallback(
+    (targets: { id: number; name: string; imageUrl?: string | null }[]) => {
+      if (!isGM) return;
+      setGmExpressionTargets(
+        targets.map((t) => ({
+          id: t.id,
+          name: t.name,
+          system: "",
+          imageUrl: t.imageUrl ?? null,
+        }))
+      );
+    },
+    [isGM]
+  );
+
+  const gmExpressionCharacterIds = useMemo(
+    () => gmExpressionTargets.map((t) => t.id),
+    [gmExpressionTargets]
+  );
+  const gmExpressionCharacterIdsKey = useMemo(
+    () => [...gmExpressionCharacterIds].sort((a, b) => a - b).join(","),
+    [gmExpressionCharacterIds]
+  );
+
+  const expressionTargetId = isGM ? (gmExpressionTargets[0]?.id ?? null) : (selectedCharacter?.id ?? null);
 
   const view: View = useMemo(() => {
     if (loading) return "LOGIN";
@@ -592,9 +711,38 @@ export function Routes() {
       /* Expressão: preview ~1s = troca de imagem (slot); fixação = expression/current + lobby. */
       if (msg.type === "expression/override") {
         const identity = typeof msg.identity === "string" ? msg.identity : participant?.identity;
+        const characterIds = expressionMessageCharacterIds(msg);
         const slot = typeof msg.slot === "number" && msg.slot >= 0 && msg.slot <= 9 ? msg.slot : 0;
-        if (identity) {
-          const localUntil = Date.now() + EXPRESSION_LOBBY_PREVIEW_MS;
+        const localUntil = Date.now() + EXPRESSION_LOBBY_PREVIEW_MS;
+        if (characterIds.length > 0) {
+          const previewById = readExpressionUrlMap(msg.previewUrlByCharacterId);
+          for (const characterId of characterIds) {
+            const prevClear = expressionOverrideCharClearTimeoutsRef.current[characterId];
+            if (prevClear) clearTimeout(prevClear);
+            expressionOverrideCharClearTimeoutsRef.current[characterId] = setTimeout(() => {
+              setExpressionOverrideByCharacterId((prev) => {
+                const cur = prev[characterId];
+                if (!cur || cur.until !== localUntil) return prev;
+                const next = { ...prev };
+                delete next[characterId];
+                return next;
+              });
+              delete expressionOverrideCharClearTimeoutsRef.current[characterId];
+            }, EXPRESSION_LOBBY_PREVIEW_MS);
+          }
+          setExpressionOverrideByCharacterId((prev) => {
+            const next = { ...prev };
+            for (const characterId of characterIds) {
+              const pv = previewById?.[characterId];
+              next[characterId] = {
+                slot,
+                until: localUntil,
+                ...(pv != null ? { previewUrl: pv } : {}),
+              };
+            }
+            return next;
+          });
+        } else if (identity) {
           const prevClear = expressionOverrideClearTimeoutsRef.current[identity];
           if (prevClear) clearTimeout(prevClear);
           setExpressionOverrideByIdentity((prev) => ({ ...prev, [identity]: { slot, until: localUntil } }));
@@ -613,8 +761,32 @@ export function Routes() {
       }
       if (msg.type === "expression/current") {
         const identity = typeof msg.identity === "string" ? msg.identity : participant?.identity;
-        const expression_slot = typeof msg.expression_slot === "number" && msg.expression_slot >= 0 && msg.expression_slot <= 9 ? msg.expression_slot : 0;
-        if (identity) {
+        const characterIds = expressionMessageCharacterIds(msg);
+        const expression_slot =
+          typeof msg.expression_slot === "number" && msg.expression_slot >= 0 && msg.expression_slot <= 9
+            ? msg.expression_slot
+            : 0;
+        if (characterIds.length > 0) {
+          setExpressionCurrentByCharacterId((prev) => {
+            const next = { ...prev };
+            for (const characterId of characterIds) {
+              next[characterId] = expression_slot;
+            }
+            return next;
+          });
+          const portraitById = readExpressionUrlMap(msg.portraitUrlByCharacterId);
+          if (portraitById != null) {
+            setExpressionRemotePortraitByCharacterId((prev) => {
+              const next = { ...prev };
+              for (const characterId of characterIds) {
+                const u = portraitById[characterId];
+                if (u != null) next[characterId] = u;
+              }
+              return next;
+            });
+          }
+        }
+        if (identity && characterIds.length === 0) {
           setExpressionCurrentByIdentity((prev) => ({ ...prev, [identity]: expression_slot }));
         }
         return;
@@ -923,24 +1095,29 @@ export function Routes() {
   const isLobbyView = view === "LOBBY";
   const localIdentity = user ? `player-${user.id}` : null;
   useEffect(() => {
-    if (!user || !localIdentity) return;
-    if (selectedCharacter?.id == null) {
+    if (!user) return;
+    if (expressionTargetId == null) {
       expressionInitializedFromLobbyRef.current = false;
       return;
     }
-    const me = lobbyParticipants.find((p) => p.identity === localIdentity);
+    const me = isGM
+      ? lobbyParticipants.find((p) => p.is_gm)
+      : localIdentity
+        ? lobbyParticipants.find((p) => p.identity === localIdentity)
+        : undefined;
     if (me?.expression_slot != null && typeof me.expression_slot === "number" && !expressionInitializedFromLobbyRef.current) {
       expressionInitializedFromLobbyRef.current = true;
       setCurrentExpressionSlot(me.expression_slot >= 0 && me.expression_slot <= 9 ? me.expression_slot : 0);
     }
-  }, [lobbyParticipants, localIdentity, user, selectedCharacter?.id]);
+  }, [lobbyParticipants, localIdentity, user, expressionTargetId, isGM]);
   useEffect(() => {
-    if (selectedCharacter?.id == null) expressionInitializedFromLobbyRef.current = false;
-  }, [selectedCharacter?.id]);
+    expressionInitializedFromLobbyRef.current = false;
+  }, [expressionTargetId]);
 
   useEffect(() => {
-    const cid = selectedCharacter?.id;
-    if (cid == null || isGM) {
+    if (isGM) return;
+    const cid = selectedCharacter?.id ?? null;
+    if (cid == null) {
       setLocalCharacterImageBySlot({});
       return;
     }
@@ -964,7 +1141,44 @@ export function Routes() {
     return () => {
       cancelled = true;
     };
-  }, [selectedCharacter?.id, isGM]);
+  }, [isGM, selectedCharacter?.id]);
+
+  useEffect(() => {
+    if (!isGM || show == null || (showPhase !== "half" && showPhase !== "stage")) {
+      setGmStageSlotImagesBy({});
+      return;
+    }
+    if (gmExpressionCharacterIds.length === 0) {
+      setGmStageSlotImagesBy({});
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      gmExpressionCharacterIds.map((id) =>
+        api<Array<{ slot: number; storage_key: string; created_at?: string | null }>>(`/api/gm/characters/${id}/images`)
+          .then((list) => ({ id, list: Array.isArray(list) ? list : [] }))
+          .catch(() => ({ id, list: [] as Array<{ slot: number; storage_key: string; created_at?: string | null }> }))
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      const next: Record<number, Record<number, string>> = {};
+      for (const { id, list } of results) {
+        const map: Record<number, string> = {};
+        for (const row of list) {
+          const sk = (row.storage_key ?? "").replace(/^\/+/, "");
+          if (!sk) continue;
+          const base = `/api/uploads/${sk}`;
+          const rev = row.created_at ?? undefined;
+          map[row.slot] = rev ? `${base}?rev=${rev}` : base;
+        }
+        next[id] = map;
+      }
+      setGmStageSlotImagesBy(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isGM, show, showPhase, gmExpressionCharacterIdsKey]);
 
   useEffect(() => {
     if (!show || !improvisationMode || !isGM) {
@@ -1048,12 +1262,22 @@ export function Routes() {
   }, [isLobbyView, gmHasShowActive, user, fetchLobby]);
 
   useEffect(() => {
-    if (!isLobbyView || !user) return;
+    const gmEspHeartbeat =
+      isGM &&
+      !!show &&
+      (showPhase === "half" || showPhase === "stage") &&
+      gmExpressionTargets.length > 0;
+    if ((!isLobbyView && !gmEspHeartbeat) || !user) return;
     const heartbeat = () => {
+      const character_id = isLobbyView
+        ? isGM
+          ? null
+          : selectedCharacter?.id ?? null
+        : expressionTargetId;
       api("/api/lobby/me", {
         method: "POST",
         body: JSON.stringify({
-          character_id: selectedCharacter?.id ?? null,
+          character_id,
           expression_slot: currentExpressionSlot,
         }),
       })
@@ -1063,7 +1287,18 @@ export function Routes() {
     heartbeat();
     const t = setInterval(heartbeat, 25000);
     return () => clearInterval(t);
-  }, [isLobbyView, user, selectedCharacter?.id, currentExpressionSlot, fetchLobby]);
+  }, [
+    isLobbyView,
+    isGM,
+    show,
+    showPhase,
+    user,
+    selectedCharacter?.id,
+    expressionTargetId,
+    gmExpressionTargets.length,
+    currentExpressionSlot,
+    fetchLobby,
+  ]);
 
   /** Identity estável do utilizador no lobby (mesmo antes do LiveKit ligar). */
   const resolveLobbyExpressionIdentity = useCallback((): string | null => {
@@ -1072,6 +1307,21 @@ export function Routes() {
     if (!user) return null;
     return isGM ? "gm" : `player-${user.id}`;
   }, [liveKitRoom, user, isGM]);
+
+  /** Durante o espetáculo o mestre também publica em `espetaculo` para os jogadores receberem como o resto do show. */
+  const publishExpressionPayload = useCallback(
+    (payload: Record<string, unknown>) => {
+      const enc = new TextEncoder().encode(JSON.stringify(payload));
+      const lp = liveKitRoom?.localParticipant;
+      if (!lp) return;
+      const dualTopic = isGM && show != null && (showPhase === "half" || showPhase === "stage");
+      try {
+        lp.publishData(enc, { reliable: true, topic: "lobby" });
+        if (dualTopic) lp.publishData(enc, { reliable: true, topic: "espetaculo" });
+      } catch {}
+    },
+    [liveKitRoom, isGM, show, showPhase]
+  );
 
   const fixExpressionAndSync = useCallback(
     (slot: number) => {
@@ -1086,26 +1336,44 @@ export function Routes() {
       api("/api/lobby/me", {
         method: "POST",
         body: JSON.stringify({
-          character_id: selectedCharacter?.id ?? null,
+          character_id: expressionTargetId,
           expression_slot: slot,
         }),
       })
         .then(() => fetchLobby())
         .catch(() => {});
-      try {
-        if (identity && liveKitRoom?.localParticipant) {
-          liveKitRoom.localParticipant.publishData(
-            new TextEncoder().encode(JSON.stringify({ type: "expression/current", identity, expression_slot: slot })),
-            { reliable: true, topic: "lobby" }
-          );
-        }
-      } catch {}
+      if (identity && liveKitRoom?.localParticipant) {
+        const ids = isGM && gmExpressionCharacterIds.length > 0 ? gmExpressionCharacterIds : null;
+        const body: Record<string, unknown> = {
+          type: "expression/current",
+          identity,
+          expression_slot: slot,
+        };
+        if (ids != null && ids.length > 0) {
+          body.characterIds = ids;
+          const { displayParticipants: dp, gmStageSlotImagesBy: slotBy, gmExpressionTargets: targets } =
+            expressionPublishContextRef.current;
+          body.portraitUrlByCharacterId = urlsForExpressionAtSlot(ids, slot, slotBy, targets, dp);
+        } else if (expressionTargetId != null) body.characterId = expressionTargetId;
+        publishExpressionPayload(body);
+      }
     },
-    [liveKitRoom, selectedCharacter?.id, fetchLobby, resolveLobbyExpressionIdentity]
+    [
+      liveKitRoom,
+      expressionTargetId,
+      gmExpressionCharacterIds,
+      isGM,
+      fetchLobby,
+      resolveLobbyExpressionIdentity,
+      publishExpressionPayload,
+    ]
   );
 
   const expressionKeysActive =
-    isLobbyView || (effectiveRole === "PLAYER" && !!show && (showPhase === "half" || showPhase === "stage"));
+    isLobbyView ||
+    (!!show &&
+      (showPhase === "half" || showPhase === "stage") &&
+      (effectiveRole === "PLAYER" || (isGM && gmExpressionTargets.length > 0)));
   useEffect(() => {
     if (!expressionKeysActive || !user) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1123,10 +1391,20 @@ export function Routes() {
       try {
         const identity = resolveLobbyExpressionIdentity();
         if (identity && liveKitRoom?.localParticipant) {
-          liveKitRoom.localParticipant.publishData(
-            new TextEncoder().encode(JSON.stringify({ type: "expression/override", identity, slot, until })),
-            { reliable: true, topic: "lobby" }
-          );
+          const ids = isGM && gmExpressionCharacterIds.length > 0 ? gmExpressionCharacterIds : null;
+          const body: Record<string, unknown> = {
+            type: "expression/override",
+            identity,
+            slot,
+            until,
+          };
+          if (ids != null && ids.length > 0) {
+            body.characterIds = ids;
+            const { displayParticipants: dp, gmStageSlotImagesBy: slotBy, gmExpressionTargets: targets } =
+              expressionPublishContextRef.current;
+            body.previewUrlByCharacterId = urlsForExpressionAtSlot(ids, slot, slotBy, targets, dp);
+          } else if (expressionTargetId != null) body.characterId = expressionTargetId;
+          publishExpressionPayload(body);
         }
       } catch {}
       if (expressionTimerRef.current) clearTimeout(expressionTimerRef.current);
@@ -1158,7 +1436,17 @@ export function Routes() {
       window.removeEventListener("keydown", onKeyDown, { capture: true });
       window.removeEventListener("keyup", onKeyUp, { capture: true });
     };
-  }, [expressionKeysActive, user, fixExpressionAndSync, liveKitRoom, resolveLobbyExpressionIdentity]);
+  }, [
+    expressionKeysActive,
+    user,
+    fixExpressionAndSync,
+    liveKitRoom,
+    resolveLobbyExpressionIdentity,
+    expressionTargetId,
+    gmExpressionCharacterIds,
+    isGM,
+    publishExpressionPayload,
+  ]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -1247,37 +1535,136 @@ export function Routes() {
     ];
   }
 
+  expressionPublishContextRef.current = {
+    displayParticipants,
+    gmStageSlotImagesBy,
+    gmExpressionTargets,
+  };
+
   /** Slot efetivo + URL por personagem. Preview 0–9 ≈1s = troca de imagem (override), não efeito CSS. */
   const resolvedParticipantImageByCharacterId = useMemo(() => {
     const now = Date.now();
     const map: Record<number, string> = {};
     const defaultImg = "/assets/jogador_default.png";
+    const gmEspExpression =
+      isGM &&
+      !!show &&
+      (showPhase === "half" || showPhase === "stage") &&
+      gmExpressionCharacterIds.length > 0;
+
+    const effectiveSlotFor = (characterId: number, identity: string, lobbySlot: number | null | undefined) => {
+      const gmDrivingThis = gmEspExpression && gmExpressionCharacterIds.includes(characterId);
+      const playerIsThisRow = !isGM && localIdentity != null && identity === localIdentity;
+      const localPreviewActive =
+        temporaryOverride &&
+        now < temporaryOverride.until &&
+        (playerIsThisRow || gmDrivingThis);
+      const localPreviewSlot = localPreviewActive ? temporaryOverride!.slot : null;
+
+      const cOv = expressionOverrideByCharacterId[characterId];
+      const charPreview = cOv && now < cOv.until ? cOv.slot : null;
+      const iOv = expressionOverrideByIdentity[identity];
+      const idPreview = iOv && now < iOv.until ? iOv.slot : null;
+
+      const fixedSlot =
+        expressionCurrentByCharacterId[characterId] ??
+        expressionCurrentByIdentity[identity] ??
+        (typeof lobbySlot === "number" ? lobbySlot : undefined) ??
+        0;
+
+      return localPreviewSlot ?? charPreview ?? idPreview ?? fixedSlot;
+    };
+
     for (const p of displayParticipants) {
       if (p.is_gm || p.character_id == null) continue;
-      const isLocal = localIdentity != null && p.identity === localIdentity;
-      const effectiveSlot = isLocal
-        ? (temporaryOverride && now < temporaryOverride.until ? temporaryOverride.slot : currentExpressionSlot)
-        : (() => {
-            const override = expressionOverrideByIdentity[p.identity];
-            if (override && now < override.until) return override.slot;
-            return expressionCurrentByIdentity[p.identity] ?? p.expression_slot ?? 0;
-          })();
+      const cid = p.character_id;
+      const cOvPrev = expressionOverrideByCharacterId[cid];
+      if (cOvPrev && now < cOvPrev.until && typeof cOvPrev.previewUrl === "string" && cOvPrev.previewUrl !== "") {
+        map[cid] = cOvPrev.previewUrl;
+        continue;
+      }
+      const effectiveSlot = effectiveSlotFor(cid, p.identity, p.expression_slot);
+      const gmDrivingThis =
+        gmEspExpression && gmExpressionCharacterIds.includes(cid);
+      const playerIsThisRow = !isGM && localIdentity != null && p.identity === localIdentity;
       const fromLobby = p.character_image_by_slot;
       const hasLobbySlots =
         fromLobby != null && typeof fromLobby === "object" && Object.keys(fromLobby).length > 0;
-      const slotMap = hasLobbySlots
-        ? fromLobby
-        : isLocal && Object.keys(localCharacterImageBySlot).length > 0
-          ? localCharacterImageBySlot
-          : undefined;
-      const url =
+      const gmSlots = gmStageSlotImagesBy[cid];
+      const hasGmSlots = gmSlots != null && typeof gmSlots === "object" && Object.keys(gmSlots).length > 0;
+      /* Com vários alvos, o mestre carrega slot→URL para todos; o lobby por jogador pode vir incompleto e
+       * esconder o "piscar" (sempre cai no slot 0). Preferir sempre o atlas carregado pelo mestre. */
+      const slotMap =
+        gmDrivingThis && hasGmSlots
+          ? gmSlots
+          : hasLobbySlots
+            ? fromLobby
+            : playerIsThisRow && Object.keys(localCharacterImageBySlot).length > 0
+              ? localCharacterImageBySlot
+              : undefined;
+      let url =
         slotMap != null && slotMap[effectiveSlot] != null
           ? slotMap[effectiveSlot]
           : slotMap != null && slotMap[0] != null
             ? slotMap[0]
             : (p.character_image_url || defaultImg);
-      map[p.character_id] = url;
+      const remoteFixed = expressionRemotePortraitByCharacterId[cid];
+      if (remoteFixed && expressionCurrentByCharacterId[cid] != null) {
+        const inRemotePreview = cOvPrev && now < cOvPrev.until;
+        if (!inRemotePreview) url = remoteFixed;
+      }
+      map[cid] = url;
     }
+
+    for (const t of gmExpressionTargets) {
+      if (displayParticipants.some((q) => !q.is_gm && q.character_id === t.id)) continue;
+      if (!gmEspExpression) continue;
+      const cid = t.id;
+      const cOvPrev = expressionOverrideByCharacterId[cid];
+      if (cOvPrev && now < cOvPrev.until && typeof cOvPrev.previewUrl === "string" && cOvPrev.previewUrl !== "") {
+        map[cid] = cOvPrev.previewUrl;
+        continue;
+      }
+      const effectiveSlot = effectiveSlotFor(cid, "", undefined);
+      const gmSlots = gmStageSlotImagesBy[cid];
+      const slotMap =
+        gmSlots != null && Object.keys(gmSlots).length > 0 ? gmSlots : undefined;
+      let url =
+        slotMap != null && slotMap[effectiveSlot] != null
+          ? slotMap[effectiveSlot]
+          : slotMap != null && slotMap[0] != null
+            ? slotMap[0]
+            : (t.imageUrl || defaultImg);
+      const remoteFixed = expressionRemotePortraitByCharacterId[cid];
+      if (remoteFixed && expressionCurrentByCharacterId[cid] != null) {
+        const inRemotePreview = cOvPrev && now < cOvPrev.until;
+        if (!inRemotePreview) url = remoteFixed;
+      }
+      map[cid] = url;
+    }
+
+    /* Jogadores: ids no palco podem não ter linha no GET /lobby (NPC, atraso na lista). O mapa só iterava
+     * `displayParticipants`, logo `resolvedParticipantImageByCharacterId[id]` ficava vazio e o StageView usava
+     * só `c.imageUrl` estático — ignorando o que veio do mestre. Aplicar URLs do LiveKit a *todos* os ids. */
+    for (const cidRaw of Object.keys(expressionOverrideByCharacterId)) {
+      const cid = Number(cidRaw);
+      if (!Number.isFinite(cid)) continue;
+      const cOv = expressionOverrideByCharacterId[cid];
+      if (cOv && now < cOv.until && typeof cOv.previewUrl === "string" && cOv.previewUrl !== "") {
+        map[cid] = cOv.previewUrl;
+      }
+    }
+    for (const cidRaw of Object.keys(expressionRemotePortraitByCharacterId)) {
+      const cid = Number(cidRaw);
+      if (!Number.isFinite(cid)) continue;
+      const cOv = expressionOverrideByCharacterId[cid];
+      if (cOv && now < cOv.until && typeof cOv.previewUrl === "string" && cOv.previewUrl !== "") continue;
+      const rem = expressionRemotePortraitByCharacterId[cid];
+      if (rem != null && rem !== "" && expressionCurrentByCharacterId[cid] != null) {
+        map[cid] = rem;
+      }
+    }
+
     return map;
   }, [
     displayParticipants,
@@ -1286,7 +1673,17 @@ export function Routes() {
     temporaryOverride,
     expressionOverrideByIdentity,
     expressionCurrentByIdentity,
+    expressionOverrideByCharacterId,
+    expressionRemotePortraitByCharacterId,
+    expressionCurrentByCharacterId,
     localCharacterImageBySlot,
+    gmStageSlotImagesBy,
+    gmExpressionTargets,
+    gmExpressionCharacterIds,
+    isGM,
+    show,
+    showPhase,
+    showTick,
   ]);
 
   const publishShowPayload = useCallback(
@@ -1549,13 +1946,14 @@ export function Routes() {
             lobbyParticipants={displayParticipants}
             lobbyCharacterIdsKey={lobbyCharacterIdsKeyStable}
             speakingByIdentity={speakingByIdentity}
-            playerExpressionSlot={isGM ? undefined : currentExpressionSlot}
+            playerExpressionSlot={!isGM || gmExpressionTargets.length > 0 ? currentExpressionSlot : undefined}
             resolvedParticipantImageByCharacterId={resolvedParticipantImageByCharacterId}
             improvisationMode={improvisationMode}
             isNarrativeScene={show.isNarrativeScene}
             improvisationScenarios={improvisationScenarios}
             improvisationCharacters={improvisationCharacters}
-            playerCharacterId={selectedCharacter?.id ?? null}
+            playerCharacterId={isGM ? gmExpressionTargets[0]?.id ?? null : selectedCharacter?.id ?? null}
+            onGmExpressionTargetsChange={onGmExpressionTargetsChange}
             onScenarioChange={({ scenarioImageUrl: url, scenarioCrop: crop, scenarioId: sid, scenarioDescription: desc }) => {
               setShow((prev) => (prev ? { ...prev, scenarioImageUrl: url, scenarioCrop: crop ?? null } : prev));
               if (sid != null) setImprovisationScenarioId(sid);

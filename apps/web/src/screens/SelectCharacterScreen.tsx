@@ -8,12 +8,15 @@ export function SelectCharacterScreen({
   onSelect,
   onEdit,
   messageWhenShowActive,
+  listSource = "me",
 }: {
   onBack: () => void;
   onSelect: (c: Character) => void;
   onEdit?: (c: Character) => void;
   /** Ex.: "Há um espetáculo em andamento. Selecione um personagem para entrar." */
   messageWhenShowActive?: string;
+  /** `me` = /api/me/characters (jogador); `gm` = /api/gm/characters (mestre, todos os da mesa). */
+  listSource?: "me" | "gm";
 }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -32,7 +35,8 @@ export function SelectCharacterScreen({
       setErr(null);
       setLoading(true);
       try {
-        const list = await api<Character[]>("/api/me/characters");
+        const path = listSource === "gm" ? "/api/gm/characters" : "/api/me/characters";
+        const list = await api<Character[]>(path);
         if (cancelled) return;
         setChars(Array.isArray(list) ? list : []);
         setActiveId((Array.isArray(list) && list[0]?.id) || null);
@@ -54,7 +58,7 @@ export function SelectCharacterScreen({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [listSource]);
 
   function systemLabel(sys: string) {
     if (sys === "candela_obscura") return "Candela Obscura";
@@ -73,7 +77,7 @@ export function SelectCharacterScreen({
       <div className="select-grid">
         <section className="ui-card select-col select-col--list">
           <div className="select-head">
-            <h2 className="select-title">Personagens</h2>
+            <h2 className="select-title">{listSource === "gm" ? "Personagens da mesa" : "Personagens"}</h2>
           </div>
           {messageWhenShowActive ? (
             <p className="select-muted select-message-show-active" role="status">

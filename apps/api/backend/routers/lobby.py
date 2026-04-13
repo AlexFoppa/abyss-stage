@@ -64,6 +64,15 @@ def _get_character_name_for_lobby(
     return str(row[0] or "") if row else None
 
 
+def _get_character_name_for_gm(session: Session, character_id: int) -> Optional[str]:
+    """Nome do personagem por id (mestre: PC ou NPC na base)."""
+    row = session.exec(
+        text("SELECT name FROM character WHERE id = :cid"),
+        params={"cid": character_id},
+    ).first()
+    return str(row[0] or "").strip() if row and row[0] is not None else None
+
+
 def _get_character_image_url_for_slot(
     session: Session, character_id: int, slot: int
 ) -> Optional[str]:
@@ -146,8 +155,14 @@ def lobby_me(
         if character_name is None:
             raise HTTPException(status_code=404, detail="Personagem não encontrado ou não é seu.")
         character_image_url = _get_character_image_url_for_slot(session, character_id, expression_slot)
-    else:
-        expression_slot = 0  # sem personagem: slot não se aplica
+    elif is_gm and character_id is not None:
+        gm_char_name = _get_character_name_for_gm(session, character_id)
+        if gm_char_name is None:
+            raise HTTPException(status_code=404, detail="Personagem não encontrado.")
+        character_name = gm_char_name
+        character_image_url = _get_character_image_url_for_slot(session, character_id, expression_slot)
+    elif character_id is None:
+        expression_slot = 0  # sem personagem: slot não se aplica ao mestre/jogador sem PC
 
     display_name = (getattr(current_user, "name", None) or "").strip() or (getattr(current_user, "email", None) or "")
     now = time.time()
