@@ -1,10 +1,17 @@
 # Requisitos estáveis (não regredir)
 
-**Versão:** 1.8  
-**Actualização:** 2026-04-11  
+**Versão:** 2.1  
+**Actualização:** 2026-03-30  
 **Uso:** referência para refactor e redesign; alterações que quebrem estes pontos exigem decisão explícita de produto. O que **não** estiver aqui **não** conta como requisito estável até ser acrescentado (este ficheiro é a fonte de planeamento em `docs/`).
 
 **Colaboração (IA / terceiros):** **Não** alterar código, middleware, variáveis de ambiente, `.env.example` nem ficheiros em `docs/` **sem autorização explícita** do dono do repositório. **Não** implementar funcionalidades a meio nem alargar o âmbito do pedido sem combinar (evita logs, flags ou refactors “pela metade” sem alinhamento).
+
+**Histórico de versões (só cabeçalho + estrutura de backlogs):**  
+**2.1** (2026-03-30) — Removido item duplicado no backlog geral que apenas apontava para o backlog de trilha; índice ajustado (quatro itens no backlog de desenvolvimento).  
+**2.0** (2026-04-11) — Salto de versão para fechar ambiguidade 1.8/1.9 em merges; índice dos backlogs com contagens explícitas; requisitos de expressões multi-alvo + `expressionPortrait.ts` nas secções estáveis.  
+**1.7** (2026-03-30) — Referência anterior estável antes da vaga lobby/palco/expressões.
+
+**Regra de edição deste ficheiro:** cada alteração material a requisitos estáveis ou à lista de backlogs deve **subir `Versão`** (minor, ex. 2.0→2.1), **actualizar `Actualização`** (data ISO) e **acrescentar uma linha** ao histórico acima (evita dois ramos com “1.9” diferentes).
 
 ---
 
@@ -34,10 +41,11 @@
 - O mestre **não** usa ecrã nem botão à parte para “escolher personagem das expressões”. O alvo é a **selecção já existente no palco** (`StageView`): **todos** os actores seleccionados são afectados **em simultâneo** pelas teclas **0–9** (preview ~1 s e fixação ao soltar).
 - Sincronização em rede: mensagens LiveKit `expression/override` e `expression/current` levam **`characterIds`** (lista), não só um único `characterId`. Durante o espetáculo (half/stage), o mesmo payload é publicado nos tópicos **`lobby`** e **`espetaculo`** para alinhar com o resto do fluxo do show.
 - **URLs no payload (paridade real):** o cliente jogador **não** pode depender só do mapa `character_image_by_slot` do `GET /lobby` para reconstruir o retrato de **outros** personagens ou de **NPCs** que não têm linha estável no lobby daquele cliente. O mestre envia, por id, **`previewUrlByCharacterId`** (preview) e **`portraitUrlByCharacterId`** (slot fixo após soltar a tecla), calculados no cliente do mestre. O mapa de retratos usado no palco deve **aplicar** essas URLs a **qualquer** `character_id` presente nesse estado, **mesmo** que o id **não** apareça na lista de participantes do lobby naquele cliente — caso contrário o `StageView` cai no `imageUrl` estático do sync e a paridade quebra-se.
+- **Implementação:** precedência de slot + URL (lobby, atlas local, atlas GM, LiveKit) está centralizada em **`apps/web/src/expressionPortrait.ts`**; alterações ao comportamento devem passar por esse módulo (e por `buildExpressionUrlMapForPublish` alinhado a `resolvePortraitUrlForCharacter`), não por lógica duplicada em `routes.tsx`.
 
 ### Anti-regressão (expressões multi-alvo + retratos remotos)
 
-- Não remover o envio de **`characterIds`** + mapas de URL em **`expression/override`** / **`expression/current`** para o fluxo do mestre com vários seleccionados, nem a passagem final que preenche o mapa por id a partir do estado LiveKit **independentemente** do loop só sobre `displayParticipants` do lobby.
+- Não remover o envio de **`characterIds`** + mapas de URL em **`expression/override`** / **`expression/current`** para o fluxo do mestre com vários seleccionados. O conjunto de ids resolvido no palco inclui lobby + alvos GM no espetáculo + ids presentes no estado LiveKit — tudo consolidado via **`expressionPortrait.ts`**.
 
 ### Anti-regressão (fonte da verdade)
 
@@ -68,14 +76,60 @@
 
 ---
 
+### Índice dos backlogs (três secções)
+
+1. **Backlog de desenvolvimento** — itens gerais de código: **quatro** entradas numeradas **1.–4.** na secção homónima (não confundir com a numeração da trilha sonora).
+2. **Backlog — trilha e ambientação sonora** — música ambiente + efeitos: numeração **própria** 1.–11. ao longo das fases A–D (**sempre a seguir** ao backlog geral).
+3. **Backlog nice to have** — **sete** entradas numeradas **1.–7.**
+
+---
+
 ## Backlog de desenvolvimento (código — actualizar quando fechar)
 
-1. **Paridade de retratos (lobby + palco):** Unificar a origem da URL por `character_id` e slot de expressão efectivo (hoje: `localCharacterImageBySlot`, `character_image_by_slot` do `GET /lobby`, e vias no GM em `StageView` / `fetchCharactersForGM`) numa ordem de precedência alinhada ao servidor, sem mapas locais que contradigam o lobby para o mesmo alvo visível.
-2. **Duplicação de `GET /lobby`:** Com GM em espetáculo, `routes.tsx` e `StageView` disparam pedidos ao lobby em paralelo — consolidar (um dono do poll ou partilha de dados).
-3. **Jogador com espetáculo activo:** Rever UX/copy (`showActiveMustSelectCharacter`, bootstrap `GET /show/active`) para cumprir o RF (orientação clara, não “visitante sem jogo”).
-4. **Remover Krisp (LiveKit noise filter):** Retirar dependência `@livekit/krisp-noise-filter`, processador no track de áudio e UI associada no lobby — motivo: custo / facturação BVC no LiveKit Cloud (e-mail Maio 2026); manter opções de captura do browser (noise suppression, etc.) que não dependam desse add-on.
-5. **Trilha sonora no espetáculo:** A definir quando o item for abordado (fonte, sync, direitos, GM vs jogador).
-6. **Download de pdf do personagem e do livro** adicionar ao espaço de ficha de personagem a possibilidade de fazer um download das informações do personagem em uma estética semelhante a da aplicação, assim como um botão para baixar o livro em pdf - português e inglês. Tenho os dois pdfs. 
+1. **Duplicação de `GET /lobby`:** Com GM em espetáculo, `routes.tsx` e `StageView` disparam pedidos ao lobby em paralelo — consolidar (um dono do poll ou partilha de dados).
+2. **Jogador com espetáculo activo:** Rever UX/copy (`showActiveMustSelectCharacter`, bootstrap `GET /show/active`) para cumprir o RF (orientação clara, não “visitante sem jogo”).
+3. **Remover Krisp (LiveKit noise filter):** Retirar dependência `@livekit/krisp-noise-filter`, processador no track de áudio e UI associada no lobby — motivo: custo / facturação BVC no LiveKit Cloud (e-mail Maio 2026); manter opções de captura do browser (noise suppression, etc.) que não dependam desse add-on.
+4. **Download de pdf do personagem e do livro** adicionar ao espaço de ficha de personagem a possibilidade de fazer um download das informações do personagem em uma estética semelhante a da aplicação, assim como um botão para baixar o livro em pdf - português e inglês. Tenho os dois pdfs.
+
+## Backlog — trilha e ambientação sonora (música ambiente + efeitos)
+
+**Fora deste âmbito:** voz (LiveKit), mute de microfones — ver **Backlog nice to have**.
+
+**Decisões de produto**
+
+- **Arquitectura:** híbrido **C** — voz mantém-se no LiveKit; **música ambiente** e **efeitos sonoros** por **evento em rede + reprodução local** em cada cliente, com **o mesmo ficheiro/URL** servido pela API; **todos** ouvem o mesmo ao mesmo tempo (sem pré-escuta só GM, sem alterar a voz neste backlog).
+- **Canais:** **dois** — **ambiente** (trilho contínuo) e **efeitos** (disparos curtos); volumes independentes para o GM; efeitos **por cima** do ambiente.
+- **Loop (ambiente):** **simples** (possível salto no remate do ficheiro); refinamentos depois se necessário.
+- **Troca de música ambiente:** **só** quando o **GM** manda; **fade padrão** entre faixas de **ambiente**; **efeitos sem fade**.
+- **Planeamento:** cues planeados na cena são **disparados pelo GM**; o GM **vê** a lista no espetáculo para disparar com facilidade.
+- **Soundboard:** só GM; **sem** upload improvisado na hora.
+- **Catálogo:** estilo elenco/cenário; **ligação por referência** às histórias/cenas (não copiar ficheiro por história); primeiro incremento com **formatos e tamanho máximos** explícitos (ex. mp3/ogg/wav + teto por ficheiro), expandir depois se fizer sentido.
+- **Licenças:** só conteúdo carregado pelo GM; responsabilidade do utilizador.
+
+### Fase A — Fundações
+
+1. Contrato de mensagens (eventos) para **ambiente** e, mais tarde, **efeitos** (`seq`/`issuedAt`, `assetId`, `showId`/cena, etc.) e comportamento determinístico nos clientes.
+2. **Catálogo de áudio** na API + UI GM: criar/editar entradas com **tipo** ambiente vs efeito (ou equivalente), metadados acordados, ficheiros servidos com **limites** do primeiro incremento.
+3. Garantir **URL igual para todos** os clientes ao reproduzir um asset.
+
+### Fase B — Música ambiente (primeiro)
+
+4. **Roteiro:** barra por **baixo** (como cenário/personagens), **também em cenas narrativas**, para associar/preparar faixas de **ambiente** por cena.
+5. **Espetáculo:** UI GM para **tocar / trocar / parar** ambiente; **fade padrão** **apenas** entre trocas de faixa de **ambiente** e **apenas** quando o GM comanda a troca.
+6. **Loop simples** no canal ambiente.
+
+### Fase C — Efeitos sonoros (depois)
+
+7. Canal **efeitos**: one-shots **sem fade**, sem apagar a lógica do ambiente (dois canais).
+8. **Cues planeados** na cena: lista visível ao GM no espetáculo para **disparo** (clique GM).
+9. **Soundboard** rápida (GM), ligada ao mesmo catálogo.
+
+### Fase D — Refinos
+
+10. Duração do fade entre faixas de ambiente **editável** (além do padrão).
+11. Melhorias de loop (ex. crossfade no loop) se o loop simples for insuficiente.
+
+---
 
 ## Backlog nice to have (desenvolvimento)
 
@@ -83,4 +137,6 @@
 2. **Timer no espetáculo** (contagem visível para mesa / GM — detalhe a fechar quando for prioridade).
 3. **Baralho de arquétipos** para apoio à **criação de personagens** (mecânica e UX a fechar quando for prioridade).
 4. **Seleccionar dispositivo de saída de áudio** (altifalante / auscultadores) no lobby ou espetáculo — hoje só é possível escolher o **dispositivo de entrada** (microfone).
-5.  **Transcrição de fala:** A definir quando o item for abordado (privacidade, custo, língua, quem vê o texto).
+5. **Transcrição de fala:** A definir quando o item for abordado (privacidade, custo, língua, quem vê o texto).
+6. **Voz — narração:** GM pode **mutar jogadores** para forçar escuta da narração, com **indicação clara na UI** do jogador de que está mutado para ouvir o mestre.
+7. **Voz — moderação:** GM pode **mutar um jogador** (ex.: microfone aberto com utilizador ausente).
