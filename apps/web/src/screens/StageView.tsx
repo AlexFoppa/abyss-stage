@@ -301,6 +301,8 @@ export function StageView({
   safetyCharacterId = null,
   safetyCharacterName = null,
   onGmExpressionTargetsChange,
+  onRefreshTable,
+  showRefreshTableButton = false,
 }: {
   room: Room | null;
   showId: string;
@@ -364,6 +366,10 @@ export function StageView({
   safetyCharacterName?: string | null;
   /** Mestre: `selectedCharacterIdsLocal` (todos) controlam as expressões 0–9 em simultâneo. */
   onGmExpressionTargetsChange?: (targets: { id: number; name: string; imageUrl?: string | null }[]) => void;
+  /** Jogador: força `GET /show/active` no pai para alinhar palco com a API. */
+  onRefreshTable?: () => void | Promise<void>;
+  /** Mostrar botão «Atualizar mesa» (jogador no palco). */
+  showRefreshTableButton?: boolean;
 }) {
   const [characters, setCharacters] = useState<CharacterOnStage[]>([]);
   const [visibleForPlayer, setVisibleForPlayer] = useState<Record<number, boolean>>({});
@@ -447,11 +453,12 @@ export function StageView({
     setSelectedCharacterIdsLocal([]);
     setSelectedCharacterIdsRemote([]);
     setOpenCharacterNotesId(null);
+    initialStageStateAppliedRef.current = false;
   }, [sceneId]);
 
-  /** Aplicar estado do palco restaurado (reconexão do mestre). Deve rodar depois do clear por sceneId. */
+  /** Aplicar estado do palco vindo da API (`GET /show/active`, `stageState`) — mestre e jogador. Deve rodar depois do clear por sceneId. */
   useEffect(() => {
-    if (!isGM || !initialStageState || initialStageStateAppliedRef.current) return;
+    if (!initialStageState || initialStageStateAppliedRef.current) return;
     initialStageStateAppliedRef.current = true;
     try {
       const st = initialStageState;
@@ -497,7 +504,7 @@ export function StageView({
     } catch (_) {
       /* não quebrar a página se o estado restaurado vier malformado */
     }
-  }, [isGM, initialStageState]);
+  }, [initialStageState]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
@@ -1514,6 +1521,18 @@ export function StageView({
               }
             >
               <PanicAlertIcon className="stage-view__player-panic-icon" />
+            </button>
+          </div>
+        )}
+        {showRefreshTableButton && typeof onRefreshTable === "function" && (
+          <div className="stage-view__player-refresh">
+            <button
+              type="button"
+              className="stage-view__player-refresh-btn ui-btn ui-btn--ghost"
+              onClick={() => void onRefreshTable()}
+              title="Alinhar com o estado da mesa no servidor (se algo parecer desactualizado)"
+            >
+              Atualizar mesa
             </button>
           </div>
         )}

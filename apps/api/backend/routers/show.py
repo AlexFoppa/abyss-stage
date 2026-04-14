@@ -93,6 +93,26 @@ class ShowStageStateIn(BaseModel):
     dice_golden: list[bool] = Field(default_factory=lambda: [False] * 6, alias="diceGolden")
     dice_last_result: Optional[list[int]] = Field(None, alias="diceLastResult")
     dice_show_auras: bool = Field(False, alias="diceShowAuras")
+    """Slot 0–9 fixo por personagem (palco partilhado); omitir no PATCH do StageView para preservar o anterior."""
+    expression_slot_by_character_id: Optional[dict[str, int]] = Field(
+        None, alias="expressionSlotByCharacterId"
+    )
+    """Retrato fixo por personagem após fixar expressão (URL); omitir no PATCH completo para preservar."""
+    portrait_url_by_character_id: Optional[dict[str, str]] = Field(
+        None, alias="portraitUrlByCharacterId"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class StageExpressionPatchIn(BaseModel):
+    """Merge de expressão fixa no estado do palco (após `expression/current`)."""
+    expression_slot_by_character_id: dict[str, int] = Field(
+        default_factory=dict, alias="expressionSlotByCharacterId"
+    )
+    portrait_url_by_character_id: dict[str, str] = Field(
+        default_factory=dict, alias="portraitUrlByCharacterId"
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -143,7 +163,19 @@ def _stage_state_for_response(st: Optional[dict]) -> Optional[dict]:
     if not st:
         return None
     chars = st.get("characters") or []
-    return {
+    es_raw = st.get("expression_slot_by_character_id") or {}
+    pr_raw = st.get("portrait_url_by_character_id") or {}
+    expression_slot: dict[str, int] = {}
+    if isinstance(es_raw, dict):
+        for k, v in es_raw.items():
+            if isinstance(v, (int, float)) and 0 <= int(v) <= 9:
+                expression_slot[str(k)] = int(v)
+    portrait_url: dict[str, str] = {}
+    if isinstance(pr_raw, dict):
+        for k, v in pr_raw.items():
+            if isinstance(v, str) and v != "":
+                portrait_url[str(k)] = v
+    out: dict[str, Any] = {
         "characters": [
             {
                 "id": c["id"],
@@ -170,6 +202,11 @@ def _stage_state_for_response(st: Optional[dict]) -> Optional[dict]:
         ),
         "diceShowAuras": bool(st.get("dice_show_auras", False)),
     }
+    if expression_slot:
+        out["expressionSlotByCharacterId"] = expression_slot
+    if portrait_url:
+        out["portraitUrlByCharacterId"] = portrait_url
+    return out
 
 
 @router.get("/active")
@@ -272,6 +309,31 @@ def patch_show_active(
     return {"ok": True}
 
 
+def _merge_stage_expression(
+    prev: Optional[dict],
+    incoming_slots: Optional[dict[str, int]],
+    incoming_portraits: Optional[dict[str, str]],
+) -> tuple[dict[str, int], dict[str, str]]:
+    prev_st = prev or {}
+    es_prev: dict[str, int] = {}
+    raw_es = prev_st.get("expression_slot_by_character_id") or {}
+    if isinstance(raw_es, dict):
+        for k, v in raw_es.items():
+            if isinstance(v, (int, float)) and 0 <= int(v) <= 9:
+                es_prev[str(k)] = int(v)
+    pr_prev: dict[str, str] = {}
+    raw_pr = prev_st.get("portrait_url_by_character_id") or {}
+    if isinstance(raw_pr, dict):
+        for k, v in raw_pr.items():
+            if isinstance(v, str) and v != "":
+                pr_prev[str(k)] = v
+    if incoming_slots is not None:
+        es_prev.update(incoming_slots)
+    if incoming_portraits is not None:
+        pr_prev.update(incoming_portraits)
+    return es_prev, pr_prev
+
+
 @router.patch("/active/stage")
 def patch_show_active_stage(
     body: ShowStageStateIn,
@@ -282,6 +344,12 @@ def patch_show_active_stage(
     global _ACTIVE_SHOW
     if _ACTIVE_SHOW is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nenhum espetáculo ativo.")
+    prev = _ACTIVE_SHOW.get("stage_state")
+    es_merged, pr_merged = _merge_stage_expression(
+        prev if isinstance(prev, dict) else None,
+        body.expression_slot_by_character_id,
+        body.portrait_url_by_character_id,
+    )
     _ACTIVE_SHOW["stage_state"] = {
         "characters": [
             {
@@ -302,6 +370,42 @@ def patch_show_active_stage(
             if body.dice_last_result else None
         ),
         "dice_show_auras": body.dice_show_auras,
+        "expression_slot_by_character_id": es_merged,
+        "portrait_url_by_character_id": pr_merged,
+    }
+    return {"ok": True}
+
+
+@router.patch("/active/stage-expression")
+def patch_show_active_stage_expression(
+    body: StageExpressionPatchIn,
+    current_user: User = Depends(get_current_user),
+):
+    """Merge de expressão fixa (slots + URLs) no estado do palco. Apenas GM."""
+    _require_gm(current_user)
+    global _ACTIVE_SHOW
+    if _ACTIVE_SHOW is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nenhum espetáculo ativo.")
+    prev = _ACTIVE_SHOW.get("stage_state")
+    es_merged, pr_merged = _merge_stage_expression(
+        prev if isinstance(prev, dict) else None,
+        body.expression_slot_by_character_id,
+        body.portrait_url_by_character_id,
+    )
+    base = prev if isinstance(prev, dict) else {}
+    _ACTIVE_SHOW["stage_state"] = {
+        "characters": list(base.get("characters") or []),
+        "dice_visible": bool(base.get("dice_visible", False)),
+        "dice_count": max(1, min(6, int(base.get("dice_count", 1)))),
+        "dice_golden": (
+            [bool(x) for x in base["dice_golden"]][:6]
+            if isinstance(base.get("dice_golden"), list) and len(base.get("dice_golden", [])) >= 6
+            else [False] * 6
+        ),
+        "dice_last_result": base.get("dice_last_result"),
+        "dice_show_auras": bool(base.get("dice_show_auras", False)),
+        "expression_slot_by_character_id": es_merged,
+        "portrait_url_by_character_id": pr_merged,
     }
     return {"ok": True}
 

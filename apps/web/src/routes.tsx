@@ -23,7 +23,11 @@ import { SceneStagePreview, ScenarioBackground } from "./screens/SceneStagePrevi
 import { EditProfileScreen } from "./screens/EditProfileScreen";
 import type { GMCharacter } from "./types/character";
 import { getAvatarUrl } from "./utils/avatar";
-import { buildExpressionUrlMapForPublish, resolvePortraitUrlForCharacter } from "./expressionPortrait";
+import {
+  buildExpressionUrlMapForPublish,
+  pickAtlasUrlForSlot,
+  resolvePortraitUrlForCharacter,
+} from "./expressionPortrait";
 
 type View =
   | "LOGIN"
@@ -130,6 +134,81 @@ function readExpressionUrlMap(raw: unknown): Record<number, string> | undefined 
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/** Estado de palco persistido em `GET /api/show/active` (incl. expressão fixa por personagem). */
+export type ShowStageStatePersisted = {
+  characters?: Array<{ id: number; name: string; side: string; imageUrl?: string | null; xPct?: number; visible: boolean }>;
+  diceVisible?: boolean;
+  diceCount?: number;
+  diceGolden?: boolean[];
+  diceLastResult?: number[];
+  diceShowAuras?: boolean;
+  expressionSlotByCharacterId?: Record<string, number>;
+  portraitUrlByCharacterId?: Record<string, string>;
+};
+
+export type ActiveShowState = {
+  id: string;
+  startedAt: number;
+  storyId: string;
+  sceneId: string;
+  scenarioId: string | null;
+  scenarioImageUrl: string | null;
+  scenarioCrop: { x: number; y: number; width: number; height: number } | null;
+  narrativeSlides?: NarrativeSlide[];
+  currentNarrativeIndex?: number;
+  sceneTitle: string;
+  sceneBody: string;
+  isNarrativeScene: boolean;
+  storyScenes: ShowSceneSummary[];
+  stageState?: ShowStageStatePersisted | null;
+};
+
+function parseShowActivePayload(data: unknown): ActiveShowState | null {
+  if (!data || typeof data !== "object" || typeof (data as { id?: unknown }).id !== "string") return null;
+  const d = data as {
+    id: string;
+    startedAt: number;
+    storyId: string;
+    sceneId: string;
+    scenarioId?: string | null;
+    scenarioImageUrl?: string | null;
+    scenarioCrop?: { x: number; y: number; width: number; height: number } | null;
+    narrativeSlides?: NarrativeSlide[];
+    currentNarrativeIndex?: number;
+    sceneTitle: string;
+    sceneBody: string;
+    isNarrativeScene: boolean;
+    storyScenes: ShowSceneSummary[];
+    stageState?: ShowStageStatePersisted | null;
+  };
+  if (
+    typeof d.startedAt !== "number" ||
+    typeof d.storyId !== "string" ||
+    typeof d.sceneId !== "string" ||
+    typeof d.sceneTitle !== "string" ||
+    typeof d.sceneBody !== "string" ||
+    typeof d.isNarrativeScene !== "boolean" ||
+    !Array.isArray(d.storyScenes)
+  )
+    return null;
+  return {
+    id: d.id,
+    startedAt: d.startedAt,
+    storyId: d.storyId,
+    sceneId: d.sceneId,
+    scenarioId: d.scenarioId ?? null,
+    scenarioImageUrl: d.scenarioImageUrl ?? null,
+    scenarioCrop: d.scenarioCrop ?? null,
+    narrativeSlides: d.narrativeSlides,
+    currentNarrativeIndex: d.currentNarrativeIndex,
+    sceneTitle: d.sceneTitle,
+    sceneBody: d.sceneBody,
+    isNarrativeScene: d.isNarrativeScene,
+    storyScenes: d.storyScenes,
+    stageState: d.stageState ?? undefined,
+  };
+}
+
 export function Routes() {
   const { user, loading, viewMode, setViewMode, logout } = useAuth();
 
@@ -181,30 +260,7 @@ export function Routes() {
   const [editingReturnGmView, setEditingReturnGmView] = useState<"GM_CHARACTERS" | "GM_STORY_EDITOR" | null>(null);
   const [createCharacterKind, setCreateCharacterKind] = useState<"PC" | "NPC">("PC");
 
-  const [show, setShow] = useState<null | {
-    id: string;
-    startedAt: number;
-    storyId: string;
-    sceneId: string;
-    scenarioId: string | null;
-    scenarioImageUrl: string | null;
-    scenarioCrop: { x: number; y: number; width: number; height: number } | null;
-    narrativeSlides?: NarrativeSlide[];
-    currentNarrativeIndex?: number;
-    sceneTitle: string;
-    sceneBody: string;
-    isNarrativeScene: boolean;
-    storyScenes: ShowSceneSummary[];
-    /** Estado do palco (PC/NPC, posições, dados) restaurado na reconexão. */
-    stageState?: {
-      characters?: Array<{ id: number; name: string; side: string; imageUrl?: string | null; xPct?: number; visible: boolean }>;
-      diceVisible?: boolean;
-      diceCount?: number;
-      diceGolden?: boolean[];
-      diceLastResult?: number[];
-      diceShowAuras?: boolean;
-    } | null;
-  }>(null);
+  const [show, setShow] = useState<ActiveShowState | null>(null);
   const [showTick, setShowTick] = useState(0);
   const [showSceneMenuOpen, setShowSceneMenuOpen] = useState(false);
   const [improvisationMode, setImprovisationMode] = useState(false);
@@ -378,56 +434,9 @@ export function Routes() {
         return res.json();
       })
       .then((data: unknown) => {
-        if (!data || typeof data !== "object" || typeof (data as { id?: unknown }).id !== "string") return;
-        const d = data as {
-          id: string;
-          startedAt: number;
-          storyId: string;
-          sceneId: string;
-          scenarioId?: string | null;
-          scenarioImageUrl?: string | null;
-          scenarioCrop?: { x: number; y: number; width: number; height: number } | null;
-          narrativeSlides?: NarrativeSlide[];
-          currentNarrativeIndex?: number;
-          sceneTitle: string;
-          sceneBody: string;
-          isNarrativeScene: boolean;
-          storyScenes: ShowSceneSummary[];
-          stageState?: {
-            characters?: Array<{ id: number; name: string; side: string; imageUrl?: string | null; xPct?: number; visible: boolean }>;
-            diceVisible?: boolean;
-            diceCount?: number;
-            diceGolden?: boolean[];
-            diceLastResult?: number[];
-            diceShowAuras?: boolean;
-          } | null;
-        };
-        if (
-          typeof d.startedAt !== "number" ||
-          typeof d.storyId !== "string" ||
-          typeof d.sceneId !== "string" ||
-          typeof d.sceneTitle !== "string" ||
-          typeof d.sceneBody !== "string" ||
-          typeof d.isNarrativeScene !== "boolean" ||
-          !Array.isArray(d.storyScenes)
-        )
-          return;
-        setShow({
-          id: d.id,
-          startedAt: d.startedAt,
-          storyId: d.storyId,
-          sceneId: d.sceneId,
-          scenarioId: d.scenarioId ?? null,
-          scenarioImageUrl: d.scenarioImageUrl ?? null,
-          scenarioCrop: d.scenarioCrop ?? null,
-          narrativeSlides: d.narrativeSlides,
-          currentNarrativeIndex: d.currentNarrativeIndex,
-          sceneTitle: d.sceneTitle,
-          sceneBody: d.sceneBody,
-          isNarrativeScene: d.isNarrativeScene,
-          storyScenes: d.storyScenes,
-          stageState: d.stageState ?? undefined,
-        });
+        const parsed = parseShowActivePayload(data);
+        if (!parsed) return;
+        setShow(parsed);
         if (isGM) {
           setGmSubView("GM_ESPETACULO");
         }
@@ -1306,6 +1315,53 @@ export function Routes() {
     [liveKitRoom, isGM, show, showPhase]
   );
 
+  /** Jogador: força alinhamento com `GET /api/show/active` (requisito «Atualizar mesa»). */
+  const refreshShowFromApi = useCallback(async () => {
+    try {
+      const res = await fetch("/api/show/active", { credentials: "include" });
+      if (res.status === 204 || !res.ok) return;
+      const parsed = parseShowActivePayload(await res.json());
+      if (parsed) setShow(parsed);
+    } catch {}
+  }, []);
+
+  /** Hidratar expressão fixa a partir do estado do show na API (bootstrap / refresh). O jogador não deve
+   *  sobrescrever o próprio personagem com o mapa do mestre — o fixo do PC vem de lobby + fixExpression local. */
+  useEffect(() => {
+    const st = show?.stageState;
+    if (!st) return;
+    const es = st.expressionSlotByCharacterId;
+    const pr = st.portraitUrlByCharacterId;
+    const skipOwnId =
+      !isGM && selectedCharacter?.id != null && Number.isFinite(selectedCharacter.id)
+        ? selectedCharacter.id
+        : null;
+    if (es && typeof es === "object") {
+      setExpressionCurrentByCharacterId((prev) => {
+        const next = { ...prev };
+        for (const [k, v] of Object.entries(es)) {
+          const id = Number(k);
+          if (!Number.isFinite(id) || typeof v !== "number" || v < 0 || v > 9) continue;
+          if (skipOwnId != null && id === skipOwnId) continue;
+          next[id] = v;
+        }
+        return next;
+      });
+    }
+    if (pr && typeof pr === "object") {
+      setExpressionRemotePortraitByCharacterId((prev) => {
+        const next = { ...prev };
+        for (const [k, v] of Object.entries(pr)) {
+          const id = Number(k);
+          if (!Number.isFinite(id) || typeof v !== "string" || v === "") continue;
+          if (skipOwnId != null && id === skipOwnId) continue;
+          next[id] = v;
+        }
+        return next;
+      });
+    }
+  }, [show?.id, show?.stageState, isGM, selectedCharacter?.id]);
+
   const fixExpressionAndSync = useCallback(
     (slot: number) => {
       setCurrentExpressionSlot(slot);
@@ -1315,6 +1371,71 @@ export function Routes() {
         clearTimeout(expressionTimerRef.current);
         expressionTimerRef.current = null;
       }
+      const { displayParticipants: dp, gmStageSlotImagesBy: slotBy, gmExpressionTargets: targets } =
+        expressionPublishContextRef.current;
+      const idsMulti = isGM && gmExpressionCharacterIds.length > 0 ? gmExpressionCharacterIds : null;
+      const targetIds: number[] =
+        idsMulti != null && idsMulti.length > 0
+          ? idsMulti
+          : expressionTargetId != null
+            ? [expressionTargetId]
+            : [];
+      const portraitById: Record<number, string> = {};
+      if (targetIds.length > 0) {
+        if (isGM) {
+          Object.assign(portraitById, buildExpressionUrlMapForPublish(targetIds, slot, dp, slotBy, targets));
+        } else {
+          const maps = { gmStageSlotImagesBy: slotBy, localCharacterImageBySlot };
+          for (const id of targetIds) {
+            const p =
+              dp.find((q) => !q.is_gm && q.character_id === id) ??
+              dp.find((q) => q.character_id === id) ??
+              null;
+            const u = pickAtlasUrlForSlot(id, slot, {
+              participant: p,
+              localIdentity,
+              isGM: false,
+              gmDrivingThis: false,
+              maps,
+            });
+            if (u) portraitById[id] = u;
+          }
+        }
+      }
+
+      if (targetIds.length > 0) {
+        setExpressionCurrentByCharacterId((prev) => {
+          const next = { ...prev };
+          for (const id of targetIds) next[id] = slot;
+          return next;
+        });
+        setExpressionRemotePortraitByCharacterId((prev) => {
+          const next = { ...prev };
+          for (const id of targetIds) {
+            const u = portraitById[id];
+            if (u) next[id] = u;
+          }
+          return next;
+        });
+      }
+
+      if (isGM && show && (showPhase === "half" || showPhase === "stage") && targetIds.length > 0) {
+        const esc: Record<string, number> = {};
+        const prt: Record<string, string> = {};
+        for (const id of targetIds) {
+          esc[String(id)] = slot;
+          const u = portraitById[id];
+          if (u) prt[String(id)] = u;
+        }
+        void api("/api/show/active/stage-expression", {
+          method: "PATCH",
+          body: JSON.stringify({
+            expressionSlotByCharacterId: esc,
+            portraitUrlByCharacterId: prt,
+          }),
+        }).catch(() => {});
+      }
+
       const identity = resolveLobbyExpressionIdentity();
       api("/api/lobby/me", {
         method: "POST",
@@ -1326,17 +1447,17 @@ export function Routes() {
         .then(() => fetchLobby())
         .catch(() => {});
       if (identity && liveKitRoom?.localParticipant) {
-        const ids = isGM && gmExpressionCharacterIds.length > 0 ? gmExpressionCharacterIds : null;
         const body: Record<string, unknown> = {
           type: "expression/current",
           identity,
           expression_slot: slot,
         };
-        if (ids != null && ids.length > 0) {
-          body.characterIds = ids;
-          const { displayParticipants: dp, gmStageSlotImagesBy: slotBy, gmExpressionTargets: targets } =
-            expressionPublishContextRef.current;
-          body.portraitUrlByCharacterId = buildExpressionUrlMapForPublish(ids, slot, dp, slotBy, targets);
+        /* Sempre que houver alvos, enviar `characterIds` + URLs: o palco do mestre usa
+         * `expressionRemotePortraitByCharacterId` como fixo; sem URL nova, o retrato antigo (API) ganha ao slot. */
+        const lkIds = idsMulti != null && idsMulti.length > 0 ? idsMulti : targetIds;
+        if (lkIds.length > 0) {
+          body.characterIds = lkIds;
+          if (Object.keys(portraitById).length > 0) body.portraitUrlByCharacterId = portraitById;
         } else if (expressionTargetId != null) body.characterId = expressionTargetId;
         publishExpressionPayload(body);
       }
@@ -1349,6 +1470,10 @@ export function Routes() {
       fetchLobby,
       resolveLobbyExpressionIdentity,
       publishExpressionPayload,
+      show,
+      showPhase,
+      localIdentity,
+      localCharacterImageBySlot,
     ]
   );
 
@@ -1920,6 +2045,8 @@ export function Routes() {
             safetyEmail={user?.role === "PLAYER" ? user.email : undefined}
             safetyCharacterId={selectedCharacter?.id ?? null}
             safetyCharacterName={selectedCharacter?.name ?? null}
+            onRefreshTable={refreshShowFromApi}
+            showRefreshTableButton={!isGM && !!show && (showPhase === "half" || showPhase === "stage")}
           />
         ) : null
       }

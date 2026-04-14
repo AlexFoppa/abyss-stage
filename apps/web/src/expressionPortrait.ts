@@ -143,6 +143,12 @@ export function resolvePortraitUrlForCharacter(params: {
   } = params;
 
   const gmDrivingThis = gmEspExpression && gmExpressionCharacterIds.includes(cid);
+  const playerIsThisRow = !isGM && localIdentity != null && identity === localIdentity;
+  /** Preview com tecla ainda premida (local): o emissor muitas vezes não recebe o próprio `expression/override` no LiveKit. */
+  const localPreviewActive =
+    temporaryOverride != null &&
+    now < temporaryOverride.until &&
+    (playerIsThisRow || gmDrivingThis);
   const cOv = sync.expressionOverrideByCharacterId[cid];
 
   if (cOv && now < cOv.until && typeof cOv.previewUrl === "string" && cOv.previewUrl !== "") {
@@ -180,6 +186,7 @@ export function resolvePortraitUrlForCharacter(params: {
 
   const remoteFixed = sync.expressionRemotePortraitByCharacterId[cid];
   if (
+    !localPreviewActive &&
     remoteFixed != null &&
     remoteFixed !== "" &&
     sync.expressionCurrentByCharacterId[cid] != null &&

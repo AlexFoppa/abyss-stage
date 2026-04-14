@@ -1,12 +1,14 @@
 # Requisitos estáveis (não regredir)
 
-**Versão:** 2.3  
-**Actualização:** 2026-04-13  
+**Versão:** 2.5  
+**Actualização:** 2026-04-14  
 **Uso:** referência para refactor e redesign; alterações que quebrem estes pontos exigem decisão explícita de produto. O que **não** estiver aqui **não** conta como requisito estável até ser acrescentado (este ficheiro é a fonte de planeamento em `docs/`).
 
 **Colaboração (IA / terceiros):** **Não** alterar código, middleware, variáveis de ambiente, `.env.example` nem ficheiros em `docs/` **sem autorização explícita** do dono do repositório. **Não** implementar funcionalidades a meio nem alargar o âmbito do pedido sem combinar (evita logs, flags ou refactors “pela metade” sem alinhamento).
 
 **Histórico de versões (só cabeçalho + estrutura de backlogs):**  
+**2.5** (2026-04-14) — **Expressão fixa:** estado persistido no **espetáculo activo na API** (uma autoridade, não paralelo ao lobby para o partilhado). **Jogador:** acção explícita «**Atualizar mesa**» (ou equivalente) que força `GET /api/show/active` e reconciliação; **sem** refresh periódico em segundo plano só para esse fim.  
+**2.4** (2026-04-14) — **Palco partilhado / paridade:** fonte da verdade do estado partilhado do espetáculo na **API** (leitura reconciliada + escritas definidas); **LiveKit** e **lobby** como canais (deltas, preview, presença); obrigações de **reconnect** e **entrada tardia** alinhadas a esse contrato.  
 **2.3** (2026-04-13) — **Cenário:** carregamento **antes** da abertura das cortinas (revelação, não “puxar” o asset depois); sem intervalo perceptível de vazio/obsoleto nas **atualizações** do cenário; alinhamento com jogador que entra durante o espetáculo.  
 **2.2** (2026-04-13) — Fechado backlog desenvolvimento **Krisp** (implementação auditada); **Áudio:** requisito estável explícito de não reintroduzir `@livekit/krisp-noise-filter`; renumerado item PDF para **3.**; índice com **três** itens no backlog geral.  
 **2.1** (2026-03-30) — Removido item duplicado no backlog geral que apenas apontava para o backlog de trilha; índice ajustado (quatro itens no backlog de desenvolvimento).  
@@ -34,6 +36,16 @@
 - **Cenário:** permanece **sempre visível** para todos enquanto o espetáculo decorre. **Cortinas:** o recurso de imagem do cenário em vigor deve estar **já carregado** quando as cortinas se abrem — elas **revelam** o cenário; **não** é aceitável o jogador ver fundo vazio ou placeholder até o asset aparecer **depois** da abertura. **Mudanças de cenário:** quando o estado do cenário mudar, **não** deve haver **atraso perceptível** em que os jogadores vejam fundo vazio, placeholder genérico ou **imagem obsoleta** em relação ao estado actual da cena; paridade com o mestre no instante do novo estado. *(Interpretação técnica: pré-carga, prioridade de rede e ordem de render — sem alterar este contrato de produto.)*
 - **Outros elementos** (ex.: avatares de PCs e NPCs, espaço de rolagem de dados, demais camadas do palco): o mestre define **quais estão visíveis** para os jogadores; o que estiver **oculto** para o jogador continua **visível para o mestre**, que controla essa visibilidade.
 
+### Fonte da verdade — estado partilhado do palco e do espetáculo
+
+- **Autoridade única (paridade):** o que mestre e jogadores **devem** ver em conjunto no palco (cenário/cena activa no show, conjunto de actores e respectiva **visibilidade** para o público, posições e restante estado de palco persistido no show activo quando existir, incl. barra de dados quando integrada nesse estado) deriva do **estado servido e reconciliado pela API** — em particular `GET /api/show/active` e as **escritas** que o produto definir para o show (ex.: início do espetáculo, actualização de cena, estado de palco persistido). O cliente **não** pode usar só LiveKit ou só o lobby como substituto desse snapshot **após** bootstrap ou reconnect para o que é **partilhado**.
+- **LiveKit (tópicos `lobby` / `espetaculo`, mensagens `show/*`, `expression/*`, etc.):** **canal** de baixa latência — deltas, sincronização rápida, **preview** de expressão; **não** é uma segunda “mesa oficial” cujo estado persistente possa **contradizer** o show activo na API. Quando ordem de chegada ou falhas fizerem divergir transitóriamente, o cliente **reconcilia** para coincidir com a autoridade da API para o estado **fixo** partilhado.
+- **`GET /api/lobby` e `POST /api/lobby/me`:** **presença** e metadados de linha (incl. `expression_slot`, `character_image_by_slot` apoiados na base) para áudio e apoio a retratos; **não** substituem o estado de palco partilhado nem a **expressão fixa** oficial para a mesa — essa fixação vive no **estado do espetáculo activo na API** (ver abaixo).
+- **Preview vs fixação (expressão):** o **piscar / preview** (~1 s) mantém a regra já indicada em **Regra de paridade**. O estado **fixo** de expressão que afecta o palco partilhado deve ser **persistido e servido** como parte do **show activo na API** (leitura via `GET /api/show/active` e escritas definidas pelo contrato do endpoint); **não** há segunda autoridade paralela no lobby só para “o retrato oficial da mesa”. O lobby pode continuar a reflectir presença e atlas; a reconciliação do palco partilhado alinha-se à API.
+- **Reconnect e entrada tardia:** com espetáculo activo, o cliente deve **obter e aplicar** da API o estado relevante para o palco partilhado (incl. `stageState` quando existir); eventos de rede complementam com **delta**, não como **única** inicialização do palco partilhado.
+- **Actualização sob pedido do jogador:** **não** é requisito sincronizar o show com **polling periódico em segundo plano** (ex. a cada 1 s) só para manter paridade; isso imporia custo contínuo a todos. O jogador deve ter uma acção explícita (ex.: botão «**Atualizar mesa**» ou equivalente) que force `GET /api/show/active` e **reconciliação** com o que o mestre vê no que é **partilhado**, para recuperar quando perceber desalinhamento — **sem** depender de “refresh eventual”.
+- **Abertura / cortinas / animação temporal:** não devem substituir nem contornar o contrato acima; mudanças puramente visuais ou de temporização **não** podem ser a única fonte de verdade para o que é partilhado na mesa.
+
 ### Regra de paridade (jogadores entre si e com o mestre no que é partilhado)
 
 - Para **dois jogadores** (ou para **jogador e mestre**, quando o assunto é o mesmo elemento visível no ecrã do jogador): o conjunto de elementos **visíveis** e a **imagem** mostrada em cada um (URL/asset/estado de expressão) deve ser **exactamente o mesmo**. Não há “versão local” do palco que difira do que os outros jogadores veem nos itens visíveis.
@@ -52,11 +64,11 @@
 
 ### Anti-regressão (fonte da verdade)
 
-- Não reintroduzir **várias fontes concorrentes** (ex.: HTTP, estado só no cliente, LiveKit) para a **mesma** imagem ou expressão **sem** decisão de produto documentada; com impacto em pedidos, usar **logs HTTP** (secção Observabilidade) para comparar antes/depois.
+- Não reintroduzir **várias fontes concorrentes** para o **mesmo** aspecto do palco partilhado ou da expressão **fixa** (ex.: HTTP, estado só no cliente, LiveKit como estado final divergente) **sem** decisão explícita **neste** ficheiro; a linha de base é **Fonte da verdade — estado partilhado do palco e do espetáculo**. Com impacto em pedidos, usar **logs HTTP** (secção Observabilidade) para comparar antes/depois.
 
 ## Espetáculo iniciado — jogador que entra depois
 
-- Com espetáculo **já em curso**, se um jogador **fizer login** (ou entrar na app autenticado), deve ser **imediatamente** conduzido a **escolher personagem** e **juntar-se ao jogo** em curso, **sem** ser tratado como visitante do lobby como se não houvesse jogo activo. Ao **aceder ao palco** (incl. após cortinas, se aplicável ao fluxo desse cliente), aplica-se o mesmo contrato de **cenário** que em **Espetáculo: o que é partilhado** — **sem** fundo vazio prolongado nem cenário desactualizado face ao estado da mesa.
+- Com espetáculo **já em curso**, se um jogador **fizer login** (ou entrar na app autenticado), deve ser **imediatamente** conduzido a **escolher personagem** e **juntar-se ao jogo** em curso, **sem** ser tratado como visitante do lobby como se não houvesse jogo activo. Ao **aceder ao palco** (incl. após cortinas, se aplicável ao fluxo desse cliente), aplica-se o mesmo contrato de **cenário** que em **Espetáculo: o que é partilhado** — **sem** fundo vazio prolongado nem cenário desactualizado face ao estado da mesa; o alinhamento do **palco partilhado** segue **Fonte da verdade — estado partilhado do palco e do espetáculo**.
 - **Nice to have (não prioritário):** simplificar esse fluxo (menos passos ou UI mais directa), mantendo aceitável o lobby como passo para áudio e escolha de personagem.
 
 ## Queda do mestre durante o espetáculo
