@@ -1524,29 +1524,30 @@ export function StageView({
             </button>
           </div>
         )}
-        {showRefreshTableButton && typeof onRefreshTable === "function" && (
-          <div className="stage-view__player-refresh">
+        <div className="stage-view__player-expression">
+          <div className="stage-view__player-expression-controls">
+            {showRefreshTableButton && typeof onRefreshTable === "function" && (
+              <button
+                type="button"
+                className="stage-view__player-refresh-btn"
+                onClick={() => void onRefreshTable()}
+                aria-label="Atualizar mesa"
+                title="Atualizar mesa"
+              >
+                <span aria-hidden>↻</span>
+              </button>
+            )}
             <button
               type="button"
-              className="stage-view__player-refresh-btn ui-btn ui-btn--ghost"
-              onClick={() => void onRefreshTable()}
-              title="Alinhar com o estado da mesa no servidor (se algo parecer desactualizado)"
+              className={"stage-view__player-expression-trigger" + (playerExpressionMenuOpen ? " is-open" : "")}
+              onClick={() => setPlayerExpressionMenuOpen((o) => !o)}
+              aria-expanded={playerExpressionMenuOpen}
+              aria-label={playerExpressionMenuOpen ? "Recolher expressões do avatar" : "Ver expressões do avatar"}
+              title={playerExpressionMenuOpen ? "Recolher" : "Expressões do avatar"}
             >
-              Atualizar mesa
+              🎭
             </button>
           </div>
-        )}
-        <div className="stage-view__player-expression">
-          <button
-            type="button"
-            className={"stage-view__player-expression-trigger" + (playerExpressionMenuOpen ? " is-open" : "")}
-            onClick={() => setPlayerExpressionMenuOpen((o) => !o)}
-            aria-expanded={playerExpressionMenuOpen}
-            aria-label={playerExpressionMenuOpen ? "Recolher expressões do avatar" : "Ver expressões do avatar"}
-            title={playerExpressionMenuOpen ? "Recolher" : "Expressões do avatar"}
-          >
-            🎭
-          </button>
           {playerExpressionMenuOpen && (
             <div className="stage-view__player-expression-panel" role="dialog" aria-label="Expressões do avatar">
               {( [

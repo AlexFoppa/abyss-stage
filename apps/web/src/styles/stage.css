@@ -778,30 +778,6 @@
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 
-/* Jogador: alinhar palco com a API */
-.stage-view__player-refresh {
-  position: absolute;
-  bottom: 76px;
-  left: 16px;
-  z-index: 10;
-  pointer-events: auto;
-}
-.stage-view--narrative .stage-view__player-refresh {
-  z-index: 12;
-}
-.stage-view__player-refresh-btn {
-  font-size: 0.85rem;
-  padding: 6px 10px;
-  max-width: min(200px, 42vw);
-  white-space: nowrap;
-  color: rgba(255, 255, 255, 0.95);
-  border-color: rgba(255, 255, 255, 0.35);
-  background: rgba(0, 0, 0, 0.45);
-}
-.stage-view__player-refresh-btn:hover {
-  background: rgba(0, 0, 0, 0.65);
-}
-
 /* Jogador: expressões — canto inferior direito */
 .stage-view__player-expression {
   position: absolute;
@@ -816,6 +792,11 @@
 }
 .stage-view--narrative .stage-view__player-expression {
   z-index: 12;
+}
+.stage-view__player-expression-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .stage-view__player-expression-trigger {
   width: 44px;
@@ -838,6 +819,24 @@
 .stage-view__player-expression-trigger.is-open {
   background: rgba(0, 0, 0, 0.75);
   border-color: rgba(255, 255, 255, 0.9);
+}
+.stage-view__player-refresh-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 1.35rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, border-color 0.2s;
+}
+.stage-view__player-refresh-btn:hover {
+  background: rgba(0, 0, 0, 0.7);
+  border-color: rgba(255, 255, 255, 0.7);
 }
 .stage-view__player-expression-panel {
   background: rgba(0, 0, 0, 0.85);

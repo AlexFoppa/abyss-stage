@@ -1,12 +1,16 @@
 # Requisitos estáveis (não regredir)
 
-**Versão:** 2.5  
+**Versão:** 2.9  
 **Actualização:** 2026-04-14  
 **Uso:** referência para refactor e redesign; alterações que quebrem estes pontos exigem decisão explícita de produto. O que **não** estiver aqui **não** conta como requisito estável até ser acrescentado (este ficheiro é a fonte de planeamento em `docs/`).
 
 **Colaboração (IA / terceiros):** **Não** alterar código, middleware, variáveis de ambiente, `.env.example` nem ficheiros em `docs/` **sem autorização explícita** do dono do repositório. **Não** implementar funcionalidades a meio nem alargar o âmbito do pedido sem combinar (evita logs, flags ou refactors “pela metade” sem alinhamento).
 
 **Histórico de versões (só cabeçalho + estrutura de backlogs):**  
+**2.9** (2026-04-14) — Registado no **Backlog nice to have** o retomar futuro da migração de paridade do lobby (tentativa revertida por regressão de actualização/visibilidade).  
+**2.8** (2026-04-14) — **Lobby (decisões fechadas):** modelo realtime-first para expressão, **polling zero no palco**, reconciliação do lobby **sob demanda**, lista de presença eventual aceitável e execução sem faseamento.  
+**2.7** (2026-04-14) — **Lobby (pré-alteração):** definido contrato de migração para modelo de paridade (snapshot canónico + reconciliação sob pedido), com objectivos operacionais e decisões pendentes explícitas antes da implementação.  
+**2.6** (2026-04-14) — **Consolidação implementada no espetáculo:** expressão fixa persistida no show activo (`stage_state`), merge preservando mapas de expressão em updates de palco, hidratação do cliente por `GET /api/show/active`, botão de jogador «Atualizar mesa» e alinhamentos de expressão jogador↔mestre sem depender de eco local.  
 **2.5** (2026-04-14) — **Expressão fixa:** estado persistido no **espetáculo activo na API** (uma autoridade, não paralelo ao lobby para o partilhado). **Jogador:** acção explícita «**Atualizar mesa**» (ou equivalente) que força `GET /api/show/active` e reconciliação; **sem** refresh periódico em segundo plano só para esse fim.  
 **2.4** (2026-04-14) — **Palco partilhado / paridade:** fonte da verdade do estado partilhado do espetáculo na **API** (leitura reconciliada + escritas definidas); **LiveKit** e **lobby** como canais (deltas, preview, presença); obrigações de **reconnect** e **entrada tardia** alinhadas a esse contrato.  
 **2.3** (2026-04-13) — **Cenário:** carregamento **antes** da abertura das cortinas (revelação, não “puxar” o asset depois); sem intervalo perceptível de vazio/obsoleto nas **atualizações** do cenário; alinhamento com jogador que entra durante o espetáculo.  
@@ -46,6 +50,14 @@
 - **Actualização sob pedido do jogador:** **não** é requisito sincronizar o show com **polling periódico em segundo plano** (ex. a cada 1 s) só para manter paridade; isso imporia custo contínuo a todos. O jogador deve ter uma acção explícita (ex.: botão «**Atualizar mesa**» ou equivalente) que force `GET /api/show/active` e **reconciliação** com o que o mestre vê no que é **partilhado**, para recuperar quando perceber desalinhamento — **sem** depender de “refresh eventual”.
 - **Abertura / cortinas / animação temporal:** não devem substituir nem contornar o contrato acima; mudanças puramente visuais ou de temporização **não** podem ser a única fonte de verdade para o que é partilhado na mesa.
 
+### Estado consolidado já implementado (espetáculo)
+
+- **Persistência de expressão fixa no show activo:** a API suporta `expression_slot_by_character_id` e `portrait_url_by_character_id` em `stage_state` e o endpoint de escrita dedicado para expressão fixa (`PATCH /api/show/active/stage-expression`, GM).
+- **Merge sem apagar expressão em updates de palco:** updates de palco que não tragam campos de expressão preservam os mapas já persistidos de expressão fixa no show activo.
+- **Hidratação no cliente por estado canónico:** o cliente aplica mapas de expressão fixa vindos de `GET /api/show/active` (bootstrap/reconnect/refresh) para manter o palco partilhado alinhado.
+- **Jogador com reconciliação explícita:** existe acção «Atualizar mesa» para forçar `GET /api/show/active` sob demanda, sem polling periódico dedicado só para paridade de espetáculo.
+- **Paridade de expressão jogador↔mestre:** fixação local actualiza estado visual do emissor e publica payload suficiente para receptor (slot + mapa de URL por personagem quando houver alvo), reduzindo dependência de eco local de evento.
+
 ### Regra de paridade (jogadores entre si e com o mestre no que é partilhado)
 
 - Para **dois jogadores** (ou para **jogador e mestre**, quando o assunto é o mesmo elemento visível no ecrã do jogador): o conjunto de elementos **visíveis** e a **imagem** mostrada em cada um (URL/asset/estado de expressão) deve ser **exactamente o mesmo**. Não há “versão local” do palco que difira do que os outros jogadores veem nos itens visíveis.
@@ -81,6 +93,31 @@
 - O ritmo de **polling** e o fan-out de pedidos mudaram tantas vezes que **não há hoje um “certo” documentado** só de cabeça; o contexto perde-se entre alterações.
 - **Estratégia:** **logar os pedidos na API** de forma explícita (método, path, status, duração), activável por variável de ambiente (`ABYSS_HTTP_LOG` — ver `.env.example`). Objectivo: quando algo **quebrar** (limite do túnel, sobrecarga, etc.), haver **dados no log** para inferir **limites reais** do polling e do padrão de tráfego — aceitando que volume de log pode ser alto e que **não** há segundo documento de governança obrigatório em `docs/`.
 
+## Lobby — migração para modelo de paridade (pré-implementação)
+
+- **Objectivo funcional:** aplicar no lobby o mesmo princípio do espetáculo: estado canónico de leitura + reconciliação explícita, com eventos realtime como canal de baixa latência e sem depender de polling agressivo contínuo.
+- **Objectivo operacional (custo):** reduzir tráfego de `GET /api/lobby` recorrente (actual: loop de 2s em condições amplas + fetch adicional após `POST /api/lobby/me`) sem perder robustez de sincronização.
+- **Escopo mínimo previsto:** rever os gatilhos de `fetchLobby` no cliente, definir quando `GET /api/lobby` é obrigatório (bootstrap, ação explícita, fallback), e manter `POST /api/lobby/me` como escrita de presença/metadados.
+- **Compatibilidade obrigatória:** manter funcionamento com LiveKit indisponível (fallback TTL do store), entrada tardia, reconnect, e consistência de expressão visual no palco.
+- **Não objectivo desta fase:** redesenhar autenticação, áudio LiveKit ou contratos fora de lobby/espetáculo.
+
+### Lobby — estado actual mapeado no código (base para mudança)
+
+- **Leitura canónica actual do lobby:** `GET /api/lobby` alimenta `lobbyParticipants` no `routes.tsx`; o fluxo protege contra paralelismo de fetch (`inFlight` + `pendingAgain`) mas mantém `setInterval` de 2s quando em `LOBBY` ou com GM e show activo.
+- **Escrita e fan-out actual:** `POST /api/lobby/me` acontece em heartbeat (~25s) e em fixação de expressão; ambos encadeiam `fetchLobby()` no `then`, gerando leitura imediata adicional.
+- **Dependências directas de `lobbyParticipants`:** lista/identidade no lobby, inicialização de `currentExpressionSlot`, base de `displayParticipants`, mapas de retrato por personagem e prop para `StageView`.
+- **Dependência indirecta relevante:** no `StageView` (GM), `lobbyCharacterIdsKey` dispara refetch periódico (5s) de `GET /api/gm/.../scenes/.../characters` + `GET /api/gm/characters`; oscilações no conjunto de `character_id` do lobby podem aumentar este custo.
+- **Backend de lobby actual:** `GET /lobby` reconcilia presença via LiveKit + metadados do `_LOBBY_STORE` (com fallback TTL sem LiveKit), e monta `character_image_by_slot` por personagem no response.
+
+### Lobby — decisões fechadas para implementação
+
+- **Expressão no palco (prioridade):** **realtime-first**. Mudanças de expressão são aplicadas imediatamente por evento (`expression/*`); `GET /api/lobby` fica como reconciliação sob demanda.
+- **Polling no palco:** **zero** (desligar polling contínuo de lobby durante half/stage; manter sincronização por eventos + acções explícitas).
+- **Reconciliação de lobby:** **sob demanda** (sem obrigação de loop periódico agressivo para presença/lista durante espetáculo).
+- **Acções explícitas:** manter «Atualizar mesa» e incluir «Atualizar lobby» para refresh manual da lista/presença.
+- **Semântica de presença:** consistência **eventual** é aceitável para lista do lobby (alguns segundos de atraso), desde que o estado partilhado do palco permaneça consistente.
+- **Entrega:** aplicar sem faseamento funcional separado.
+
 ## Privacidade nos logs de operação
 
 - Sem requisitos adicionais de privacidade para o conteúdo dos traces técnicos acordados para esta fase (método, path, status, duração); evitar na mesma boas práticas desnecessárias (corpos, cookies, secrets).
@@ -95,7 +132,7 @@
 
 1. **Backlog de desenvolvimento** — itens gerais de código: **três** entradas numeradas **1.–3.** na secção homónima (não confundir com a numeração da trilha sonora).
 2. **Backlog — trilha e ambientação sonora** — música ambiente + efeitos: numeração **própria** 1.–11. ao longo das fases A–D (**sempre a seguir** ao backlog geral).
-3. **Backlog nice to have** — **sete** entradas numeradas **1.–7.**
+3. **Backlog nice to have** — **oito** entradas numeradas **1.–8.**
 
 ---
 
@@ -153,3 +190,4 @@
 5. **Transcrição de fala:** A definir quando o item for abordado (privacidade, custo, língua, quem vê o texto).
 6. **Voz — narração:** GM pode **mutar jogadores** para forçar escuta da narração, com **indicação clara na UI** do jogador de que está mutado para ouvir o mestre.
 7. **Voz — moderação:** GM pode **mutar um jogador** (ex.: microfone aberto com utilizador ausente).
+8. **Lobby — paridade sem polling contínuo (revisitar):** retomar migração para modelo de paridade no lobby (eventos + reconciliação sob demanda), com critério explícito de não regressão para atualização de presença/avatares (ex.: avatar do mestre não pode desaparecer) e validação em teste com dois clientes antes de substituir o comportamento actual.
