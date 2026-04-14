@@ -207,7 +207,6 @@ export function LobbyScreen({
   const [remoteVolume, setRemoteVolume] = useState(1);
   const [deviceId, setDeviceId] = useState<string>("");
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [krispEnabled, setKrispEnabled] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
   const [internalAudioPos, setInternalAudioPos] = useState(() => ({ ...persistedAudioPanelPos }));
   const audioPos = floatingMenuPos ?? internalAudioPos;
@@ -447,25 +446,6 @@ export function LobbyScreen({
     return () => window.removeEventListener("keydown", onKey);
   }, [room, toggleMute]);
 
-  const toggleKrisp = useCallback(async () => {
-    if (!localAudioTrack || !connected) return;
-    if (krispEnabled) {
-      try {
-        await localAudioTrack.restartTrack({
-          ...captureOpts,
-          deviceId: deviceId || undefined,
-        });
-        setKrispEnabled(false);
-      } catch (_) {}
-    } else {
-      try {
-        const { KrispNoiseFilter } = await import("@livekit/krisp-noise-filter");
-        await localAudioTrack.setProcessor(KrispNoiseFilter());
-        setKrispEnabled(true);
-      } catch (_) {}
-    }
-  }, [localAudioTrack, connected, krispEnabled, captureOpts, deviceId]);
-
   useEffect(() => {
     if (!localAudioTrack || !connected) return;
     let cancelled = false;
@@ -629,7 +609,7 @@ export function LobbyScreen({
                   type="button"
                   className={"lobby-audio-icon-btn" + (captureOpts.noiseSuppression ? " is-active" : "")}
                   title="Supressão de ruído"
-                  onClick={() => setCaptureOpts((o) => ({ ...o, noiseSuppression: !o.noiseSuppression }))}
+                  onClick={() => toggleCaptureOpt("noiseSuppression")}
                 >
                   <span aria-hidden>NS</span>
                 </button>
@@ -637,7 +617,7 @@ export function LobbyScreen({
                   type="button"
                   className={"lobby-audio-icon-btn" + (captureOpts.echoCancellation ? " is-active" : "")}
                   title="Cancelamento de eco"
-                  onClick={() => setCaptureOpts((o) => ({ ...o, echoCancellation: !o.echoCancellation }))}
+                  onClick={() => toggleCaptureOpt("echoCancellation")}
                 >
                   <span aria-hidden>EC</span>
                 </button>
@@ -645,7 +625,7 @@ export function LobbyScreen({
                   type="button"
                   className={"lobby-audio-icon-btn" + (captureOpts.autoGainControl ? " is-active" : "")}
                   title="Controle automático de ganho"
-                  onClick={() => setCaptureOpts((o) => ({ ...o, autoGainControl: !o.autoGainControl }))}
+                  onClick={() => toggleCaptureOpt("autoGainControl")}
                 >
                   <span aria-hidden>AGC</span>
                 </button>
@@ -653,17 +633,9 @@ export function LobbyScreen({
                   type="button"
                   className={"lobby-audio-icon-btn" + (captureOpts.voiceIsolation ? " is-active" : "")}
                   title="Isolamento de voz"
-                  onClick={() => setCaptureOpts((o) => ({ ...o, voiceIsolation: !o.voiceIsolation }))}
+                  onClick={() => toggleCaptureOpt("voiceIsolation")}
                 >
                   <span aria-hidden>VI</span>
-                </button>
-                <button
-                  type="button"
-                  className={"lobby-audio-icon-btn" + (krispEnabled ? " is-active" : "")}
-                  title="Krisp (redução de ruído)"
-                  onClick={toggleKrisp}
-                >
-                  <span aria-hidden>K</span>
                 </button>
               </div>
               <div className="lobby-audio-sliders">
@@ -675,7 +647,7 @@ export function LobbyScreen({
                     max="1"
                     step="0.05"
                     value={remoteVolume}
-                    onChange={(e) => setRemoteVolume(Number(e.target.value))}
+                    onChange={(e) => setVolume(Number(e.target.value))}
                   />
                 </label>
                 <label className="lobby-audio-label">
@@ -683,7 +655,9 @@ export function LobbyScreen({
                   <select
                     className="lobby-audio-select"
                     value={deviceId}
-                    onChange={(e) => setDeviceId(e.target.value)}
+                    onChange={(e) => {
+                      void selectDevice(e.target.value);
+                    }}
                   >
                     <option value="">Padrão</option>
                     {devices.map((d) => (
