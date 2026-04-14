@@ -1,12 +1,14 @@
 # Requisitos estáveis (não regredir)
 
-**Versão:** 2.1  
-**Actualização:** 2026-03-30  
+**Versão:** 2.3  
+**Actualização:** 2026-04-13  
 **Uso:** referência para refactor e redesign; alterações que quebrem estes pontos exigem decisão explícita de produto. O que **não** estiver aqui **não** conta como requisito estável até ser acrescentado (este ficheiro é a fonte de planeamento em `docs/`).
 
 **Colaboração (IA / terceiros):** **Não** alterar código, middleware, variáveis de ambiente, `.env.example` nem ficheiros em `docs/` **sem autorização explícita** do dono do repositório. **Não** implementar funcionalidades a meio nem alargar o âmbito do pedido sem combinar (evita logs, flags ou refactors “pela metade” sem alinhamento).
 
 **Histórico de versões (só cabeçalho + estrutura de backlogs):**  
+**2.3** (2026-04-13) — **Cenário:** carregamento **antes** da abertura das cortinas (revelação, não “puxar” o asset depois); sem intervalo perceptível de vazio/obsoleto nas **atualizações** do cenário; alinhamento com jogador que entra durante o espetáculo.  
+**2.2** (2026-04-13) — Fechado backlog desenvolvimento **Krisp** (implementação auditada); **Áudio:** requisito estável explícito de não reintroduzir `@livekit/krisp-noise-filter`; renumerado item PDF para **3.**; índice com **três** itens no backlog geral.  
 **2.1** (2026-03-30) — Removido item duplicado no backlog geral que apenas apontava para o backlog de trilha; índice ajustado (quatro itens no backlog de desenvolvimento).  
 **2.0** (2026-04-11) — Salto de versão para fechar ambiguidade 1.8/1.9 em merges; índice dos backlogs com contagens explícitas; requisitos de expressões multi-alvo + `expressionPortrait.ts` nas secções estáveis.  
 **1.7** (2026-03-30) — Referência anterior estável antes da vaga lobby/palco/expressões.
@@ -23,12 +25,13 @@
 ## Áudio (LiveKit)
 
 - Voz no lobby (e uso no espetáculo) via LiveKit: token, sala `lobby`, URL `wss` configurável. Referência operacional: `Readme`, `scripts/start-lobby-tunnels.sh`, `apps/web/src/screens/LobbyScreen.tsx`, `apps/web/src/rtc/livekit.ts`.
+- **Sem add-on Krisp:** não reintroduzir a dependência `@livekit/krisp-noise-filter` nem processador equivalente no track (custo / LiveKit Cloud); redução de ruído e opções de captura via **constraints do browser** apenas, onde aplicável.
 
 ## Lobby e espetáculo — consistência visual e controlo do mestre
 
 ### Espetáculo: o que é partilhado
 
-- **Cenário:** permanece **sempre visível** para todos enquanto o espetáculo decorre.
+- **Cenário:** permanece **sempre visível** para todos enquanto o espetáculo decorre. **Cortinas:** o recurso de imagem do cenário em vigor deve estar **já carregado** quando as cortinas se abrem — elas **revelam** o cenário; **não** é aceitável o jogador ver fundo vazio ou placeholder até o asset aparecer **depois** da abertura. **Mudanças de cenário:** quando o estado do cenário mudar, **não** deve haver **atraso perceptível** em que os jogadores vejam fundo vazio, placeholder genérico ou **imagem obsoleta** em relação ao estado actual da cena; paridade com o mestre no instante do novo estado. *(Interpretação técnica: pré-carga, prioridade de rede e ordem de render — sem alterar este contrato de produto.)*
 - **Outros elementos** (ex.: avatares de PCs e NPCs, espaço de rolagem de dados, demais camadas do palco): o mestre define **quais estão visíveis** para os jogadores; o que estiver **oculto** para o jogador continua **visível para o mestre**, que controla essa visibilidade.
 
 ### Regra de paridade (jogadores entre si e com o mestre no que é partilhado)
@@ -53,7 +56,7 @@
 
 ## Espetáculo iniciado — jogador que entra depois
 
-- Com espetáculo **já em curso**, se um jogador **fizer login** (ou entrar na app autenticado), deve ser **imediatamente** conduzido a **escolher personagem** e **juntar-se ao jogo** em curso, **sem** ser tratado como visitante do lobby como se não houvesse jogo activo.
+- Com espetáculo **já em curso**, se um jogador **fizer login** (ou entrar na app autenticado), deve ser **imediatamente** conduzido a **escolher personagem** e **juntar-se ao jogo** em curso, **sem** ser tratado como visitante do lobby como se não houvesse jogo activo. Ao **aceder ao palco** (incl. após cortinas, se aplicável ao fluxo desse cliente), aplica-se o mesmo contrato de **cenário** que em **Espetáculo: o que é partilhado** — **sem** fundo vazio prolongado nem cenário desactualizado face ao estado da mesa.
 - **Nice to have (não prioritário):** simplificar esse fluxo (menos passos ou UI mais directa), mantendo aceitável o lobby como passo para áudio e escolha de personagem.
 
 ## Queda do mestre durante o espetáculo
@@ -78,7 +81,7 @@
 
 ### Índice dos backlogs (três secções)
 
-1. **Backlog de desenvolvimento** — itens gerais de código: **quatro** entradas numeradas **1.–4.** na secção homónima (não confundir com a numeração da trilha sonora).
+1. **Backlog de desenvolvimento** — itens gerais de código: **três** entradas numeradas **1.–3.** na secção homónima (não confundir com a numeração da trilha sonora).
 2. **Backlog — trilha e ambientação sonora** — música ambiente + efeitos: numeração **própria** 1.–11. ao longo das fases A–D (**sempre a seguir** ao backlog geral).
 3. **Backlog nice to have** — **sete** entradas numeradas **1.–7.**
 
@@ -86,10 +89,8 @@
 
 ## Backlog de desenvolvimento (código — actualizar quando fechar)
 
-1. **Duplicação de `GET /lobby`:** Com GM em espetáculo, `routes.tsx` e `StageView` disparam pedidos ao lobby em paralelo — consolidar (um dono do poll ou partilha de dados).
-2. **Jogador com espetáculo activo:** Rever UX/copy (`showActiveMustSelectCharacter`, bootstrap `GET /show/active`) para cumprir o RF (orientação clara, não “visitante sem jogo”).
-3. **Remover Krisp (LiveKit noise filter):** Retirar dependência `@livekit/krisp-noise-filter`, processador no track de áudio e UI associada no lobby — motivo: custo / facturação BVC no LiveKit Cloud (e-mail Maio 2026); manter opções de captura do browser (noise suppression, etc.) que não dependam desse add-on.
-4. **Download de pdf do personagem e do livro** adicionar ao espaço de ficha de personagem a possibilidade de fazer um download das informações do personagem em uma estética semelhante a da aplicação, assim como um botão para baixar o livro em pdf - português e inglês. Tenho os dois pdfs.
+
+3. **Download de pdf do personagem e do livro** adicionar ao espaço de ficha de personagem a possibilidade de fazer um download das informações do personagem em uma estética semelhante a da aplicação, assim como um botão para baixar o livro em pdf - português e inglês. Tenho os dois pdfs.
 
 ## Backlog — trilha e ambientação sonora (música ambiente + efeitos)
 

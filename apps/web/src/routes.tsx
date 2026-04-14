@@ -1847,7 +1847,7 @@ export function Routes() {
         !!(show && (showPhase === "half" || showPhase === "stage") && (isGM || selectedCharacter != null))
       }
       stageContent={
-        show && (showPhase === "half" || showPhase === "stage") && (isGM || selectedCharacter != null) ? (
+        show ? (
           <StageView
             room={liveKitRoom}
             showId={show.id}
@@ -1858,9 +1858,28 @@ export function Routes() {
             scenarioCrop={show.scenarioCrop ?? null}
             narrativeSlides={show.narrativeSlides}
             currentNarrativeIndex={show.currentNarrativeIndex ?? 0}
-            onNarrativeIndexChange={(index) =>
-              setShow((prev) => (prev ? { ...prev, currentNarrativeIndex: index } : prev))
-            }
+            onNarrativeIndexChange={(index) => {
+              setShow((prev) => (prev ? { ...prev, currentNarrativeIndex: index } : prev));
+              if (!show) return;
+              void (async () => {
+                try {
+                  await api("/api/show/active", {
+                    method: "PATCH",
+                    body: JSON.stringify({
+                      sceneId: show.sceneId,
+                      scenarioId: show.scenarioId,
+                      scenarioImageUrl: show.scenarioImageUrl,
+                      scenarioCrop: show.scenarioCrop,
+                      narrativeSlides: show.narrativeSlides,
+                      currentNarrativeIndex: index,
+                      sceneTitle: show.sceneTitle,
+                      sceneBody: show.sceneBody,
+                      isNarrativeScene: show.isNarrativeScene,
+                    }),
+                  });
+                } catch {}
+              })();
+            }}
             initialStageState={show.stageState ?? undefined}
             isGM={isGM}
             gmEmail={user?.email ?? null}
